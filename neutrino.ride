@@ -1,1 +1,77 @@
--Y
+{-# STDLIB_VERSION 3 #-}
+{-# CONTENT_TYPE DAPP #-}
+{-# SCRIPT_TYPE ACCOUNT #-}
+
+# base function
+
+func getNumberByKey(key: String) = {
+    match getInteger(this, key) {
+            case a:Int => a
+            case _ => 0
+    }
+}
+func getStrByKey(key: String) = {
+    match getString(this, key) {
+            case a:String => a
+            case _ => NONE
+    }
+}
+
+#end base function
+
+# data store function
+let AccountBalanceKey = "Balance_"
+let NeutrinoPriceKey = "N-USD_Price"
+
+func getAccountBalanceKey(account : String) = {
+    getNumberByKey(AccountBalanceKey + account)
+}
+
+func getAccountBalance(account : String) = {
+    getNumberByKey(getAccountBalanceKey(account))
+}
+func getNeutrinoPrice() = {
+    getNumberByKey(NeutrinoPriceKey)
+}
+
+#end data store function
+
+let OracleAddress = ""
+let NeutrinoAssetIdString = ""
+let NeutrinoAssetId = toBytes(NeutrinoAssetIdString)
+let NeutrinoName = "Neutrino-USD"
+let NeutrinoSymbol = "N-USD"
+
+@Callable(i)
+func swapWavesToNeutrino(){
+    let price = getNeutrinoPrice()
+    let pmt = extract(i.payment)
+    if (isDefined(pmt.assetId)) 
+        then throw("can use waves only at the moment")
+
+    let account = toBase58String(i.caller.bytes)
+    let oldBalance = getAccountBalance(account)
+    let amount = toInt(pmt.amount/price)
+
+    WriteSet([
+            ScriptTransfer(account, amount, NeutrinoAssetId),
+            DataEntry(getAccountBalanceKey(i.caller), oldBalance + amount),
+            )
+}
+
+@Callable(i)
+func swapNeutrinoToWaves(){
+    let price = getNeutrinoPrice()
+    let pmt = extract(i.payment)
+    if (pmt.assetId == NeutrinoAssetId) 
+        then throw("can use neutrino only at the moment")
+
+    let account = toBase58String(i.caller.bytes)
+    let oldBalance = getAccountBalance(account)
+    let amount = toInt(pmt.amount*price)
+
+    WriteSet([
+            Transfer(account, amount),
+            DataEntry(getAccountBalanceKey(i.caller), oldBalance - amount),
+            )
+}
