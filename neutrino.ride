@@ -64,10 +64,9 @@ func getBondOwner() = {
 let Wavelet = 100000000
 let ExpireBondOrder = 10
 let ExcecutedStatus = "excecuted"
-let NeutrinoAssetIdString = ""
-let NeutrinoAssetId = toBytes(NeutrinoAssetIdString)
-let BondAssetIdString = ""
-let BondAssetId = toBytes(NeutrinoAssetIdString)
+let NeutrinoAssetId = base58'4LFQD5CQHi7fpUqNaCyAbaoXPNRuvvdPL6tD7xubtUr4'
+let BondAssetIdString = "4LFQD5CQHi7fpUqNaCyAbaoXPNRuvvdPL6tD7xubtUr4"
+let BondAssetId = toBytes("")
 let NeutrinoName = "Neutrino-USD"
 let NeutrinoSymbol = "N-USD"
 let MinimalBondOrder = 10*Wavelet
@@ -80,6 +79,10 @@ func getReserve() = {
     wavesBalance(this)
 }
 
+@Callable(i)
+func setCurrentPrice(price : Int) = {
+    WriteSet([DataEntry(NeutrinoPriceKey, price)])
+}
 @Callable(i)
 func swapWavesToNeutrino() = {
     let price = getNeutrinoPrice()
@@ -98,12 +101,12 @@ func swapWavesToNeutrino() = {
 func swapNeutrinoToWaves() = {
     let price = getNeutrinoPrice()
     let pmt = extract(i.payment)
-    if (pmt.assetId == NeutrinoAssetId) 
+    if (pmt.assetId != NeutrinoAssetId) 
         then throw("can use neutrino only at the moment")
     else{
         let account = toBase58String(i.caller.bytes)
         let amount = pmt.amount/price
-        TransferSet([ScriptTransfer(addressFromStringValue(account), amount, NeutrinoAssetId)])
+        Transfer(addressFromStringValue(account), amount)
     }
 }
 
