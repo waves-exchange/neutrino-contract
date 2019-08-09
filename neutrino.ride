@@ -4,6 +4,8 @@
 
 # base function
 
+let NONE = "none"
+
 func getNumberByKey(key: String) = {
     match getInteger(this, key) {
             case a:Int => a
@@ -20,11 +22,15 @@ func getStrByKey(key: String) = {
 #end base function
 
 # data store function
-let AccountBalanceKey = "Balance_"
-let NeutrinoPriceKey = "N-USD_Price"
+let AccountBalanceKey = "balance_"
+let NeutrinoPriceKey = "nusd_Price"
+let BoundCountKey = "bound_count"
+let BoundPriceKey = "bound_price"
+let BoundStatus = "bound_status"
+
 
 func getAccountBalanceKey(account : String) = {
-    getNumberByKey(AccountBalanceKey + account)
+    AccountBalanceKey + account
 }
 
 func getAccountBalance(account : String) = {
@@ -33,45 +39,92 @@ func getAccountBalance(account : String) = {
 func getNeutrinoPrice() = {
     getNumberByKey(NeutrinoPriceKey)
 }
+func getBoundCount() = {
+    getNumberByKey(BoundCountKey)
+}
 
+func getBoundPrice() = {
+    getNumberByKey(BoundPriceKey)
+}
+func getBoundStatus() = {
+    getNumberByKey(BoundPriceKey)
+}
 #end data store function
 
-let OracleAddress = ""
+let ExpireBoundOrder = 10
+let ExcecutedStatus = "excecuted"
 let NeutrinoAssetIdString = ""
 let NeutrinoAssetId = toBytes(NeutrinoAssetIdString)
+let BondAssetIdString = ""
+let BondAssetId = toBytes(NeutrinoAssetIdString)
 let NeutrinoName = "Neutrino-USD"
 let NeutrinoSymbol = "N-USD"
+let MinimalBondOrder = 10
+
+func getSupply() = {
+    assetBalance(this, NeutrinoAssetId)
+}
+
+func getReserve() = {
+    wavesBalance(this)
+}
 
 @Callable(i)
-func swapWavesToNeutrino(){
+func swapWavesToNeutrino() = {
     let price = getNeutrinoPrice()
     let pmt = extract(i.payment)
     if (isDefined(pmt.assetId)) 
         then throw("can use waves only at the moment")
-
-    let account = toBase58String(i.caller.bytes)
-    let oldBalance = getAccountBalance(account)
-    let amount = toInt(pmt.amount/price)
-
-    WriteSet([
-            ScriptTransfer(account, amount, NeutrinoAssetId),
-            DataEntry(getAccountBalanceKey(i.caller), oldBalance + amount),
-            )
+    else{
+        let account = toBase58String(i.caller.bytes)
+        let amount = pmt.amount*price
+        
+        TransferSet([ScriptTransfer(addressFromStringValue(account), amount, NeutrinoAssetId)])
+    }
 }
 
 @Callable(i)
-func swapNeutrinoToWaves(){
+func swapNeutrinoToWaves() = {
     let price = getNeutrinoPrice()
     let pmt = extract(i.payment)
     if (pmt.assetId == NeutrinoAssetId) 
         then throw("can use neutrino only at the moment")
+    else{
+        let account = toBase58String(i.caller.bytes)
+        let amount = pmt.amount/price
+        TransferSet([ScriptTransfer(addressFromStringValue(account), amount, NeutrinoAssetId)])
+    }
+}
 
-    let account = toBase58String(i.caller.bytes)
-    let oldBalance = getAccountBalance(account)
-    let amount = toInt(pmt.amount*price)
+@Callable(i)
+func setBondOrder(price: Int) = {
+    let priceNeutrino = getNeutrinoPrice()
+    let reserv = getReserve()
+    let supply = getSupply()
+    
+    if(supply/priceNeutrino - reserv < MinimalBondOrder)
+        then throw("bound not generated")
+    else {
+        let pmt = extract(i.payment)  
+        if (isDefined(pmt.assetId)) 
+            then throw("can use waves only at the moment")
+        else{
+            let account = toBase58String(i.caller.bytes)
+            let amount = pmt.amount/price
+            TransferSet([ScriptTransfer(addressFromStringValue(account), amount, NeutrinoAssetId)])
+        }
+    }
+}
 
-    WriteSet([
-            Transfer(account, amount),
-            DataEntry(getAccountBalanceKey(i.caller), oldBalance - amount),
-            )
+@Callable(i)
+func withdrawBond() = {
+    let price = getNeutrinoPrice()
+    let pmt = extract(i.payment)
+    if (pmt.assetId == NeutrinoAssetId) 
+        then throw("can use neutrino only at the moment")
+    else{
+        let account = toBase58String(i.caller.bytes)
+        let amount = pmt.amount/price
+        TransferSet([ScriptTransfer(addressFromStringValue(account), amount, NeutrinoAssetId)])
+    }
 }
