@@ -24,13 +24,14 @@ func getStrByKey(key: String) = {
 # data store function
 
 let AccountBalanceKey = "balance_"
-let NeutrinoPriceKey = "nusd_price"
+let NeutrinoPriceKey = "neutrino_price"
 let BondCountKey = "bond_count"
 let BondPriceKey = "bond_price"
 let BondBlockKey = "bond_block"
 let BondOwnerKey = "bond_owner"
 let BondStatus = "bond_status"
-
+let NeutrinoAssetIdKey = "neutrino_asset_id"
+let BondAssetIdKey = "bond_asset_id"
 
 func getAccountBalanceKey(account : String) = {
     AccountBalanceKey + account
@@ -45,7 +46,6 @@ func getNeutrinoPrice() = {
 func getBondCount() = {
     getNumberByKey(BondCountKey)
 }
-
 func getBondPrice() = {
     getNumberByKey(BondPriceKey)
 }
@@ -64,12 +64,9 @@ func getBondOwner() = {
 let Wavelet = 100000000
 let ExpireBondOrder = 10
 let ExcecutedStatus = "excecuted"
-let NeutrinoAssetId = base58'4LFQD5CQHi7fpUqNaCyAbaoXPNRuvvdPL6tD7xubtUr4'
-let BondAssetIdString = "4LFQD5CQHi7fpUqNaCyAbaoXPNRuvvdPL6tD7xubtUr4"
-let BondAssetId = toBytes("")
-let NeutrinoName = "Neutrino-USD"
-let NeutrinoSymbol = "N-USD"
 let MinimalBondOrder = 10*Wavelet
+let NeutrinoAssetId = fromBase58String(getStrByKey(NeutrinoAssetIdKey))
+let BondAssetId = fromBase58String(getStrByKey(BondAssetIdKey))
 
 func getSupply() = {
     assetBalance(this, NeutrinoAssetId)
@@ -83,6 +80,7 @@ func getReserve() = {
 func setCurrentPrice(price : Int) = {
     WriteSet([DataEntry(NeutrinoPriceKey, price)])
 }
+
 @Callable(i)
 func swapWavesToNeutrino() = {
     let price = getNeutrinoPrice()
@@ -92,7 +90,6 @@ func swapWavesToNeutrino() = {
     else{
         let account = toBase58String(i.caller.bytes)
         let amount = pmt.amount*price
-        
         TransferSet([ScriptTransfer(addressFromStringValue(account), amount, NeutrinoAssetId)])
     }
 }
@@ -106,7 +103,7 @@ func swapNeutrinoToWaves() = {
     else{
         let account = toBase58String(i.caller.bytes)
         let amount = pmt.amount/price
-        Transfer(addressFromStringValue(account), amount)
+        TransferSet([ScriptTransfer(addressFromStringValue(account), amount, unit)])
     }
 }
 
