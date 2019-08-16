@@ -12,7 +12,7 @@ func getNumberByKey(key: String) = {
             case _ => 0
     }
 }
-func getStrByKey(key: String) = {
+func getStringByKey(key: String) = {
     match getString(this, key) {
             case a:String => a
             case _ => NONE
@@ -29,16 +29,19 @@ let BondCountKey = "bond_count"
 let BondPriceKey = "bond_price"
 let BondBlockKey = "bond_block"
 let BondOwnerKey = "bond_owner"
-let BondStatus = "bond_status"
+let BondStatusKey = "bond_status"
 let NeutrinoAssetIdKey = "neutrino_asset_id"
 let BondAssetIdKey = "bond_asset_id"
+let SupplyKey = "supply"
 
 func getAccountBalanceKey(account : String) = {
     AccountBalanceKey + account
 }
-
 func getAccountBalance(account : String) = {
     getNumberByKey(getAccountBalanceKey(account))
+}
+func getSupply() = {
+    getNumberByKey(SupplyKey)
 }
 func getNeutrinoPrice() = {
     getNumberByKey(NeutrinoPriceKey)
@@ -50,31 +53,29 @@ func getBondPrice() = {
     getNumberByKey(BondPriceKey)
 }
 func getBondStatus() = {
-    getNumberByKey(BondPriceKey)
+    getStringByKey(BondStatusKey)
 }
 func getBondOrderBlock() = {
     getNumberByKey(BondBlockKey)
 }
 func getBondOwner() = {
-    getStrByKey(BondOwnerKey)
+    getStringByKey(BondOwnerKey)
 }
 
 
 #end data store function
 let Wavelet = 100000000
-let ExpireBondOrder = 10
-let ExcecutedStatus = "excecuted"
-let MinimalBondOrder = 10*Wavelet
-let NeutrinoAssetId = fromBase58String(getStrByKey(NeutrinoAssetIdKey))
-let BondAssetId = fromBase58String(getStrByKey(BondAssetIdKey))
-
-func getSupply() = {
-    assetBalance(this, NeutrinoAssetId)
-}
+let ExpireBondOrder = 2
+let EndStatus = "end"
+let NewStatus = "new"
+let MinimalBondOrder = 1*Wavelet
+let NeutrinoAssetId = fromBase58String(getStringByKey(NeutrinoAssetIdKey))
+let BondAssetId = fromBase58String(getStringByKey(BondAssetIdKey))
 
 func getReserve() = {
     wavesBalance(this)
 }
+
 
 @Callable(i)
 func setCurrentPrice(price : Int) = {
@@ -86,11 +87,14 @@ func swapWavesToNeutrino() = {
     let price = getNeutrinoPrice()
     let pmt = extract(i.payment)
     if (isDefined(pmt.assetId)) 
-        then throw("can use waves only at the moment")
+        then throw("can use waves only")
     else{
         let account = toBase58String(i.caller.bytes)
         let amount = pmt.amount*price
-        TransferSet([ScriptTransfer(addressFromStringValue(account), amount, NeutrinoAssetId)])
+        ScriptResult(
+            WriteSet([DataEntry(SupplyKey, getSupply() + amount)]),
+            TransferSet([ScriptTransfer(addressFromStringValue(account), amount, NeutrinoAssetId)])
+        )
     }
 }
 
@@ -99,11 +103,14 @@ func swapNeutrinoToWaves() = {
     let price = getNeutrinoPrice()
     let pmt = extract(i.payment)
     if (pmt.assetId != NeutrinoAssetId) 
-        then throw("can use neutrino only at the moment")
+        then throw("can use neutrino only")
     else{
         let account = toBase58String(i.caller.bytes)
         let amount = pmt.amount/price
-        TransferSet([ScriptTransfer(addressFromStringValue(account), amount, unit)])
+        ScriptResult(
+            WriteSet([DataEntry(SupplyKey, getSupply() + pmt.amount)]),
+            TransferSet([ScriptTransfer(addressFromStringValue(account), amount, unit)])
+        )
     }
 }
 
@@ -115,37 +122,43 @@ func setBondOrder(price: Int) = {
     let deficit = supply/priceNeutrino - reserve
     let pmt = extract(i.payment) 
     let boudBlock = getBondOrderBlock()
+    
     if (isDefined(pmt.assetId)) 
         then throw("can use waves only at the moment")
     else if(deficit == pmt.amount)
         then throw("amount does not cover deficit")
-    else if(boudBlock == 0) then {
+    else if(boudBlock + ExpireBondOrder >= height || boudBlock == 0) then {
         if(deficit < MinimalBondOrder)
             then throw("bond not generated")
-        else {
-            let amount = pmt.amount/price
+        else if(getBondOwner() == NewStatus) then
             ScriptResult(
                 WriteSet([
                     DataEntry(BondBlockKey, height),
                     DataEntry(BondPriceKey, price),
                     DataEntry(BondOwnerKey, toString(i.caller)),
-                    DataEntry(BondCountKey, pmt.amount/price)
+                    DataEntry(BondCountKey, pmt.amount/price),
+                    DataEntry(BondStatusKey, NewStatus)
                 ]),
                 TransferSet([
-                    ScriptTransfer(i.caller, amount, NeutrinoAssetId)
+                    ScriptTransfer(addressFromStringValue(getBondOwner()), getBondCount(), BondAssetId)
                 ])
             )
-        }
+        else
+            WriteSet([
+                DataEntry(BondBlockKey, height),
+                DataEntry(BondPriceKey, price),
+                DataEntry(BondOwnerKey, toString(i.caller)),
+                DataEntry(BondCountKey, pmt.amount/price),
+                DataEntry(BondStatusKey, NewStatus)
+            ])
     }
-    else if(boudBlock + ExpireBondOrder > height) #TODO
-        then throw("TODO")
     else {
         let lastPrice = getBondPrice()
         let lastCount = getBondCount()
 
         if(lastPrice >= price)
             then throw("bond not generated")
-        else {
+        else
             ScriptResult(
                 WriteSet([
                     DataEntry(BondPriceKey, price),
@@ -156,7 +169,33 @@ func setBondOrder(price: Int) = {
                     ScriptTransfer(addressFromStringValue(getBondOwner()), lastCount*lastPrice, NeutrinoAssetId)
                 ])
             )
-        }
     }
 }
 
+@Callable(i)
+func withdrawBond(price: Int) = {
+    let boudBlock = getBondOrderBlock()
+    if(boudBlock + ExpireBondOrder < height)
+        then throw("auction not ended")
+    else{
+        ScriptResult(
+            WriteSet([
+                DataEntry(BondStatusKey, EndStatus)
+            ]),
+            TransferSet([
+                ScriptTransfer(addressFromStringValue(getBondOwner()), getBondCount(), BondAssetId)
+            ])
+        )
+    }
+}
+
+@Callable(i)
+func excecuteBond(price: Int) = { #TODO
+    let pmt = extract(i.payment)
+    if(pmt.assetId != BondAssetId)
+        then throw("can use bond only")
+    else
+        TransferSet([
+            ScriptTransfer(i.caller, pmt.amount, NeutrinoAssetId)
+        ])
+}
