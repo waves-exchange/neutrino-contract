@@ -28,76 +28,91 @@ let OrderPriceKey = "order_price_"
 let OrderAmountKey = "order_amount_" 
 let OrderOwnerKey = "order_owner_"
 let OrderHeightKey = "order_height_"
+let BondAssetIdKey = "bond_asset_id"
 
 func getOrderBook() = {
     getStringByKey(OrderBookKey)
 }
 
-func getOrderPrice(hash : String) = {
-    getNumberByKey(OrderPriceKey + hash)
+func getOrderPrice(id : String) = {
+    getNumberByKey(OrderPriceKey + id)
 }
 
-func getOrderAmount(hash : String) = {
-    getNumberByKey(OrderAmountKey + hash)
+func getOrderAmount(id : String) = {
+    getNumberByKey(OrderAmountKey + id)
 }
 
-func getOrderOwner(hash : String) = {
-    getStringByKey(OrderOwnerKey + hash)
+func getOrderOwner(id : String) = {
+    getStringByKey(OrderOwnerKey + id)
 }
 
 #end data store function
+
+let BondAssetId = fromBase58String(getStringByKey(BondAssetIdKey))
+
 @Callable(i)
-func SetOrder(price : Int, nextOrderIndex: Int) = {
+func setOrder(price : Int, nextOrderIndex: Int) = {
     let orderbook = getOrderBook();
     let pmt = extract(i.payment);
-    let newOrderHash = toUtf8String(keccak256(toBytes(price) + toBytes(pmt.amount) + i.caller.bytes + toBytes(height)))
+    let newOrderId = toBase58String(keccak256(toBytes(price) + toBytes(pmt.amount) + i.caller.bytes + toBytes(height)))
 
     if (isDefined(pmt.assetId)) 
         then throw("can use waves only")
-    else if(getOrderOwner(newOrderHash) != NONE)
+    else if(getOrderOwner(newOrderId) != NONE)
         then throw("order exists")
     else if(orderbook == NONE) 
-        then WriteSet([DataEntry(OrderBookKey, newOrderHash)])
-    else if(nextOrderIndex == -1) then {
-        let orders = orderbook.split(OrderSplitSymbol)
-        WriteSet([
-            DataEntry(OrderBookKey, newOrderHash),
+        then WriteSet([
+            DataEntry(OrderBookKey, newOrderId),
 
-            DataEntry(OrderPriceKey + newOrderHash, price),
-            DataEntry(OrderAmountKey + newOrderHash, pmt.amount),
-            DataEntry(OrderOwnerKey + newOrderHash, toString(i.caller)),
-            DataEntry(OrderHeightKey + newOrderHash, height)
+            DataEntry(OrderPriceKey + newOrderId, price),
+            DataEntry(OrderAmountKey + newOrderId, pmt.amount),
+            DataEntry(OrderOwnerKey + newOrderId, toString(i.caller)),
+            DataEntry(OrderHeightKey + newOrderId, height)
         ])
+    else if(nextOrderIndex == -1) then {
+        let prevOrderId = orderbook.split(OrderSplitSymbol)[0];
+        let prevOrderPrice = getOrderPrice(prevOrderId)
+        if(price > prevOrderPrice) then {
+            WriteSet([
+                DataEntry(OrderBookKey, newOrderId),
+
+                DataEntry(OrderPriceKey + newOrderId, price),
+                DataEntry(OrderAmountKey + newOrderId, pmt.amount),
+                DataEntry(OrderOwnerKey + newOrderId, toString(i.caller)),
+                DataEntry(OrderHeightKey + newOrderId, height)
+            ])
+        }
+        else throw("invalid price prev order")
     }
     else {
         let orders = orderbook.split(OrderSplitSymbol)
-        let nextOrderHash = orders[nextOrderIndex];
-        let nextOrderPrice = getOrderPrice(nextOrderHash)
-        if(nextOrderPrice < price)
+        let nextOrderId = orders[nextOrderIndex];
+        let nextOrderPrice = getOrderPrice(nextOrderId)
+        if(price > nextOrderPrice)
             then throw("invalid price next order")
         else if(nextOrderIndex + 1 >= size(orders)) then {
             WriteSet([
-                DataEntry(OrderBookKey, orderbook + OrderSplitSymbol + newOrderHash),
+                DataEntry(OrderBookKey, orderbook + OrderSplitSymbol + newOrderId),
             
-                DataEntry(OrderPriceKey + newOrderHash, price),
-                DataEntry(OrderAmountKey + newOrderHash, pmt.amount),
-                DataEntry(OrderOwnerKey + newOrderHash, toString(i.caller)),
-                DataEntry(OrderHeightKey + newOrderHash, height)
+                DataEntry(OrderPriceKey + newOrderId, price),
+                DataEntry(OrderAmountKey + newOrderId, pmt.amount),
+                DataEntry(OrderOwnerKey + newOrderId, toString(i.caller)),
+                DataEntry(OrderHeightKey + newOrderId, height)
             ])
         }
         else {
-            let prevOrderHash = orders[nextOrderIndex + 1];
-            let prevOrderPrice = getOrderPrice(prevOrderHash)
+            let prevOrderId = orders[nextOrderIndex + 1];
+            let prevOrderPrice = getOrderPrice(prevOrderId)
             if(price > prevOrderPrice) then {
-                let newOrderBookOnePart = orderbook.split(nextOrderHash)[0]
-                let newOrderBookTwoPart = orderbook.split(nextOrderHash)[1]
+                let newOrderBookOnePart = orderbook.split(nextOrderId)[0]
+                let newOrderBookTwoPart = orderbook.split(nextOrderId)[1]
                 WriteSet([
-                    DataEntry(OrderBookKey, newOrderBookOnePart + nextOrderHash + OrderSplitSymbol + newOrderHash + newOrderBookTwoPart),
+                    DataEntry(OrderBookKey, newOrderBookOnePart + nextOrderId + OrderSplitSymbol + newOrderId + newOrderBookTwoPart),
                 
-                    DataEntry(OrderPriceKey + newOrderHash, price),
-                    DataEntry(OrderAmountKey + newOrderHash, pmt.amount),
-                    DataEntry(OrderOwnerKey + newOrderHash, toString(i.caller)),
-                    DataEntry(OrderHeightKey + newOrderHash, height)
+                    DataEntry(OrderPriceKey + newOrderId, price),
+                    DataEntry(OrderAmountKey + newOrderId, pmt.amount),
+                    DataEntry(OrderOwnerKey + newOrderId, toString(i.caller)),
+                    DataEntry(OrderHeightKey + newOrderId, height)
                 ])
             }
             else throw("invalid price prev order")
@@ -106,26 +121,59 @@ func SetOrder(price : Int, nextOrderIndex: Int) = {
 }
 
 @Callable(i)
-func CancelOrder(orderHash : String) = {
+func cancelOrder(orderId : String) = {
     let orderbook = getOrderBook();
-    let owner = getOrderOwner(orderHash)
-    let amount = getOrderAmount(orderHash)
+    let owner = getOrderOwner(orderId)
+    let amount = getOrderAmount(orderId)
     if(owner != toString(i.caller)) 
         then throw("permission denied")
     else {
-        let newOrderBookOnePart = orderbook.split(OrderSplitSymbol + orderHash)[0]
-        let newOrderBookTwoPart = orderbook.split(OrderSplitSymbol + orderHash)[1]
+        let newOrderBookOnePart = orderbook.split(OrderSplitSymbol + orderId)[0]
+        let newOrderBookTwoPart = orderbook.split(OrderSplitSymbol + orderId)[1]
 
         ScriptResult(
             WriteSet([
                 DataEntry(OrderBookKey, newOrderBookOnePart + newOrderBookTwoPart),
 
-                DataEntry(OrderPriceKey + orderHash, 0),
-                DataEntry(OrderAmountKey + orderHash, 0)
+                DataEntry(OrderPriceKey + orderId, 0),
+                DataEntry(OrderAmountKey + orderId, 0)
             ]), 
             TransferSet([
                 ScriptTransfer(i.caller, amount, unit)
             ])
         )
     }
+}
+
+@Callable(i)
+func execute() = {
+    let orderbook = getOrderBook();
+    let orderId = orderbook.split(OrderSplitSymbol)[0]
+    let orderAmount = getOrderAmount(orderId)
+    let orderPrice = getOrderPrice(orderId)
+    let total = orderAmount/orderPrice;
+    let bondAmount = assetBalance(this, BondAssetId)
+    if(bondAmount >= total) then {
+        let newOrderBookTwoPart = orderbook.split(orderId + OrderSplitSymbol)[1]
+        ScriptResult(
+            WriteSet([
+                DataEntry(OrderBookKey, newOrderBookTwoPart),
+
+                DataEntry(OrderPriceKey + orderId, 0),
+                DataEntry(OrderAmountKey + orderId, 0)
+            ]), 
+            TransferSet([
+                ScriptTransfer(i.caller, total, BondAssetId)
+            ])
+        )
+    }
+    else
+        ScriptResult(
+            WriteSet([
+                DataEntry(OrderAmountKey + orderId, total - bondAmount)
+            ]), 
+            TransferSet([
+                ScriptTransfer(i.caller, bondAmount, BondAssetId)
+            ])
+        )    
 }

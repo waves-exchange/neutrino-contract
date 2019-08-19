@@ -18,7 +18,7 @@ describe('Neutrino test', async function () {
             name: 'Neutrino ELS',
             description: 'Neutrino Test ELS',
             quantity: "100000000000000000",
-            decimals: 8
+            decimals: 0
         }, accounts.contract)
 
         await broadcast(issueTx);

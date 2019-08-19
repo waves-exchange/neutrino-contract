@@ -33,7 +33,6 @@ let BondStatusKey = "bond_status"
 let NeutrinoAssetIdKey = "neutrino_asset_id"
 let BondAssetIdKey = "bond_asset_id"
 let SupplyKey = "supply"
-let SupplyKey = "supply"
 
 func getAccountBalanceKey(account : String) = {
     AccountBalanceKey + account
