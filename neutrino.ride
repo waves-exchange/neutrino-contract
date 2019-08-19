@@ -33,6 +33,7 @@ let BondStatusKey = "bond_status"
 let NeutrinoAssetIdKey = "neutrino_asset_id"
 let BondAssetIdKey = "bond_asset_id"
 let SupplyKey = "supply"
+let SupplyKey = "supply"
 
 func getAccountBalanceKey(account : String) = {
     AccountBalanceKey + account
@@ -76,7 +77,6 @@ func getReserve() = {
     wavesBalance(this)
 }
 
-
 @Callable(i)
 func setCurrentPrice(price : Int) = {
     WriteSet([DataEntry(NeutrinoPriceKey, price)])
@@ -115,7 +115,7 @@ func swapNeutrinoToWaves() = {
 }
 
 @Callable(i)
-func setBondOrder(price: Int) = {
+func old(price: Int) = {
     let priceNeutrino = getNeutrinoPrice()
     let reserve = getReserve()
     let supply = getSupply()
@@ -170,6 +170,16 @@ func setBondOrder(price: Int) = {
                 ])
             )
     }
+}
+
+@Callable(i)
+func setBondOrder(price :Int){
+
+}
+
+@Callable(i)
+func canselBondOrder(hash :Int){
+    
 }
 
 @Callable(i)

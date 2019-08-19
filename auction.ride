@@ -1,0 +1,131 @@
+{-# STDLIB_VERSION 3 #-}
+{-# CONTENT_TYPE DAPP #-}
+{-# SCRIPT_TYPE ACCOUNT #-}
+
+# base function
+
+let NONE = "none"
+
+func getNumberByKey(key: String) = {
+    match getInteger(this, key) {
+            case a:Int => a
+            case _ => 0
+    }
+}
+func getStringByKey(key: String) = {
+    match getString(this, key) {
+            case a:String => a
+            case _ => NONE
+    }
+}
+
+#end base function
+
+# data store function
+let OrderSplitSymbol = "_"
+let OrderBookKey = "orderbook"
+let OrderPriceKey = "order_price_" 
+let OrderAmountKey = "order_amount_" 
+let OrderOwnerKey = "order_owner_"
+let OrderHeightKey = "order_height_"
+
+func getOrderBook() = {
+    getStringByKey(OrderBookKey)
+}
+
+func getOrderPrice(hash : String) = {
+    getNumberByKey(OrderPriceKey + hash)
+}
+
+func getOrderAmount(hash : String) = {
+    getNumberByKey(OrderAmountKey + hash)
+}
+
+func getOrderOwner(hash : String) = {
+    getStringByKey(OrderOwnerKey + hash)
+}
+
+#end data store function
+@Callable(i)
+func SetOrder(price : Int, nextOrderIndex: Int) = {
+    let orderbook = getOrderBook();
+    let pmt = extract(i.payment);
+    let newOrderHash = toUtf8String(keccak256(toBytes(price) + toBytes(pmt.amount) + i.caller.bytes + toBytes(height)))
+
+    if (isDefined(pmt.assetId)) 
+        then throw("can use waves only")
+    else if(getOrderOwner(newOrderHash) != NONE)
+        then throw("order exists")
+    else if(orderbook == NONE) 
+        then WriteSet([DataEntry(OrderBookKey, newOrderHash)])
+    else if(nextOrderIndex == -1) then {
+        let orders = orderbook.split(OrderSplitSymbol)
+        WriteSet([
+            DataEntry(OrderBookKey, newOrderHash),
+
+            DataEntry(OrderPriceKey + newOrderHash, price),
+            DataEntry(OrderAmountKey + newOrderHash, pmt.amount),
+            DataEntry(OrderOwnerKey + newOrderHash, toString(i.caller)),
+            DataEntry(OrderHeightKey + newOrderHash, height)
+        ])
+    }
+    else {
+        let orders = orderbook.split(OrderSplitSymbol)
+        let nextOrderHash = orders[nextOrderIndex];
+        let nextOrderPrice = getOrderPrice(nextOrderHash)
+        if(nextOrderPrice < price)
+            then throw("invalid price next order")
+        else if(nextOrderIndex + 1 >= size(orders)) then {
+            WriteSet([
+                DataEntry(OrderBookKey, orderbook + OrderSplitSymbol + newOrderHash),
+            
+                DataEntry(OrderPriceKey + newOrderHash, price),
+                DataEntry(OrderAmountKey + newOrderHash, pmt.amount),
+                DataEntry(OrderOwnerKey + newOrderHash, toString(i.caller)),
+                DataEntry(OrderHeightKey + newOrderHash, height)
+            ])
+        }
+        else {
+            let prevOrderHash = orders[nextOrderIndex + 1];
+            let prevOrderPrice = getOrderPrice(prevOrderHash)
+            if(price > prevOrderPrice) then {
+                let newOrderBookOnePart = orderbook.split(nextOrderHash)[0]
+                let newOrderBookTwoPart = orderbook.split(nextOrderHash)[1]
+                WriteSet([
+                    DataEntry(OrderBookKey, newOrderBookOnePart + nextOrderHash + OrderSplitSymbol + newOrderHash + newOrderBookTwoPart),
+                
+                    DataEntry(OrderPriceKey + newOrderHash, price),
+                    DataEntry(OrderAmountKey + newOrderHash, pmt.amount),
+                    DataEntry(OrderOwnerKey + newOrderHash, toString(i.caller)),
+                    DataEntry(OrderHeightKey + newOrderHash, height)
+                ])
+            }
+            else throw("invalid price prev order")
+        }
+    }
+}
+
+@Callable(i)
+func CancelOrder(orderHash : String) = {
+    let orderbook = getOrderBook();
+    let owner = getOrderOwner(orderHash)
+    let amount = getOrderAmount(orderHash)
+    if(owner != toString(i.caller)) 
+        then throw("permission denied")
+    else {
+        let newOrderBookOnePart = orderbook.split(OrderSplitSymbol + orderHash)[0]
+        let newOrderBookTwoPart = orderbook.split(OrderSplitSymbol + orderHash)[1]
+
+        ScriptResult(
+            WriteSet([
+                DataEntry(OrderBookKey, newOrderBookOnePart + newOrderBookTwoPart),
+
+                DataEntry(OrderPriceKey + orderHash, 0),
+                DataEntry(OrderAmountKey + orderHash, 0)
+            ]), 
+            TransferSet([
+                ScriptTransfer(i.caller, amount, unit)
+            ])
+        )
+    }
+}
