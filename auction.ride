@@ -29,7 +29,7 @@ let OrderAmountKey = "order_amount_"
 let OrderOwnerKey = "order_owner_"
 let OrderHeightKey = "order_height_"
 let BondAssetIdKey = "bond_asset_id"
-let NeutrinoAssetIdKey = "bond_asset_id"
+let NeutrinoAssetIdKey = "neutrino_asset_id"
 let NeutrinoContractKey = "neutrino_contract_address"
 
 func getOrderBook() = {
@@ -62,7 +62,7 @@ func setOrder(price : Int, nextOrderIndex: Int) = {
     let newOrderId = toBase58String(keccak256(toBytes(price) + toBytes(pmt.amount) + i.caller.bytes + toBytes(height)))
 
     if (pmt.assetId != NeutrinoAssetId) 
-        then throw("can use waves only")
+        then throw("can use neutrino only")
     else if(getOrderOwner(newOrderId) != NONE)
         then throw("order exists")
     else if(orderbook == NONE) 

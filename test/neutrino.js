@@ -18,19 +18,19 @@ describe('Neutrino test', async function () {
             name: 'Neutrino ELS',
             description: 'Neutrino Test ELS',
             quantity: "100000000000000000",
-            decimals: 0
+            decimals: 8
         }, accounts.contract)
 
         await broadcast(issueTx);
         await waitForTx(issueTx.id)
         assetId = issueTx.id;
 
-        // issue Neutrino
+        // issue Bond
         const issueBondTx = issue({
             name: 'Neutrino BELS',
             description: 'Neutrino Bond ELS',
             quantity: "100000000000000000",
-            decimals: 8
+            decimals: 0
         }, accounts.contract)
 
         await broadcast(issueBondTx);
