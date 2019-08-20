@@ -12,6 +12,7 @@ func getNumberByKey(key: String) = {
             case _ => 0
     }
 }
+
 func getStringByKey(key: String) = {
     match getString(this, key) {
             case a:String => a
@@ -22,13 +23,14 @@ func getStringByKey(key: String) = {
 #end base function
 
 # data store function
-let OrderSplitSymbol = "_"
 let OrderBookKey = "orderbook"
 let OrderPriceKey = "order_price_" 
 let OrderAmountKey = "order_amount_" 
 let OrderOwnerKey = "order_owner_"
 let OrderHeightKey = "order_height_"
 let BondAssetIdKey = "bond_asset_id"
+let NeutrinoAssetIdKey = "bond_asset_id"
+let NeutrinoContractKey = "neutrino_contract_address"
 
 func getOrderBook() = {
     getStringByKey(OrderBookKey)
@@ -48,7 +50,10 @@ func getOrderOwner(id : String) = {
 
 #end data store function
 
+let OrderSplitSymbol = "_"
 let BondAssetId = fromBase58String(getStringByKey(BondAssetIdKey))
+let NeutrinoAssetId = fromBase58String(getStringByKey(NeutrinoAssetIdKey))
+let NeutrinoContract = getStringByKey(NeutrinoContractKey)
 
 @Callable(i)
 func setOrder(price : Int, nextOrderIndex: Int) = {
@@ -56,25 +61,25 @@ func setOrder(price : Int, nextOrderIndex: Int) = {
     let pmt = extract(i.payment);
     let newOrderId = toBase58String(keccak256(toBytes(price) + toBytes(pmt.amount) + i.caller.bytes + toBytes(height)))
 
-    if (isDefined(pmt.assetId)) 
+    if (pmt.assetId != NeutrinoAssetId) 
         then throw("can use waves only")
     else if(getOrderOwner(newOrderId) != NONE)
         then throw("order exists")
     else if(orderbook == NONE) 
         then WriteSet([
-            DataEntry(OrderBookKey, newOrderId),
+            DataEntry(OrderBookKey, OrderSplitSymbol + newOrderId),
 
             DataEntry(OrderPriceKey + newOrderId, price),
             DataEntry(OrderAmountKey + newOrderId, pmt.amount),
             DataEntry(OrderOwnerKey + newOrderId, toString(i.caller)),
             DataEntry(OrderHeightKey + newOrderId, height)
         ])
-    else if(nextOrderIndex == -1) then {
-        let prevOrderId = orderbook.split(OrderSplitSymbol)[0];
+    else if(nextOrderIndex == 0) then {
+        let prevOrderId = orderbook.split(OrderSplitSymbol)[1];
         let prevOrderPrice = getOrderPrice(prevOrderId)
         if(price > prevOrderPrice) then {
             WriteSet([
-                DataEntry(OrderBookKey, newOrderId),
+                DataEntry(OrderBookKey, OrderSplitSymbol + newOrderId),
 
                 DataEntry(OrderPriceKey + newOrderId, price),
                 DataEntry(OrderAmountKey + newOrderId, pmt.amount),
@@ -148,13 +153,13 @@ func cancelOrder(orderId : String) = {
 @Callable(i)
 func execute() = {
     let orderbook = getOrderBook();
-    let orderId = orderbook.split(OrderSplitSymbol)[0]
+    let orderId = orderbook.split(OrderSplitSymbol)[1]
     let orderAmount = getOrderAmount(orderId)
     let orderPrice = getOrderPrice(orderId)
     let total = orderAmount/orderPrice;
-    let bondAmount = assetBalance(this, BondAssetId)
-    if(bondAmount >= total) then {
-        let newOrderBookTwoPart = orderbook.split(orderId + OrderSplitSymbol)[1]
+    let newBondAmount = assetBalance(this, BondAssetId)
+    if(newBondAmount >= total) then {
+        let newOrderBookTwoPart = orderbook.split(OrderSplitSymbol + orderId)[1]
         ScriptResult(
             WriteSet([
                 DataEntry(OrderBookKey, newOrderBookTwoPart),
@@ -163,17 +168,21 @@ func execute() = {
                 DataEntry(OrderAmountKey + orderId, 0)
             ]), 
             TransferSet([
-                ScriptTransfer(i.caller, total, BondAssetId)
+                ScriptTransfer(i.caller, total, BondAssetId),
+                ScriptTransfer(addressFromStringValue(NeutrinoContract), orderAmount, NeutrinoAssetId)
             ])
         )
     }
     else
+    {
         ScriptResult(
             WriteSet([
-                DataEntry(OrderAmountKey + orderId, total - bondAmount)
+                DataEntry(OrderAmountKey + orderId, total - newBondAmount)
             ]), 
             TransferSet([
-                ScriptTransfer(i.caller, bondAmount, BondAssetId)
+                ScriptTransfer(i.caller, newBondAmount, BondAssetId),
+                ScriptTransfer(addressFromStringValue(NeutrinoContract), newBondAmount/orderPrice , NeutrinoAssetId)
             ])
         )    
+    }
 }
