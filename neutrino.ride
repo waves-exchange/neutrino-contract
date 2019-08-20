@@ -347,7 +347,7 @@ func getNewNeutrino(id : String) = {
                 DataEntry(LockNeutrinoBlockKey + id, 0)
             ]), 
             TransferSet([
-                ScriptTransfer(i.caller, surplus*amount/(supplyNeutrino + allowBond) + amount, NeutrinoAssetId)
+                ScriptTransfer(i.caller, surplus*amount/(supplyNeutrino + allowBond), NeutrinoAssetId)
             ])
         )
     }else throw("orderbook nor empty")
