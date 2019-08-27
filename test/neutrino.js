@@ -9,7 +9,8 @@ describe('Neutrino test', async function () {
             {
                 accountOne: 3 * wvs,
                 accountTwo: 1 * wvs,
-                contract: 2.1 * wvs
+                contract: 2.1 * wvs,
+                auctionContract: 1 * wvs
             }
         );
 
@@ -41,7 +42,8 @@ describe('Neutrino test', async function () {
         const dataTx = data({ 
             data: [
                 { key: 'neutrino_asset_id', value: assetId },
-                { key: 'bond_asset_id', value: bondAssetId}
+                { key: 'bond_asset_id', value: bondAssetId},
+                { key: 'auction_contract', value: address(accounts.auctionContract)}
             ]
         }, accounts.contract);
 

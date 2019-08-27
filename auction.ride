@@ -4,7 +4,7 @@
 
 # base function
 
-let NONE = "none"
+let NONE = ""
 
 func getNumberByKey(key: String) = {
     match getInteger(this, key) {
@@ -54,6 +54,7 @@ let OrderSplitSymbol = "_"
 let BondAssetId = fromBase58String(getStringByKey(BondAssetIdKey))
 let NeutrinoAssetId = fromBase58String(getStringByKey(NeutrinoAssetIdKey))
 let NeutrinoContract = getStringByKey(NeutrinoContractKey)
+let Wavelet = 100000000
 
 @Callable(i)
 func setOrder(price : Int, nextOrderIndex: Int) = {
@@ -79,7 +80,7 @@ func setOrder(price : Int, nextOrderIndex: Int) = {
         let prevOrderPrice = getOrderPrice(prevOrderId)
         if(price > prevOrderPrice) then {
             WriteSet([
-                DataEntry(OrderBookKey, OrderSplitSymbol + newOrderId),
+                DataEntry(OrderBookKey, OrderSplitSymbol + newOrderId + orderbook),
 
                 DataEntry(OrderPriceKey + newOrderId, price),
                 DataEntry(OrderAmountKey + newOrderId, pmt.amount),
@@ -144,7 +145,7 @@ func cancelOrder(orderId : String) = {
                 DataEntry(OrderAmountKey + orderId, 0)
             ]), 
             TransferSet([
-                ScriptTransfer(i.caller, amount, unit)
+                ScriptTransfer(i.caller, amount, NeutrinoAssetId)
             ])
         )
     }
@@ -156,7 +157,7 @@ func execute() = {
     let orderId = orderbook.split(OrderSplitSymbol)[1]
     let orderAmount = getOrderAmount(orderId)
     let orderPrice = getOrderPrice(orderId)
-    let total = orderAmount/orderPrice;
+    let total = orderAmount/orderPrice*100/Wavelet;
     let newBondAmount = assetBalance(this, BondAssetId)
     if(newBondAmount >= total) then {
         let newOrderBookTwoPart = orderbook.split(OrderSplitSymbol + orderId)[1]
@@ -181,7 +182,7 @@ func execute() = {
             ]), 
             TransferSet([
                 ScriptTransfer(i.caller, newBondAmount, BondAssetId),
-                ScriptTransfer(addressFromStringValue(NeutrinoContract), newBondAmount/orderPrice , NeutrinoAssetId)
+                ScriptTransfer(addressFromStringValue(NeutrinoContract), newBondAmount/orderPrice*100/Wavelet , NeutrinoAssetId)
             ])
         )    
     }
