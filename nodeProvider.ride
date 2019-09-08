@@ -1,0 +1,92 @@
+{-# STDLIB_VERSION 3 #-}
+{-# CONTENT_TYPE DAPP #-}
+{-# SCRIPT_TYPE ACCOUNT #-}
+
+let NeutrinoContractKey = "neutrino_contract"
+let LeaseContractKey = "lease_contract"
+let LeaseBlockKey = "lease_block"
+let LeaseBlockWaitKey = "lease_block_wait"
+let NodeBalanceKey = "node_balance_"
+let NodeAddressKey = "node_address"
+let WithdrawKey = "withdrawed_"
+let ProfitKey = "profit_"
+
+func getNumberByKey(address : Address, key: String) = {
+    match getInteger(address, key) {
+            case a:Int => a
+            case _ => 0
+    }
+}
+func getStringByKey(address : Address, key: String) = {
+    match getString(address, key) {
+            case a:String => a
+            case _ => ""
+    }
+}
+func getBoolByKey(address : Address, key: String) = {
+    match getBoolean(address, key) {
+            case a:Boolean => a
+            case _ => false
+    }
+}
+
+let neutrinoContract = addressFromStringValue(getStringByKey(this, NeutrinoContractKey))
+let leaseContract = addressFromStringValue(getStringByKey(this, LeaseContractKey))
+let nodeAddress = getStringByKey(neutrinoContract, LeaseBlockWaitKey)
+let leaseBlock = getNumberByKey(neutrinoContract, LeaseBlockKey)
+let blockWait = getNumberByKey(neutrinoContract, LeaseBlockWaitKey)
+
+func getNodeBalance(block: Int) = getNumberByKey(this, NodeBalanceKey + toString(this) + "_" + toString(block))
+func getProfit(block: Int) = getNumberByKey(this, ProfitKey + "_" + toString(block))
+func isWithdraw(block: Int) = getBoolByKey(this, WithdrawKey + toString(block))
+func isProfitWithdraw(address: String, block: Int) = getBoolByKey(this, WithdrawKey + address + "_"  + toString(block))
+
+@Callable(i)
+func withdraw(block: Int) = {
+    if(!isWithdraw(block - blockWait))
+        then throw("no withdrawal for the previous period")
+    else 
+        ScriptResult(
+            WriteSet([
+                DataEntry(WithdrawKey + toString(block), true),
+                DataEntry(ProfitKey + toString(block), wavesBalance(this) - getNodeBalance(block))
+            ]), 
+            TransferSet([ScriptTransfer(neutrinoContract, getNodeBalance(block), unit)])
+        )
+}
+
+@Callable(i)
+func withdrawMyProfit(address: String, block: Int) = {
+    let amount = getProfit(block)
+    if(isProfitWithdraw(address, block))
+        then throw("address already withdrawed profit")
+    else 
+        ScriptResult(
+            WriteSet([
+                DataEntry(WithdrawKey + address + "_" + toString(block), true),
+                DataEntry(ProfitKey + toString(block), true)
+            ]), 
+            TransferSet([ScriptTransfer(addressFromStringValue(address), amount, unit)])
+        )
+}
+
+@Verifier(tx)
+func verify() = {
+    match tx {
+        case leaseTx: LeaseTransaction => {
+            let recipient = addressFromRecipient(leaseTx.recipient)
+            if(!isWithdraw(leaseBlock - blockWait))
+                then throw("no withdrawal for the previous period")
+            else if(toString(recipient) != nodeAddress)
+                then throw("invalid recipient")
+            else if(getNodeBalance(leaseBlock) != leaseTx.amount)
+                then throw("invalid lease amount")
+            else
+                blockWait + leaseBlock <= height
+        }
+        case LeaseCancelTransaction => {
+            blockWait + leaseBlock > height
+        }
+        case _ => sigVerify(tx.bodyBytes, tx.proofs, this)
+    }
+}

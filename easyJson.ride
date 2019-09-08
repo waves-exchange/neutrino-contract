@@ -1,0 +1,58 @@
+{-# STDLIB_VERSION 3 #-}
+{-# CONTENT_TYPE DAPP #-}
+{-# SCRIPT_TYPE ACCOUNT #-}
+
+# base function
+
+func getNumberByKey(key: String) = {
+    match getInteger(this, key) {
+            case a:Int => a
+            case _ => 0
+    }
+}
+func getStringByKey(key: String) = {
+    match getString(this, key) {
+            case a:String => a
+            case _ => ""
+    }
+}
+
+#end base function
+
+let NodeBalanceKey = "node_balance_"
+let LeaseBlockKey = "lease_block"
+let LeaseBlockWaitKey = "lease_block_wait"
+let LeaseAmountKey = "lease_amount_" + toString(this)
+
+func getLeaseBlock() = getNumberByKey(LeaseBlockKey)
+func getLeaseBlockWait() = getNumberByKey(LeaseBlockWaitKey)
+func getLeaseAmount(nodeProvider : String) = getNumberByKey(LeaseAmountKey)
+
+let KeyValueSplitSymbol = ":"
+let DataSplitSymbol = "+"
+let KeySplitSymbol = ","
+let Wavelet = 100000000
+
+let JsonKeySymbol = "'"
+let JsonKeyValueSymbol = ":"
+let JsonObjectSymbol = ","
+func get(json: String, key: String) = {
+    let data = json.split(JsonKeySymbol + key + JsonKeySymbol + JsonKeyValueSymbol)
+    if(data[1].take(1) == "{")
+        then data[1]
+    else data[1].split("'")[1]
+}
+get(get(get(json, "a"), "b"), "c")
+set(json, get(get(json, "a"), "b"), "c", "newValue")
+
+func set(originalJson: String, jsonPath: String, key: String, value: String) = {
+    let data = json.drop(1).dropRight(1).split(JsonKeySymbol + key + JsonKeySymbol + JsonKeyValueSymbol)
+}
+
+func addKey() = {
+
+}
+
+func dropKey() = {
+    
+}

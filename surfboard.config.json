@@ -15,7 +15,7 @@
             "SEED": "X"
         }
     },
-    "defaultEnv": "testnet",
+    "defaultEnv": "custom",
     "mocha": {
         "timeout": 60000
     }
