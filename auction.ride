@@ -110,7 +110,8 @@ func setOrder(price : Int, position: Int) = {
                 DataEntry(OrderPriceKey + newOrderId, price),
                 DataEntry(OrderTotalKey + newOrderId, pmt.amount),
                 DataEntry(OrderOwnerKey + newOrderId, toString(i.caller)),
-                DataEntry(OrderHeightKey + newOrderId, height)
+                DataEntry(OrderHeightKey + newOrderId, height),
+                DataEntry(OrderStatusKey + newOrderId, NEW)
             ])
     }
 }
