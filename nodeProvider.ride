@@ -10,6 +10,9 @@ let NodeBalanceKey = "node_balance_"
 let NodeAddressKey = "node_address"
 let WithdrawKey = "withdrawed_"
 let ProfitKey = "profit_"
+let LeasePrevBlockKey = "lease_prev_block_"
+let BalanceSnapshotKey = "snapshot_balance_"
+let SettingsAppliedKey = "n_executed_"
 
 func getNumberByKey(address : Address, key: String) = {
     match getInteger(address, key) {
@@ -32,19 +35,28 @@ func getBoolByKey(address : Address, key: String) = {
 
 let neutrinoContract = addressFromStringValue(getStringByKey(this, NeutrinoContractKey))
 let leaseContract = addressFromStringValue(getStringByKey(this, LeaseContractKey))
-let nodeAddress = getStringByKey(neutrinoContract, LeaseBlockWaitKey)
-let leaseBlock = getNumberByKey(neutrinoContract, LeaseBlockKey)
-let blockWait = getNumberByKey(neutrinoContract, LeaseBlockWaitKey)
+let nodeAddress = getStringByKey(this, NodeAddressKey)
+let leaseBlock = getNumberByKey(leaseContract, LeaseBlockKey)
+let blockWait = getNumberByKey(leaseContract, LeaseBlockWaitKey)
 
-func getNodeBalance(block: Int) = getNumberByKey(this, NodeBalanceKey + toString(this) + "_" + toString(block))
-func getProfit(block: Int) = getNumberByKey(this, ProfitKey + "_" + toString(block))
+func getNodeBalance(block: Int) = getNumberByKey(leaseContract, NodeBalanceKey + toString(this) + "_" + toString(block))
+func getProfit(block: Int) = getNumberByKey(this, ProfitKey + toString(block))
 func isWithdraw(block: Int) = getBoolByKey(this, WithdrawKey + toString(block))
-func isProfitWithdraw(address: String, block: Int) = getBoolByKey(this, WithdrawKey + address + "_"  + toString(block))
+func getWithdrawProfit(address: String, block: Int) = getNumberByKey(this, WithdrawKey + address + "_"  + toString(block))
+func getLeasePrevBlock(block: Int) = getNumberByKey(leaseContract, LeasePrevBlockKey + toString(block))
+func getBalanceSnapshot(addrees: String, block: Int) = getNumberByKey(leaseContract, BalanceSnapshotKey + addrees + "_" + toString(leaseBlock))
+func getSettingApplied(address: String, nodeProvider: String, block: Int) = getNumberByKey(leaseContract, SettingsAppliedKey + address + "_" + nodeProvider + "_" + toString(block))
 
+#leasetx validate
 @Callable(i)
 func withdraw(block: Int) = {
-    if(!isWithdraw(block - blockWait))
+    let prevBlock = getLeasePrevBlock(block)
+    if(!isWithdraw(prevBlock))
         then throw("no withdrawal for the previous period")
+    else if(isWithdraw(block))
+        then throw("withdrawal this period is exist")
+    else if(prevBlock == 0 || block + blockWait > height)
+        then throw("invalid block")
     else 
         ScriptResult(
             WriteSet([
@@ -56,37 +68,39 @@ func withdraw(block: Int) = {
 }
 
 @Callable(i)
-func withdrawMyProfit(address: String, block: Int) = {
-    let amount = getProfit(block)
-    if(isProfitWithdraw(address, block))
-        then throw("address already withdrawed profit")
+func withdrawProfit(address: String, block: Int) = {
+    let totalProfit = getProfit(block) 
+    let appliedAmount = getSettingApplied(address, toString(this), block)
+    let profitWithdraw = getWithdrawProfit(address, block)
+    let nodeBlance = getNodeBalance(block)
+    let share = appliedAmount/(nodeBlance/100)
+
+    let amount = totalProfit*share/100 
+    if(amount - profitWithdraw <= 0)
+        then throw("withdrawal all profit is exist: " + toString(amount) + "-" + toString(profitWithdraw) + "<=0")
     else 
         ScriptResult(
             WriteSet([
-                DataEntry(WithdrawKey + address + "_" + toString(block), true),
-                DataEntry(ProfitKey + toString(block), true)
+                DataEntry(WithdrawKey + address + "_" + toString(block), amount - profitWithdraw)
             ]), 
-            TransferSet([ScriptTransfer(addressFromStringValue(address), amount, unit)])
+            TransferSet([ScriptTransfer(addressFromStringValue(address), amount - profitWithdraw, unit)])
         )
 }
-
+#withdraw total 
 @Verifier(tx)
 func verify() = {
     match tx {
-        case leaseTx: LeaseTransaction => {
+        case leaseTx: LeaseTransaction =>
             let recipient = addressFromRecipient(leaseTx.recipient)
-            if(!isWithdraw(leaseBlock - blockWait))
-                then throw("no withdrawal for the previous period")
-            else if(toString(recipient) != nodeAddress)
-                then throw("invalid recipient")
-            else if(getNodeBalance(leaseBlock) != leaseTx.amount)
-                then throw("invalid lease amount")
+
+            if(toString(recipient) != nodeAddress)
+                then throw("invalid recipient: " + toString(recipient) + "!=" + nodeAddress)
+            else if(getNodeBalance(leaseBlock) != leaseTx.amount) #balance valid
+                then throw("invalid lease amount: " + toString(getNodeBalance(leaseBlock)) + "!=" + toString(leaseTx.amount) + (NodeBalanceKey + toString(this) + "_" + toString(leaseBlock)))
             else
-                blockWait + leaseBlock <= height
-        }
-        case LeaseCancelTransaction => {
-            blockWait + leaseBlock > height
-        }
-        case _ => sigVerify(tx.bodyBytes, tx.proofs, this)
+                height <= leaseBlock + blockWait
+        case leaseTx: LeaseCancelTransaction => 
+            height > leaseBlock + blockWait
+        case _ => true
     }
 }

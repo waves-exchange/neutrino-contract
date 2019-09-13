@@ -24,28 +24,34 @@ func getStringByKey(key: String) = {
 
 # data store function
 let OrderBookKey = "orderbook"
+
 let OrderPriceKey = "order_price_" 
-let OrderAmountKey = "order_amount_" 
+let OrderTotalKey = "order_total_" 
+let OrderFilledTotalKey = "order_filled_total_" 
 let OrderOwnerKey = "order_owner_"
 let OrderHeightKey = "order_height_"
+let OrderStatusKey = "order_status_"
+
 let BondAssetIdKey = "bond_asset_id"
 let NeutrinoAssetIdKey = "neutrino_asset_id"
-let NeutrinoContractKey = "neutrino_contract_address"
+let NeutrinoContractKey = "neutrino_contract"
 
-func getOrderBook() = {
-    getStringByKey(OrderBookKey)
-}
+let orderbook = getStringByKey(OrderBookKey)
 
 func getOrderPrice(id : String) = {
     getNumberByKey(OrderPriceKey + id)
 }
-
-func getOrderAmount(id : String) = {
-    getNumberByKey(OrderAmountKey + id)
+func getOrderTotal(id : String) = {
+    getNumberByKey(OrderTotalKey + id)
 }
-
 func getOrderOwner(id : String) = {
     getStringByKey(OrderOwnerKey + id)
+}
+func getOrderStatus(id : String) = {
+    getStringByKey(OrderStatusKey + id)
+}
+func getOrderFilledTotal(id : String) = {
+    getNumberByKey(OrderFilledTotalKey + id)
 }
 
 #end data store function
@@ -56,93 +62,73 @@ let NeutrinoAssetId = fromBase58String(getStringByKey(NeutrinoAssetIdKey))
 let NeutrinoContract = getStringByKey(NeutrinoContractKey)
 let Wavelet = 100000000
 
+let CANCELED = "canceled"
+let NEW = "new"
+let FILLED = "filled"
+
+func calculateOrderbook(orderId: String, position: Int) = {
+    let orders = orderbook.split(OrderSplitSymbol)
+    let newOrder = orderId + OrderSplitSymbol
+    if(position == 0) 
+        then newOrder + orderbook 
+    else if(position >= size(orders) - 1) 
+        then orderbook + newOrder 
+    else {
+        let parts = orderbook.split(orders[position] + OrderSplitSymbol)
+        parts[0] + newOrder + (orders[position] + OrderSplitSymbol) + parts[1]
+    }
+}
+
 @Callable(i)
-func setOrder(price : Int, nextOrderIndex: Int) = {
-    let orderbook = getOrderBook();
+func setOrder(price : Int, position: Int) = {
     let pmt = extract(i.payment);
     let newOrderId = toBase58String(keccak256(toBytes(price) + toBytes(pmt.amount) + i.caller.bytes + toBytes(height)))
 
     if (pmt.assetId != NeutrinoAssetId) 
         then throw("can use neutrino only")
+    else if(price <= 0)
+        then throw("price less zero")
     else if(getOrderOwner(newOrderId) != NONE)
         then throw("order exists")
-    else if(orderbook == NONE) 
-        then WriteSet([
-            DataEntry(OrderBookKey, OrderSplitSymbol + newOrderId),
-
-            DataEntry(OrderPriceKey + newOrderId, price),
-            DataEntry(OrderAmountKey + newOrderId, pmt.amount),
-            DataEntry(OrderOwnerKey + newOrderId, toString(i.caller)),
-            DataEntry(OrderHeightKey + newOrderId, height)
-        ])
-    else if(nextOrderIndex == 0) then {
-        let prevOrderId = orderbook.split(OrderSplitSymbol)[1];
-        let prevOrderPrice = getOrderPrice(prevOrderId)
-        if(price > prevOrderPrice) then {
-            WriteSet([
-                DataEntry(OrderBookKey, OrderSplitSymbol + newOrderId + orderbook),
-
-                DataEntry(OrderPriceKey + newOrderId, price),
-                DataEntry(OrderAmountKey + newOrderId, pmt.amount),
-                DataEntry(OrderOwnerKey + newOrderId, toString(i.caller)),
-                DataEntry(OrderHeightKey + newOrderId, height)
-            ])
-        }
-        else throw("invalid price prev order")
-    }
     else {
         let orders = orderbook.split(OrderSplitSymbol)
-        let nextOrderId = orders[nextOrderIndex];
+
+        let nextOrderId = if(position == 0) then "" else orders[position-1];
         let nextOrderPrice = getOrderPrice(nextOrderId)
-        if(price > nextOrderPrice)
-            then throw("invalid price next order")
-        else if(nextOrderIndex + 1 >= size(orders)) then {
+        let isNextOrderError = if(nextOrderId != "" && price > nextOrderPrice) then true else false;
+        
+        let prevOrderId = orders[position];
+        let prevOrderPrice = getOrderPrice(prevOrderId)
+        let isPrevOrderError = if(price <= prevOrderPrice) then true else false;
+        
+        if (isNextOrderError || isPrevOrderError)
+            then throw("invalid order isPrevOrderError:" + toString(isPrevOrderError) + " isNextOrderError:" + toString(isNextOrderError))
+        else
             WriteSet([
-                DataEntry(OrderBookKey, orderbook + OrderSplitSymbol + newOrderId),
-            
+                DataEntry(OrderBookKey, calculateOrderbook(newOrderId, position)),
+
                 DataEntry(OrderPriceKey + newOrderId, price),
-                DataEntry(OrderAmountKey + newOrderId, pmt.amount),
+                DataEntry(OrderTotalKey + newOrderId, pmt.amount),
                 DataEntry(OrderOwnerKey + newOrderId, toString(i.caller)),
                 DataEntry(OrderHeightKey + newOrderId, height)
             ])
-        }
-        else {
-            let prevOrderId = orders[nextOrderIndex + 1];
-            let prevOrderPrice = getOrderPrice(prevOrderId)
-            if(price > prevOrderPrice) then {
-                let newOrderBookOnePart = orderbook.split(nextOrderId)[0]
-                let newOrderBookTwoPart = orderbook.split(nextOrderId)[1]
-                WriteSet([
-                    DataEntry(OrderBookKey, newOrderBookOnePart + nextOrderId + OrderSplitSymbol + newOrderId + newOrderBookTwoPart),
-                
-                    DataEntry(OrderPriceKey + newOrderId, price),
-                    DataEntry(OrderAmountKey + newOrderId, pmt.amount),
-                    DataEntry(OrderOwnerKey + newOrderId, toString(i.caller)),
-                    DataEntry(OrderHeightKey + newOrderId, height)
-                ])
-            }
-            else throw("invalid price prev order")
-        }
     }
 }
 
 @Callable(i)
 func cancelOrder(orderId : String) = {
-    let orderbook = getOrderBook();
     let owner = getOrderOwner(orderId)
-    let amount = getOrderAmount(orderId)
+    let amount = getOrderTotal(orderId) - getOrderFilledTotal(orderId)
     if(owner != toString(i.caller)) 
         then throw("permission denied")
     else {
-        let newOrderBookOnePart = orderbook.split(OrderSplitSymbol + orderId)[0]
-        let newOrderBookTwoPart = orderbook.split(OrderSplitSymbol + orderId)[1]
+        let parts = orderbook.split(orderId + OrderSplitSymbol)
 
         ScriptResult(
             WriteSet([
-                DataEntry(OrderBookKey, newOrderBookOnePart + newOrderBookTwoPart),
+                DataEntry(OrderBookKey, parts[0] + parts[1]),
 
-                DataEntry(OrderPriceKey + orderId, 0),
-                DataEntry(OrderAmountKey + orderId, 0)
+                DataEntry(OrderStatusKey + orderId, CANCELED)
             ]), 
             TransferSet([
                 ScriptTransfer(i.caller, amount, NeutrinoAssetId)
@@ -153,37 +139,31 @@ func cancelOrder(orderId : String) = {
 
 @Callable(i)
 func execute() = {
-    let orderbook = getOrderBook();
-    let orderId = orderbook.split(OrderSplitSymbol)[1]
-    let orderAmount = getOrderAmount(orderId)
-    let orderPrice = getOrderPrice(orderId)
-    let total = orderAmount/orderPrice*100/Wavelet;
-    let newBondAmount = assetBalance(this, BondAssetId)
-    if(newBondAmount >= total) then {
-        let newOrderBookTwoPart = orderbook.split(OrderSplitSymbol + orderId)[1]
-        ScriptResult(
-            WriteSet([
-                DataEntry(OrderBookKey, newOrderBookTwoPart),
+    let orderId = orderbook.split(OrderSplitSymbol)[0]
 
-                DataEntry(OrderPriceKey + orderId, 0),
-                DataEntry(OrderAmountKey + orderId, 0)
-            ]), 
-            TransferSet([
-                ScriptTransfer(i.caller, total, BondAssetId),
-                ScriptTransfer(addressFromStringValue(NeutrinoContract), orderAmount, NeutrinoAssetId)
-            ])
-        )
-    }
-    else
-    {
-        ScriptResult(
-            WriteSet([
-                DataEntry(OrderAmountKey + orderId, total - newBondAmount)
-            ]), 
-            TransferSet([
-                ScriptTransfer(i.caller, newBondAmount, BondAssetId),
-                ScriptTransfer(addressFromStringValue(NeutrinoContract), newBondAmount/orderPrice*100/Wavelet , NeutrinoAssetId)
-            ])
-        )    
-    }
+    let bondAmount = assetBalance(this, BondAssetId)
+
+    let filledTotal = getOrderFilledTotal(orderId)
+    let orderTotal = getOrderTotal(orderId)
+    let orderPrice = getOrderPrice(orderId)
+    let amount = (orderTotal-filledTotal)*100/orderPrice/Wavelet;
+    
+    let newOrderbook = if(bondAmount >= amount) then orderbook.split(orderId + OrderSplitSymbol)[1] else orderbook
+    let filledAmount = if(bondAmount >= amount) then amount else bondAmount
+
+    let total = filledAmount*orderPrice/100*Wavelet;
+
+    let status = if(bondAmount >= amount) then FILLED else NEW
+
+    ScriptResult(
+        WriteSet([
+            DataEntry(OrderBookKey, newOrderbook),
+            DataEntry(OrderFilledTotalKey + orderId, filledTotal + total),
+            DataEntry(OrderStatusKey + orderId, status)
+        ]), 
+        TransferSet([
+            ScriptTransfer(i.caller, filledAmount, BondAssetId),
+            ScriptTransfer(addressFromStringValue(NeutrinoContract), total, NeutrinoAssetId)
+        ])
+    )
 }
