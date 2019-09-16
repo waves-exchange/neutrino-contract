@@ -132,7 +132,12 @@ func convertWavesToBond(amount: Int) = {
 }
 
 @Callable(i)
-func setCurrentPrice(price : Int) = WriteSet([DataEntry(PriceKey, price)])
+func setCurrentPrice(price : Int) = {
+    WriteSet([
+        DataEntry(PriceKey, price),
+        DataEntry(PriceKey + ListSplitSymbol + toString(height), price)
+    ])
+}
 
 @Callable(i)
 func swapWavesToNeutrino() = {
