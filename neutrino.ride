@@ -53,13 +53,10 @@ let MinimalSurplus = 10 * Wavelet
 let ApplyBlockTimeout = 10
 
 # data store function
-let LeaseContractKey = "lease_contract"
 let NeutrinoAssetIdKey = "neutrino_asset_id"
 let BondAssetIdKey = "bond_asset_id"
 let AuctionContractKey = "auction_contract"
 let PriceKey = "price"
-#let NeutrinoSupplyKey = "neutrino_supply"
-#let WavesReserveKey = "waves_reserve"
 let NeutrinoBalanceKey = "neutrino_"
 let WavesBalanceKey = "waves_"
 let BalanceBlockKey = "balance_block_"
@@ -68,37 +65,23 @@ let OrderTotalKey = "order_total_"
 let OrderOwnerKey = "order_owner_"
 let OrderHeightKey = "order_height_"
 let OrderFilledTotalKey = "order_filled_total_"
-#let SurplusKey = "surplus"
-let SnapshotBlockKey = "snapshot_block"
-let OrderbookSnapshotKey = "orderbook_snapshot"
-let BondGeneratedBlockKey = "bond_generated_block"
-let AccountSnapshotBlockKey = "account_snapshot_block_"
-let AccountSnapshotOwnerKey = "account_snapshot_owner_"
-let AccountSnapshotAmountKey = "account_snapshot_amount_"
-let AccountSnapshotNodeKey = "account_snapshot_node_"
-let SnapshotNodeBalanceKey = "snapshot_node_balance_" 
-let NodeBalanceKey = "node_balance_"
-let IsSentNodeBalanceKey = "is_sent_node_balance_"
-let NodeProviderStatus = "node_status"
 let OrderStatusKey = "order_status_"
+let OracleKey = "oracle_key"
 
 let neutrinoAssetId = fromBase58String(getStringByKey(NeutrinoAssetIdKey))
+let auctionContract = getStringByKey(AuctionContractKey)
 let price = getNumberByKey(PriceKey)
 let reserve = wavesBalance(this)
-let neutrinoSupply = {
-    let info = extract(assetInfo(neutrinoAssetId))
-    info.quantity - assetBalance(this, neutrinoAssetId)
-}
 let orderbook = getStringByKey(OrderbookKey)
-let snapshotBlock = getNumberByKey(SnapshotBlockKey)
-let lastBondGenerated = getNumberByKey(BondGeneratedBlockKey)
-let orderbookSnapshot = getStringByKey(OrderbookSnapshotKey)
 let bondAssetId = fromBase58String(getStringByKey(BondAssetIdKey))
-let auctionContract = getStringByKey(AuctionContractKey)
-let leaseContract = getStringByKey(LeaseContractKey)
+let oracle = getStringByKey(OracleKey)
 let bondSupply = {
     let info = extract(assetInfo(bondAssetId))
     info.quantity - assetBalance(this, bondAssetId)
+}
+let neutrinoSupply = {
+    let info = extract(assetInfo(neutrinoAssetId))
+    info.quantity - assetBalance(this, neutrinoAssetId)
 }
 
 func getWavesBalance(owner : String) = getNumberByKey(WavesBalanceKey + owner)
@@ -106,13 +89,7 @@ func getNeutrinoBalance(owner : String) = getNumberByKey(NeutrinoBalanceKey + ow
 func getBalanceBlock(owner : String) = getNumberByKey(BalanceBlockKey + owner)
 func getOrderTotal(id : String) = getNumberByKey(OrderTotalKey + id)
 func getOrderOwner(id : String) = getStringByKey(OrderOwnerKey + id)
-func getAccountSnapshotBlock(id : String) = getNumberByKey(AccountSnapshotBlockKey + id)
-func getAccountSnapshotOwner(id : String) = getStringByKey(AccountSnapshotOwnerKey + id)
-func getAccountSnapshotAmount(id : String) = getNumberByKey(AccountSnapshotAmountKey + id)
-func getNodeBalance(address: String, block: Int) = getNumberByKeyAndAddress(leaseContract, NodeBalanceKey + address + ListSplitSymbol + toString(block))
-func isSentNodeBalance(address: String, block: Int) = getBoolByKey(IsSentNodeBalanceKey + address + ListSplitSymbol + toString(block))
 func getOrderFilledTotal(id : String) = getNumberByKey(OrderFilledTotalKey + id)
-
 #end data store function
 
 func convertNeutrinoToWaves(amount: Int) = amount*100/price 
@@ -128,10 +105,14 @@ let FILLED = "filled"
 
 @Callable(i)
 func setCurrentPrice(price : Int) = {
-    WriteSet([
-        DataEntry(PriceKey, price),
-        DataEntry(PriceKey + ListSplitSymbol + toString(height), price)
-    ])
+    let account = toString(i.caller)
+    if(account != oracle)
+        then throw("permission denied")
+    else 
+        WriteSet([
+            DataEntry(PriceKey, price),
+            DataEntry(PriceKey + ListSplitSymbol + toString(height), price)
+        ])
 }
 
 @Callable(i)
@@ -145,8 +126,6 @@ func swapWavesToNeutrino() = {
         WriteSet([
             DataEntry(NeutrinoBalanceKey + toString(i.caller), amount + getNeutrinoBalance(account)),
             DataEntry(BalanceBlockKey + toString(i.caller), height)
-        #    DataEntry(WavesReserveKey, reserve + pmt.amount),
-       #     DataEntry(NeutrinoSupplyKey, neutrinoSupply + amount)
         ])
     }
 }
@@ -162,8 +141,6 @@ func swapNeutrinoToWaves() = {
         WriteSet([
             DataEntry(WavesBalanceKey + toString(i.caller), amount + getWavesBalance(account)),
             DataEntry(BalanceBlockKey + toString(i.caller), height)
-        #    DataEntry(WavesReserveKey, reserve - amount),
-        #    DataEntry(NeutrinoSupplyKey, neutrinoSupply - pmt.amount)
         ])
     }
 }
@@ -192,8 +169,7 @@ func generateBond() = {
     let amount = convertNeutrinoToBond(deficit) - balanceAuction
     if(amount > 0)
         then TransferSet([ScriptTransfer(addressFromStringValue(auctionContract), amount, bondAssetId)])
-        
-    else throw("deficit did not reach the threshold. deficit =" + toString(deficit))
+    else throw("bond were generated or do not need it")
 }
 
 @Callable(i)
@@ -255,8 +231,6 @@ func executeOrder() = {
 
         ScriptResult(
             WriteSet([
-            #    DataEntry(OrderbookTotalKey, orderbookTotal - (if(surplusBond >= amount) then amount else surplusBond)),
-
                 DataEntry(OrderbookKey, orderbook.split(orderId + ListSplitSymbol)[1]),
                 DataEntry(OrderFilledTotalKey + orderId, filledTotal + newFilledTotal),
                 DataEntry(OrderStatusKey + orderId, status)
