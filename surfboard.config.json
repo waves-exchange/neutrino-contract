@@ -13,6 +13,12 @@
             "CHAIN_ID": "T",
             "timeout": 60000,
             "SEED": "X"
+        },
+        "stagenet": {
+            "API_BASE": "https://nodes-stagenet.wavesnodes.com",
+            "CHAIN_ID": "T",
+            "timeout": 60000,
+            "SEED": "X"
         }
     },
     "defaultEnv": "testnet",
