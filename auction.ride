@@ -6,6 +6,13 @@
 
 let NONE = ""
 
+func getNumberByAddressAndKey(address: String, key: String) = {
+    match getInteger(addressFromStringValue(address), key) {
+            case a:Int => a
+            case _ => 0
+    }
+}
+
 func getNumberByKey(key: String) = {
     match getInteger(this, key) {
             case a:Int => a
@@ -31,7 +38,7 @@ let OrderFilledTotalKey = "order_filled_total_"
 let OrderOwnerKey = "order_owner_"
 let OrderHeightKey = "order_height_"
 let OrderStatusKey = "order_status_"
-
+let PriceKey = "price"
 let BondAssetIdKey = "bond_asset_id"
 let NeutrinoAssetIdKey = "neutrino_asset_id"
 let NeutrinoContractKey = "neutrino_contract"
@@ -55,11 +62,17 @@ func getOrderFilledTotal(id : String) = {
 }
 
 #end data store function
+let NeutrinoAssetId = fromBase58String(getStringByKey(NeutrinoAssetIdKey))
+let NeutrinoContract = getStringByKey(NeutrinoContractKey)
+let reserve = wavesBalance(addressFromStringValue(NeutrinoContract))
+let neutrinoSupply = {
+    let info = extract(assetInfo(NeutrinoAssetId))
+    info.quantity - assetBalance(addressFromStringValue(NeutrinoContract), NeutrinoAssetId)
+}
+let price = getNumberByAddressAndKey(NeutrinoContract, PriceKey)
 
 let OrderSplitSymbol = "_"
 let BondAssetId = fromBase58String(getStringByKey(BondAssetIdKey))
-let NeutrinoAssetId = fromBase58String(getStringByKey(NeutrinoAssetIdKey))
-let NeutrinoContract = getStringByKey(NeutrinoContractKey)
 let Wavelet = 100000000
 
 let CANCELED = "canceled"
@@ -139,32 +152,44 @@ func cancelOrder(orderId : String) = {
 }
 
 @Callable(i)
-func execute() = {
-    let orderId = orderbook.split(OrderSplitSymbol)[0]
+func executeOrder() = {
+    let bondBalance = assetBalance(this, BondAssetId)
+    let deficit = (neutrinoSupply - reserve*price/100)/Wavelet
+    let deficitPositive = if(deficit <= 0) then 0 else deficit
+    let bondAmount = if(deficitPositive >= bondBalance) then bondBalance else deficitPositive
+    let returnAmount = if(deficitPositive >= bondBalance) then 0 else bondBalance-deficitPositive
 
-    let bondAmount = assetBalance(this, BondAssetId)
-
-    let filledTotal = getOrderFilledTotal(orderId)
-    let orderTotal = getOrderTotal(orderId)
-    let orderPrice = getOrderPrice(orderId)
-    let amount = (orderTotal-filledTotal)*100/orderPrice/Wavelet;
-    
-    let newOrderbook = if(bondAmount >= amount) then orderbook.split(orderId + OrderSplitSymbol)[1] else orderbook
-    let filledAmount = if(bondAmount >= amount) then amount else bondAmount
-
-    let total = filledAmount*orderPrice/100*Wavelet;
-
-    let status = if(bondAmount >= amount) then FILLED else NEW
-
-    ScriptResult(
-        WriteSet([
-            DataEntry(OrderBookKey, newOrderbook),
-            DataEntry(OrderFilledTotalKey + orderId, filledTotal + total),
-            DataEntry(OrderStatusKey + orderId, status)
-        ]), 
+    if(bondAmount == 0) then {
         TransferSet([
-            ScriptTransfer(i.caller, filledAmount, BondAssetId),
-            ScriptTransfer(addressFromStringValue(NeutrinoContract), total, NeutrinoAssetId)
+            ScriptTransfer(addressFromStringValue(NeutrinoContract), returnAmount, BondAssetId)
         ])
-    )
+    }
+    else {
+        let orderId = orderbook.split(OrderSplitSymbol)[0]
+        let filledTotal = getOrderFilledTotal(orderId)
+        let orderTotal = getOrderTotal(orderId)
+        let orderPrice = getOrderPrice(orderId)
+        let orderOwner = getOrderOwner(orderId)
+        let amount = (orderTotal-filledTotal)*100/orderPrice/Wavelet;
+    
+        let newOrderbook = if(bondAmount >= amount) then orderbook.split(orderId + OrderSplitSymbol)[1] else orderbook
+        let filledAmount = if(bondAmount >= amount) then amount else bondAmount
+
+        let total = filledAmount*orderPrice/100*Wavelet;
+
+        let status = if(bondAmount >= amount) then FILLED else NEW
+
+        ScriptResult(
+            WriteSet([
+                DataEntry(OrderBookKey, newOrderbook),
+                DataEntry(OrderFilledTotalKey + orderId, filledTotal + total),
+                DataEntry(OrderStatusKey + orderId, status)
+            ]), 
+            TransferSet([
+                ScriptTransfer(addressFromStringValue(orderOwner), filledAmount, BondAssetId),
+                ScriptTransfer(addressFromStringValue(NeutrinoContract), total, NeutrinoAssetId),
+                ScriptTransfer(addressFromStringValue(NeutrinoContract), returnAmount, BondAssetId)
+            ])
+        )
+    }
 }

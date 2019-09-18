@@ -45,8 +45,7 @@ func getBoolByKeyAndAddress(address: String, key: String) = {
 #end base function
 
 let ListSplitSymbol = "_"
-let SnapshotBlockExpire = 10
-let BalanceLockBlock = 2
+let BalanceLockBlock = 0
 let ListDataSplitSymbol = "+"
 let Wavelet = 100000000
 let MinimalBondOrder = 10 * Wavelet
@@ -59,8 +58,8 @@ let NeutrinoAssetIdKey = "neutrino_asset_id"
 let BondAssetIdKey = "bond_asset_id"
 let AuctionContractKey = "auction_contract"
 let PriceKey = "price"
-let NeutrinoSupplyKey = "neutrino_supply"
-let WavesReserveKey = "waves_reserve"
+#let NeutrinoSupplyKey = "neutrino_supply"
+#let WavesReserveKey = "waves_reserve"
 let NeutrinoBalanceKey = "neutrino_"
 let WavesBalanceKey = "waves_"
 let BalanceBlockKey = "balance_block_"
@@ -68,9 +67,8 @@ let OrderbookKey = "orderbook"
 let OrderTotalKey = "order_total_" 
 let OrderOwnerKey = "order_owner_"
 let OrderHeightKey = "order_height_"
-let OrderbookTotalKey = "orderbook_total"
-let OrderbookTotalSnapshotKey = "orderbook_total_snapshot"
-let SurplusKey = "surplus"
+let OrderFilledTotalKey = "order_filled_total_"
+#let SurplusKey = "surplus"
 let SnapshotBlockKey = "snapshot_block"
 let OrderbookSnapshotKey = "orderbook_snapshot"
 let BondGeneratedBlockKey = "bond_generated_block"
@@ -82,18 +80,19 @@ let SnapshotNodeBalanceKey = "snapshot_node_balance_"
 let NodeBalanceKey = "node_balance_"
 let IsSentNodeBalanceKey = "is_sent_node_balance_"
 let NodeProviderStatus = "node_status"
+let OrderStatusKey = "order_status_"
 
+let neutrinoAssetId = fromBase58String(getStringByKey(NeutrinoAssetIdKey))
 let price = getNumberByKey(PriceKey)
-let reserve = getNumberByKey(WavesReserveKey)
-let neutrinoSupply = getNumberByKey(NeutrinoSupplyKey)
-let orderbookTotal = getNumberByKey(OrderbookTotalKey)
+let reserve = wavesBalance(this)
+let neutrinoSupply = {
+    let info = extract(assetInfo(neutrinoAssetId))
+    info.quantity - assetBalance(this, neutrinoAssetId)
+}
 let orderbook = getStringByKey(OrderbookKey)
-let surplus = getNumberByKey(SurplusKey)
 let snapshotBlock = getNumberByKey(SnapshotBlockKey)
 let lastBondGenerated = getNumberByKey(BondGeneratedBlockKey)
 let orderbookSnapshot = getStringByKey(OrderbookSnapshotKey)
-let orderbookTotalSnapshot = getNumberByKey(OrderbookTotalSnapshotKey)
-let neutrinoAssetId = fromBase58String(getStringByKey(NeutrinoAssetIdKey))
 let bondAssetId = fromBase58String(getStringByKey(BondAssetIdKey))
 let auctionContract = getStringByKey(AuctionContractKey)
 let leaseContract = getStringByKey(LeaseContractKey)
@@ -112,24 +111,20 @@ func getAccountSnapshotOwner(id : String) = getStringByKey(AccountSnapshotOwnerK
 func getAccountSnapshotAmount(id : String) = getNumberByKey(AccountSnapshotAmountKey + id)
 func getNodeBalance(address: String, block: Int) = getNumberByKeyAndAddress(leaseContract, NodeBalanceKey + address + ListSplitSymbol + toString(block))
 func isSentNodeBalance(address: String, block: Int) = getBoolByKey(IsSentNodeBalanceKey + address + ListSplitSymbol + toString(block))
+func getOrderFilledTotal(id : String) = getNumberByKey(OrderFilledTotalKey + id)
 
 #end data store function
 
-func convertNeutrinoToWaves(amount: Int) = {
-    amount*100/price 
-}
-func convertWavesToNeutrino(amount: Int) = {
-    amount*price/100 
-}
-func convertNeutrinoToBond(amount: Int) = {
-    amount/Wavelet 
-}
-func convertBondToNeutrino(amount: Int) = {
-    amount*Wavelet 
-}
-func convertWavesToBond(amount: Int) = {
-    convertNeutrinoToBond(convertWavesToNeutrino(amount))
-}
+func convertNeutrinoToWaves(amount: Int) = amount*100/price 
+func convertWavesToNeutrino(amount: Int) = amount*price/100 
+func convertNeutrinoToBond(amount: Int) = amount/Wavelet 
+func convertBondToNeutrino(amount: Int) = amount*Wavelet 
+func convertWavesToBond(amount: Int) = convertNeutrinoToBond(convertWavesToNeutrino(amount))
+let surplus = convertWavesToNeutrino(reserve) - neutrinoSupply
+
+let CANCELED = "canceled"
+let NEW = "new"
+let FILLED = "filled"
 
 @Callable(i)
 func setCurrentPrice(price : Int) = {
@@ -149,9 +144,9 @@ func swapWavesToNeutrino() = {
         let amount = convertWavesToNeutrino(pmt.amount)
         WriteSet([
             DataEntry(NeutrinoBalanceKey + toString(i.caller), amount + getNeutrinoBalance(account)),
-            DataEntry(BalanceBlockKey + toString(i.caller), height),
-            DataEntry(WavesReserveKey, reserve + pmt.amount),
-            DataEntry(NeutrinoSupplyKey, neutrinoSupply + amount)
+            DataEntry(BalanceBlockKey + toString(i.caller), height)
+        #    DataEntry(WavesReserveKey, reserve + pmt.amount),
+       #     DataEntry(NeutrinoSupplyKey, neutrinoSupply + amount)
         ])
     }
 }
@@ -166,16 +161,16 @@ func swapNeutrinoToWaves() = {
         let amount = convertNeutrinoToWaves(pmt.amount)
         WriteSet([
             DataEntry(WavesBalanceKey + toString(i.caller), amount + getWavesBalance(account)),
-            DataEntry(BalanceBlockKey + toString(i.caller), height),
-            DataEntry(WavesReserveKey, reserve - amount),
-            DataEntry(NeutrinoSupplyKey, neutrinoSupply - pmt.amount)
+            DataEntry(BalanceBlockKey + toString(i.caller), height)
+        #    DataEntry(WavesReserveKey, reserve - amount),
+        #    DataEntry(NeutrinoSupplyKey, neutrinoSupply - pmt.amount)
         ])
     }
 }
 
 @Callable(i)
 func withdraw(account : String) = {
-    if(getBalanceBlock(account) + BalanceLockBlock > height)
+    if(getBalanceBlock(account) + BalanceLockBlock >= height)
         then throw("wait a couple of blocks for withdraw")
     else
         ScriptResult(
@@ -184,8 +179,8 @@ func withdraw(account : String) = {
                 DataEntry(NeutrinoBalanceKey + account, 0)
             ]),
             TransferSet([
-                ScriptTransfer(i.caller, getNeutrinoBalance(account), neutrinoAssetId),
-                ScriptTransfer(i.caller,  getWavesBalance(account), unit)
+                ScriptTransfer(addressFromStringValue(account), getNeutrinoBalance(account), neutrinoAssetId),
+                ScriptTransfer(addressFromStringValue(account),  getWavesBalance(account), unit)
             ])
         )
 }
@@ -193,11 +188,11 @@ func withdraw(account : String) = {
 @Callable(i)
 func generateBond() = {
     let deficit = neutrinoSupply - convertWavesToNeutrino(reserve)
-    if(deficit >= MinimalBondOrder && height > lastBondGenerated + SnapshotBlockExpire) then
-        ScriptResult(
-            WriteSet([DataEntry(BondGeneratedBlockKey, height)]),
-            TransferSet([ScriptTransfer(addressFromStringValue(auctionContract), convertNeutrinoToBond(deficit), bondAssetId)])
-        )
+    let balanceAuction = assetBalance(addressFromStringValue(auctionContract), bondAssetId)
+    let amount = convertNeutrinoToBond(deficit) - balanceAuction
+    if(amount > 0)
+        then TransferSet([ScriptTransfer(addressFromStringValue(auctionContract), amount, bondAssetId)])
+        
     else throw("deficit did not reach the threshold. deficit =" + toString(deficit))
 }
 
@@ -212,12 +207,12 @@ func setOrder() = {
         then throw("order exists")
     else {
         WriteSet([
-            DataEntry(OrderbookTotalKey, orderbookTotal + pmt.amount),
             DataEntry(OrderbookKey, orderbook + newOrderId + ListSplitSymbol),
 
             DataEntry(OrderTotalKey + newOrderId, pmt.amount),
             DataEntry(OrderOwnerKey + newOrderId, toString(i.caller)),
-            DataEntry(OrderHeightKey + newOrderId, height)
+            DataEntry(OrderHeightKey + newOrderId, height),
+            DataEntry(OrderStatusKey + newOrderId, NEW)
         ])
     }
 }
@@ -225,23 +220,19 @@ func setOrder() = {
 @Callable(i)
 func cancelOrder(orderId : String) = {
     let owner = getOrderOwner(orderId)
-    let total = getOrderTotal(orderId)
-
+    let amount = getOrderTotal(orderId) - getOrderFilledTotal(orderId)
     if(owner != toString(i.caller)) 
         then throw("permission denied")
     else {
-        let newOrderBookOnePart = orderbook.split(orderId + ListSplitSymbol)[0]
-        let newOrderBookTwoPart = orderbook.split(orderId + ListSplitSymbol)[1]
+        let parts = orderbook.split(orderId + ListSplitSymbol)
 
         ScriptResult(
             WriteSet([
-                DataEntry(OrderbookTotalKey, orderbookTotal - total),
-                DataEntry(OrderbookKey, newOrderBookOnePart + newOrderBookTwoPart),
-
-                DataEntry(OrderTotalKey + orderId, 0)
+                DataEntry(OrderbookKey, parts[0] + parts[1]),
+                DataEntry(OrderStatusKey + orderId, CANCELED)
             ]), 
             TransferSet([
-                ScriptTransfer(i.caller, total, unit)
+                ScriptTransfer(i.caller, amount, bondAssetId)
             ])
         )
     }
@@ -249,116 +240,29 @@ func cancelOrder(orderId : String) = {
 
 @Callable(i)
 func executeOrder() = {
-    let orderId = orderbookSnapshot.split(ListSplitSymbol)[0]
+    let orderId = orderbook.split(ListSplitSymbol)[0]
     let orderTotal = getOrderTotal(orderId)
+    let orderOwner = getOrderOwner(orderId)
+    let filledTotal = getOrderFilledTotal(orderId)
 
     if(surplus <= 0) 
         then throw("surplus is less than zero")
     else {
-        let parts = orderbook.split(orderId + ListSplitSymbol)
-        let newActualOrderbook = parts[0] + parts[1]
-    
-        let amount = convertBondToNeutrino(orderTotal - convertNeutrinoToBond(surplus))
+        let amount = orderTotal-filledTotal;
+        let surplusBond = convertNeutrinoToBond(surplus)
+        let status = if(surplusBond >= amount) then FILLED else NEW
+        let newFilledTotal = if(surplusBond >= amount) then orderTotal else surplusBond
 
         ScriptResult(
             WriteSet([
-                DataEntry(OrderbookTotalKey, orderbookTotal - (if(surplus >= orderTotal) then orderTotal else surplus)),
+            #    DataEntry(OrderbookTotalKey, orderbookTotal - (if(surplusBond >= amount) then amount else surplusBond)),
 
-                DataEntry(OrderbookKey, newActualOrderbook),
-                DataEntry(OrderbookSnapshotKey, orderbookSnapshot.split(orderId + ListSplitSymbol)[1]),
-                DataEntry(OrderTotalKey + orderId, if (amount <= 0) then 0 else amount)
+                DataEntry(OrderbookKey, orderbook.split(orderId + ListSplitSymbol)[1]),
+                DataEntry(OrderFilledTotalKey + orderId, filledTotal + newFilledTotal),
+                DataEntry(OrderStatusKey + orderId, status)
             ]), 
             TransferSet([
-                ScriptTransfer(i.caller, (if(surplus >= orderTotal) then convertBondToNeutrino(orderTotal) else surplus), neutrinoAssetId)
-            ])
-        )
-    }
-}
-
-@Callable(i)
-func createSnapshot() = {
-    let newSurplus = convertWavesToNeutrino(reserve) - neutrinoSupply
-    
-    if(newSurplus <= 0 || newSurplus < MinimalSurplus) 
-        then throw("surplus is less minimum")
-    else if(height >= snapshotBlock + SnapshotBlockExpire) then {
-        WriteSet([
-            DataEntry(OrderbookSnapshotKey, orderbook),
-            DataEntry(OrderbookTotalSnapshotKey, orderbookTotal),
-            DataEntry(SnapshotBlockKey, height),
-            DataEntry(SurplusKey, surplus)
-        ])
-    } else throw("error create new snapshot")
-}
-
-@Callable(i)
-func snapshotNeutrino(address : String) = {
-    let owner = addressFromStringValue(address)
-    let userNeutrinoBalance = assetBalance(owner, neutrinoAssetId)
-    let userBondBalance = assetBalance(owner, bondAssetId)
-    let amount = userBondBalance + userNeutrinoBalance
-    let id = toBase58String(keccak256(toBytes(amount) + owner.bytes + toBytes(height)));
-
-    if(getAccountSnapshotOwner(id) != "")
-        then throw("id exists")
-    else {
-        WriteSet([
-            DataEntry(AccountSnapshotAmountKey + id, amount),
-            DataEntry(AccountSnapshotBlockKey + id, height),
-            DataEntry(AccountSnapshotOwnerKey + id, toString(i.caller))
-        ])
-    }
-}
-
-#new snapshot logic
-@Callable(i)
-func getNewNeutrino(id : String) = {
-    let userNeutrinoBalance = assetBalance(i.caller, neutrinoAssetId)
-    let userBondBalance = assetBalance(i.caller, bondAssetId)
-
-    let allowBond = bondSupply - orderbookTotalSnapshot
-
-    let balanceSurplus = surplus - convertBondToNeutrino(orderbookTotalSnapshot)
-
-    let block = getAccountSnapshotBlock(id)
-    let amount = getAccountSnapshotAmount(id)
-
-    if(balanceSurplus <= 0) 
-        then throw("surplus is less than zero")
-    else if(block > snapshotBlock)
-        then throw("wait new snapshot")
-    else if(userBondBalance + userNeutrinoBalance < amount)
-        then throw("invalid balance snapshot")
-    else {
-        ScriptResult(
-            WriteSet([
-                DataEntry(AccountSnapshotAmountKey + id, 0),
-                DataEntry(AccountSnapshotBlockKey + id, 0)
-            ]), 
-            TransferSet([ #TODO
-                ScriptTransfer(i.caller, balanceSurplus*(amount*100/(neutrinoSupply + allowBond))/100, neutrinoAssetId)
-            ])
-        )
-    }
-}
-
-#LeaseContract
-
-@Callable(i)
-func sendToLeasing(nodeProvider : String, block : Int) = {
-    let nodeAmount = getNodeBalance(nodeProvider, block)
-    
-    if (isSentNodeBalance(nodeProvider, block) == true)
-        then throw("funds were sent")
-    else if (height > block + ApplyBlockTimeout) # applyBlockTime fix
-        then throw("apply setting time expire (" + toString(block + ApplyBlockTimeout) + ")")
-    else {
-        ScriptResult(
-            WriteSet([
-                DataEntry(IsSentNodeBalanceKey + nodeProvider + ListSplitSymbol + toString(block) , true)
-            ]), 
-            TransferSet([
-                ScriptTransfer(addressFromStringValue(nodeProvider), nodeAmount, unit)
+                ScriptTransfer(addressFromStringValue(orderOwner), convertBondToNeutrino(newFilledTotal), neutrinoAssetId)
             ])
         )
     }
