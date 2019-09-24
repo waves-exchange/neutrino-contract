@@ -48,14 +48,13 @@ let ListSplitSymbol = "_"
 let BalanceLockBlock = 0
 let ListDataSplitSymbol = "+"
 let Wavelet = 100000000
-let MinimalBondOrder = 10 * Wavelet
-let MinimalSurplus = 10 * Wavelet
 let ApplyBlockTimeout = 10
 
 # data store function
 let NeutrinoAssetIdKey = "neutrino_asset_id"
 let BondAssetIdKey = "bond_asset_id"
 let AuctionContractKey = "auction_contract"
+let RPDContractKey = "rpd_contract"
 let PriceKey = "price"
 let NeutrinoBalanceKey = "neutrino_"
 let WavesBalanceKey = "waves_"
@@ -67,9 +66,14 @@ let OrderHeightKey = "order_height_"
 let OrderFilledTotalKey = "order_filled_total_"
 let OrderStatusKey = "order_status_"
 let OracleKey = "oracle"
+let RPDCountKey = "rpd_count"
+let RPDProfitKey = "rpd_profit"
+func getRPDProfitKey(count: Int) = RPDProfitKey + "_" + toString(count)
 
+let rpdCount = getNumberByKey(RPDCountKey)
 let neutrinoAssetId = fromBase58String(getStringByKey(NeutrinoAssetIdKey))
 let auctionContract = getStringByKey(AuctionContractKey)
+let rpdContract = getStringByKey(RPDContractKey)
 let price = getNumberByKey(PriceKey)
 let reserve = wavesBalance(this)
 let orderbook = getStringByKey(OrderbookKey)
@@ -90,6 +94,8 @@ func getBalanceBlock(owner : String) = getNumberByKey(BalanceBlockKey + owner)
 func getOrderTotal(id : String) = getNumberByKey(OrderTotalKey + id)
 func getOrderOwner(id : String) = getStringByKey(OrderOwnerKey + id)
 func getOrderFilledTotal(id : String) = getNumberByKey(OrderFilledTotalKey + id)
+
+func getRPDProfit(count: Int) = getNumberByKey(getRPDProfitKey(count))
 #end data store function
 
 func convertNeutrinoToWaves(amount: Int) = amount*100/price 
@@ -223,6 +229,17 @@ func executeOrder() = {
 
     if(surplus <= 0) 
         then throw("surplus is less than zero")
+    else if(orderOwner == "") then {
+        let newRpdCount = rpdCount + 1
+        ScriptResult(
+            WriteSet([
+                DataEntry(getRPDProfitKey(newRpdCount), surplus)
+            ]),
+            TransferSet([
+                ScriptTransfer(addressFromStringValue(orderOwner), convertBondToNeutrino(surplus), neutrinoAssetId)
+            ])
+        )
+    }
     else {
         let amount = orderTotal-filledTotal;
         let surplusBond = convertNeutrinoToBond(surplus)
@@ -241,3 +258,4 @@ func executeOrder() = {
         )
     }
 }
+
