@@ -22,7 +22,6 @@ func getBoolByKey(key: String) = {
             case _ => false
     }
 }
-
 func getNumberByKeyAndAddress(address: String, key: String) = {
     match getInteger(addressFromStringValue(address), key) {
             case a:Int => a
@@ -45,21 +44,22 @@ func getBoolByKeyAndAddress(address: String, key: String) = {
 #end base function
 
 let ListSplitSymbol = "_"
-let BalanceLockBlock = 0
 let ListDataSplitSymbol = "+"
 let Wavelet = 100000000
-let MinimalBondOrder = 10 * Wavelet
-let MinimalSurplus = 10 * Wavelet
-let ApplyBlockTimeout = 10
+let PercentPriceOffset = 10
+let ADMINONE = ""
+let ADMINTWO = ""
+let ADMINTHREE = ""
 
 # data store function
+
 let NeutrinoAssetIdKey = "neutrino_asset_id"
 let BondAssetIdKey = "bond_asset_id"
 let AuctionContractKey = "auction_contract"
 let PriceKey = "price"
 let NeutrinoBalanceKey = "neutrino_"
 let WavesBalanceKey = "waves_"
-let BalanceBlockKey = "balance_block_"
+let BalanceUnlockBlockKey = "balance_block_"
 let OrderbookKey = "orderbook"
 let OrderTotalKey = "order_total_" 
 let OrderOwnerKey = "order_owner_"
@@ -67,7 +67,18 @@ let OrderHeightKey = "order_height_"
 let OrderFilledTotalKey = "order_filled_total_"
 let OrderStatusKey = "order_status_"
 let OracleKey = "oracle"
+let BalanceLockIntervalKey = "balance_lock_interval"
+let IsBlockedKey = "is_blocked"
+let BlackSwarmPriceKey = "black_swarm"
+let AdminVoteKey = "admin_vote_"
+let AdminVotePriceKey = "admin_vote_price_"
+let BlockExpireVoteKey = "vote_expire_block"
+let VoteIntervalKey = "vote_interval"
 
+let voteInterval = getNumberByKey(VoteIntervalKey)
+let blockExpireVote = getNumberByKey(BlockExpireVoteKey)
+let balanceLockBlock = getNumberByKey(BalanceLockIntervalKey)
+let isBlocked = getBoolByKey(IsBlockedKey)
 let neutrinoAssetId = fromBase58String(getStringByKey(NeutrinoAssetIdKey))
 let auctionContract = getStringByKey(AuctionContractKey)
 let price = getNumberByKey(PriceKey)
@@ -84,12 +95,15 @@ let neutrinoSupply = {
     info.quantity - assetBalance(this, neutrinoAssetId)
 }
 
+func getAdminVoteInt(owner: String) = if(getBoolByKey(AdminVoteKey + owner)) then 1 else 0
+func getAdminVotePrice(owner: String) = getNumberByKey(AdminVotePriceKey + owner)
 func getWavesBalance(owner : String) = getNumberByKey(WavesBalanceKey + owner)
 func getNeutrinoBalance(owner : String) = getNumberByKey(NeutrinoBalanceKey + owner)
-func getBalanceBlock(owner : String) = getNumberByKey(BalanceBlockKey + owner)
+func getBalanceBlock(owner : String) = getNumberByKey(BalanceUnlockBlockKey + owner)
 func getOrderTotal(id : String) = getNumberByKey(OrderTotalKey + id)
 func getOrderOwner(id : String) = getStringByKey(OrderOwnerKey + id)
 func getOrderFilledTotal(id : String) = getNumberByKey(OrderFilledTotalKey + id)
+
 #end data store function
 
 func convertNeutrinoToWaves(amount: Int) = amount*100/price 
@@ -103,20 +117,96 @@ let CANCELED = "canceled"
 let NEW = "new"
 let FILLED = "filled"
 
+func throwIfBlackSwarm() = {
+    if(isBlocked)
+        then throw("contract is blocked")
+    else false
+}
+
 @Callable(i)
-func setCurrentPrice(price : Int) = {
+func finalizeCurrentPrice(newPrice : Int) = {
+    let isBlackSwarm = throwIfBlackSwarm()
     let account = toString(i.caller)
     if(account != oracle)
         then throw("permission denied")
+    else if(price + price*PercentPriceOffset/100 <= newPrice || price - price*PercentPriceOffset/100 >= newPrice) then {
+        WriteSet([
+            DataEntry(IsBlockedKey, true),
+            DataEntry(BlackSwarmPriceKey + ListSplitSymbol + toString(height), newPrice)
+        ])
+    }
     else 
         WriteSet([
             DataEntry(PriceKey, price),
-            DataEntry(PriceKey + ListSplitSymbol + toString(height), price)
+            DataEntry(PriceKey + ListSplitSymbol + toString(height), newPrice)
+        ])
+}
+
+@Callable(i)
+func adminUnlock(newPrice : Int) = {
+    let account = toString(i.caller)
+    let adminOneVote = if(account != ADMINONE) then getAdminVoteInt(ADMINONE) else 0
+    let adminTwoVote = if(account != ADMINTWO) then getAdminVoteInt(ADMINTWO) else 0
+    let adminThreeVote = if(account != ADMINTHREE) then getAdminVoteInt(ADMINTHREE) else 0
+    
+    let adminOnePrice = if(getAdminVotePrice(ADMINONE)*adminOneVote == newPrice) then 1  else 0
+    let adminTwoPrice = if(getAdminVotePrice(ADMINTWO)*adminTwoVote == newPrice) then 1 else 0
+    let adminThreePrice = if(getAdminVotePrice(ADMINTHREE)*adminThreeVote == newPrice) then 1 else 0
+    
+    if(!isBlocked) 
+        then throw("Contract is not blocked")
+    else if(adminOnePrice + adminTwoPrice + adminThreePrice + 1 >= 2 && height <= blockExpireVote) then {
+        WriteSet([
+            DataEntry(IsBlockedKey, false),
+            DataEntry(PriceKey, newPrice),
+            DataEntry(PriceKey + ListSplitSymbol + toString(height), newPrice),
+            DataEntry(AdminVoteKey + ADMINONE, false),
+            DataEntry(AdminVoteKey + ADMINTWO, false),
+            DataEntry(AdminVoteKey + ADMINTHREE, false),
+            DataEntry(BlockExpireVoteKey, 0)
+        ])
+    }else 
+        WriteSet([
+            DataEntry(AdminVotePriceKey + account, newPrice),
+            DataEntry(BlockExpireVoteKey, if(height > blockExpireVote) then height + voteInterval else blockExpireVote),
+            DataEntry(AdminVoteKey + ADMINONE, if(height > blockExpireVote) then false else adminOneVote),
+            DataEntry(AdminVoteKey + ADMINTWO, if(height > blockExpireVote) then false else adminTwoVote),
+            DataEntry(AdminVoteKey + ADMINTHREE, if(height > blockExpireVote) then false else adminThreeVote),
+            DataEntry(AdminVoteKey + account, true)
+        ])
+}
+
+@Callable(i)
+func adminLock() = {
+    let account = toString(i.caller)
+    
+    let adminOneVote = if(account != ADMINONE) then getAdminVoteInt(ADMINONE) else 1
+    let adminTwoVote = if(account != ADMINTWO) then getAdminVoteInt(ADMINTWO) else 1
+    let adminThreeVote = if(account != ADMINTHREE) then getAdminVoteInt(ADMINTHREE) else 1
+    
+    if(isBlocked) 
+        then throw("Contract is blocked")
+    else if(adminOneVote + adminTwoVote + adminThreeVote >= 2) then {
+        WriteSet([
+            DataEntry(IsBlockedKey, true),
+            DataEntry(AdminVoteKey + ADMINONE, false),
+            DataEntry(AdminVoteKey + ADMINTWO, false),
+            DataEntry(AdminVoteKey + ADMINTHREE, false),
+            DataEntry(BlockExpireVoteKey, 0)
+        ])
+    }
+    else 
+        WriteSet([
+            DataEntry(BlockExpireVoteKey, if(height > blockExpireVote) then height + voteInterval else blockExpireVote),
+            DataEntry(AdminVoteKey + ADMINONE, if(height > blockExpireVote) then false else adminOneVote),
+            DataEntry(AdminVoteKey + ADMINTWO, if(height > blockExpireVote) then false else adminTwoVote),
+            DataEntry(AdminVoteKey + ADMINTHREE, if(height > blockExpireVote) then false else adminThreeVote)
         ])
 }
 
 @Callable(i)
 func swapWavesToNeutrino() = {
+    let isBlackSwarm = throwIfBlackSwarm()
     let pmt = extract(i.payment)
     if (isDefined(pmt.assetId)) 
         then throw("can use waves only")
@@ -125,13 +215,14 @@ func swapWavesToNeutrino() = {
         let amount = convertWavesToNeutrino(pmt.amount)
         WriteSet([
             DataEntry(NeutrinoBalanceKey + toString(i.caller), amount + getNeutrinoBalance(account)),
-            DataEntry(BalanceBlockKey + toString(i.caller), height)
+            DataEntry(BalanceUnlockBlockKey + toString(i.caller), height + balanceLockBlock)
         ])
     }
 }
 
 @Callable(i)
 func swapNeutrinoToWaves() = {
+    let isBlackSwarm = throwIfBlackSwarm()
     let pmt = extract(i.payment)
     if (pmt.assetId != neutrinoAssetId) 
         then throw("can use neutrino only")
@@ -140,14 +231,14 @@ func swapNeutrinoToWaves() = {
         let amount = convertNeutrinoToWaves(pmt.amount)
         WriteSet([
             DataEntry(WavesBalanceKey + toString(i.caller), amount + getWavesBalance(account)),
-            DataEntry(BalanceBlockKey + toString(i.caller), height)
+            DataEntry(BalanceUnlockBlockKey + toString(i.caller), height + balanceLockBlock)
         ])
     }
 }
 
 @Callable(i)
 func withdraw(account : String) = {
-    if(getBalanceBlock(account) + BalanceLockBlock >= height)
+    if(getBalanceBlock(account) >= height)
         then throw("wait a couple of blocks for withdraw")
     else
         ScriptResult(
@@ -164,6 +255,7 @@ func withdraw(account : String) = {
 
 @Callable(i)
 func generateBond() = {
+    let isBlackSwarm = throwIfBlackSwarm()
     let deficit = neutrinoSupply - convertWavesToNeutrino(reserve)
     let balanceAuction = assetBalance(addressFromStringValue(auctionContract), bondAssetId)
     let amount = convertNeutrinoToBond(deficit) - balanceAuction
@@ -216,6 +308,7 @@ func cancelOrder(orderId : String) = {
 
 @Callable(i)
 func executeOrder() = {
+    let isBlackSwarm = throwIfBlackSwarm()
     let orderId = orderbook.split(ListSplitSymbol)[0]
     let orderTotal = getOrderTotal(orderId)
     let orderOwner = getOrderOwner(orderId)
