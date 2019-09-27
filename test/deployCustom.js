@@ -5,15 +5,16 @@ let main = "waves private node seed with waves tokens"
 let seed = "minute sail fortune shuffle gun submit reveal few fever nest chunk slow actor peanut warm"
 let nc = seed + "neutrino"
 let ac = seed + "auction"
-let leaseContract = seed + "lease"
-let nodeProviderContract = seed + "nodeProvider|1"
-let nodeAddress = seed + "nodeProvider1Address"
-let oracleAddress = ""
+let rpd = seed + "rpd"
+//minute sail fortune shuffle gun submit reveal few fever nest chunk slow actor peanut warmoracle_one
+//minute sail fortune shuffle gun submit reveal few fever nest chunk slow actor peanut warmoracle_two
+//minute sail fortune shuffle gun submit reveal few fever nest chunk slow actor peanut warmoracle_three
+let oracleOneAddress = seed + "oracle_one"
+let oracleTwoAddress = seed + "oracle_two"
+let oracleThreeAddress = seed + "oracle_three"
 describe('Deploy', async function () {
     before(async function () {
         let accountOne = seed + "1"
-        let accountTwo = seed + "2"
-        oracleAddress = accountOne
         var massTx = massTransfer({
             transfers: [
                 {
@@ -26,19 +27,23 @@ describe('Deploy', async function () {
                 },
                 {
                     amount: 10 * wvs,
-                    recipient: address(leaseContract)
+                    recipient: address(oracleOneAddress)
                 },
                 {
                     amount: 10 * wvs,
-                    recipient: address(accountOne),
+                    recipient: address(oracleTwoAddress),
                 },
                 {
                     amount: 10 * wvs,
-                    recipient: address(accountTwo),
+                    recipient: address(oracleThreeAddress),
                 },
                 {
                     amount: 10 * wvs,
-                    recipient: address(nodeProviderContract)
+                    recipient: address(rpd)
+                },
+                {
+                    amount: 10 * wvs,
+                    recipient: address(accountOne)
                 }
             ]
         }, main)
@@ -47,7 +52,7 @@ describe('Deploy', async function () {
         await waitForTx(massTx.id)
 
         // issue Neutrino
-        const issueTx = issue({
+     /*   const issueTx = issue({
             name: 'EUR-N',
             description: 'Neutrino EUR Alpha 0.0.1',
             quantity: "100000000000000000",
@@ -68,15 +73,17 @@ describe('Deploy', async function () {
 
         await broadcast(issueBondTx);
         await waitForTx(issueBondTx.id)
-        bondAssetId = issueBondTx.id;
+        bondAssetId = issueBondTx.id;*/
 
         // set startup auction variable
         const dataTx = data({
             data: [
                 { key: 'neutrino_asset_id', value: assetId },
                 { key: 'neutrino_contract', value: address(nc) },
-                { key: 'bond_asset_id', value: bondAssetId }
-            ]
+          //      { key: 'bond_asset_id', value: bondAssetId }
+            ],
+
+            fee: 500000
         }, ac);
 
         await broadcast(dataTx);
@@ -85,15 +92,40 @@ describe('Deploy', async function () {
         // set startup neutrino  variable
         const neutrinoDataTx = data({
             data: [
-                { key: 'neutrino_asset_id', value: assetId },
-                { key: 'bond_asset_id', value: bondAssetId },
+            //    { key: 'neutrino_asset_id', value: assetId },
+           //     { key: 'bond_asset_id', value: bondAssetId },
                 { key: 'auction_contract', value: address(ac) },
-                { key: 'oracle', value: oracleAddress }
-            ]
+                { key: "rpd_contract", value: address(rpd) },
+                { key: "balance_lock_interval", value: 1 },
+                { key: "vote_interval", value: 5 },
+                { key: "min_swap_amount", value: 100000000 },
+                { key: "price_offset", value: 10 },
+                { key: "providing_interval", value: 5 },
+                { key: 'oracle_0', value: address(oracleOneAddress) },
+                { key: 'oracle_1', value: address(oracleTwoAddress) },
+                { key: 'oracle_2', value: address(oracleThreeAddress) },
+                { key: 'admin_0', value: address(oracleOneAddress) },
+                { key: 'admin_1', value: address(oracleTwoAddress) },
+                { key: 'admin_2', value: address(oracleThreeAddress) },
+                { key: 'price', value: 100 },
+            ],
+            fee: 500000
         }, nc);
 
         await broadcast(neutrinoDataTx);
         await waitForTx(neutrinoDataTx.id)
+
+        const rpdDataTx = data({ 
+            data: [
+                { key: 'neutrino_asset_id', value: assetId },
+                { key: 'neutrino_contract', value: address(nc)}
+            ],
+
+            fee: 500000
+        }, rpd);
+    
+        await broadcast(rpdDataTx);
+        await waitForTx(rpdDataTx.id)
     });
     it('Finalizing', async function () {
 
@@ -108,6 +140,10 @@ describe('Deploy', async function () {
         await broadcast(setNeutrinoScriptTx);
         await waitForTx(setNeutrinoScriptTx.id)
 
+        const scriptRPD = compile(file('../rpd.ride'));
+        const scriptRPDTx = setScript({ script: scriptRPD, fee: 1400000 ,}, rpd);
+        await broadcast(scriptRPDTx);
+        await waitForTx(scriptRPDTx.id)
         console.log('Script has been set')
 
     })

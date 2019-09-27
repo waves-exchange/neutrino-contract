@@ -3,7 +3,6 @@
 {-# SCRIPT_TYPE ACCOUNT #-}
 
 # base function
-
 func getNumberByKey(key: String) = {
     match getInteger(this, key) {
             case a:Int => a
@@ -22,41 +21,30 @@ func getBoolByKey(key: String) = {
             case _ => false
     }
 }
-func getNumberByKeyAndAddress(address: String, key: String) = {
-    match getInteger(addressFromStringValue(address), key) {
-            case a:Int => a
-            case _ => 0
-    }
-}
-func getStringByKeyAndAddress(address: String, key: String) = {
-    match getString(addressFromStringValue(address), key) {
-            case a:String => a
-            case _ => ""
-    }
-}
-func getBoolByKeyAndAddress(address: String, key: String) = {
-    match getBoolean(addressFromStringValue(address), key) {
-            case a:Boolean => a
-            case _ => false
-    }
-}
-
 #end base function
 
-let ListSplitSymbol = "_"
-let ListDataSplitSymbol = "+"
-let Wavelet = 100000000
-let PercentPriceOffset = 10
-let ADMINONE = ""
-let ADMINTWO = ""
-let ADMINTHREE = ""
+# consts
+let LISTSPLITSYMBOL = "_"
+let LISTDATASYMBOL = "+"
+let WAVELET = 100000000
+let CANCELED = "canceled"
+let NEW = "new"
+let FILLED = "filled"
+#end consts
 
-# data store function
-
+#constructor 
 let NeutrinoAssetIdKey = "neutrino_asset_id"
 let BondAssetIdKey = "bond_asset_id"
 let AuctionContractKey = "auction_contract"
 let RPDContractKey = "rpd_contract"
+let BalanceLockIntervalKey = "balance_lock_interval"
+let VoteIntervalKey = "vote_interval"
+let MinSwapAmountKey = "min_swap_amount"
+let PriceOffsetKey = "price_offset"
+let ProvidingIntervalKey = "providing_interval"
+#end constructor
+
+# keys
 let PriceKey = "price"
 let NeutrinoBalanceKey = "neutrino_"
 let WavesBalanceKey = "waves_"
@@ -67,32 +55,70 @@ let OrderOwnerKey = "order_owner_"
 let OrderHeightKey = "order_height_"
 let OrderFilledTotalKey = "order_filled_total_"
 let OrderStatusKey = "order_status_"
-let OracleKey = "oracle"
 let RPDCountKey = "rpd_count"
 let RPDProfitKey = "rpd_profit"
-let BalanceLockIntervalKey = "balance_lock_interval"
 let IsBlockedKey = "is_blocked"
-let BlackSwarmPriceKey = "black_swarm"
+let BlackSwarmPriceKey = "black_swarm_price"
 let AdminVoteKey = "admin_vote_"
 let AdminVotePriceKey = "admin_vote_price_"
 let BlockExpireVoteKey = "vote_expire_block"
-let VoteIntervalKey = "vote_interval"
+let AdminKey = "admin_"
+let IsPricePendingKey = "is_pending_price"
+let OracleKey = "oracle_"
+let OracleIsProvideKey = "oracle_is_provide_"
+let OracleProvidePriceKey = "oracle_price_provide_"
+let BlockExpireProvidingKey = "providing_expire_block"
+
+func getAdminKey(count: Int) = AdminKey + toString(count)
+func getAdminVoteKey(owner: String) = AdminVoteKey + owner
+func getAdminVotePriceKey(owner: String) = AdminVotePriceKey + owner
+
+func getOracleKey(count: Int) = OracleKey + toString(count)
+func getOracleIsProvideKey(owner: String) = OracleIsProvideKey + owner
+func getOracleProvidePriceKey(owner: String) = OracleProvidePriceKey + owner
+
 
 func getRPDProfitKey(count: Int) = RPDProfitKey + "_" + toString(count)
+func getNeutrinoBalanceKey(owner: String) = NeutrinoBalanceKey + owner
+func getWavesBalanceKey(owner: String) = WavesBalanceKey + owner
+func getBalanceUnlockBlockKey(owner: String) = BalanceUnlockBlockKey + owner
+func getBlackSwarmPriceKey(block: Int) = BlackSwarmPriceKey + "_" + toString(block)
+func getPriceHistoryKey(block: Int) = PriceKey + "_" + toString(block)
+
+func getOrderTotalKey(orderId: String) = OrderTotalKey + orderId
+func getOrderOwnerKey(orderId: String) = OrderOwnerKey + orderId
+func getOrderHeightKey(orderId: String) = OrderHeightKey + orderId
+func getOrderStatusKey(orderId: String) = OrderStatusKey + orderId
+func getOrderFilledTotalKey(orderId: String) = OrderFilledTotalKey + orderId
+#end keys
+
+let price = getNumberByKey(PriceKey)
+
+#convert func
+func convertNeutrinoToWaves(amount: Int) = amount*100/price 
+func convertWavesToNeutrino(amount: Int) = amount*price/100 
+func convertNeutrinoToBond(amount: Int) = amount/WAVELET 
+func convertBondToNeutrino(amount: Int) = amount*WAVELET 
+func convertWavesToBond(amount: Int) = convertNeutrinoToBond(convertWavesToNeutrino(amount))
+#end convert func
+
+#global vars
+let providingInterval = getNumberByKey(ProvidingIntervalKey)
+let blockExpireProviding = getNumberByKey(BlockExpireProvidingKey)
+let isPricePending = getBoolByKey(IsPricePendingKey)
+let percentPriceOffset = getNumberByKey(PriceOffsetKey)
 let rpdCount = getNumberByKey(RPDCountKey)
 let voteInterval = getNumberByKey(VoteIntervalKey)
 let blockExpireVote = getNumberByKey(BlockExpireVoteKey)
-let balanceLockBlock = getNumberByKey(BalanceLockIntervalKey)
+let balanceLockInterval = getNumberByKey(BalanceLockIntervalKey)
 let isBlocked = getBoolByKey(IsBlockedKey)
-
+let minSwapAmount = getNumberByKey(MinSwapAmountKey)
 let neutrinoAssetId = fromBase58String(getStringByKey(NeutrinoAssetIdKey))
 let auctionContract = getStringByKey(AuctionContractKey)
 let rpdContract = getStringByKey(RPDContractKey)
-let price = getNumberByKey(PriceKey)
 let reserve = wavesBalance(this)
 let orderbook = getStringByKey(OrderbookKey)
 let bondAssetId = fromBase58String(getStringByKey(BondAssetIdKey))
-let oracle = getStringByKey(OracleKey)
 let bondSupply = {
     let info = extract(assetInfo(bondAssetId))
     info.quantity - assetBalance(this, bondAssetId)
@@ -101,65 +127,107 @@ let neutrinoSupply = {
     let info = extract(assetInfo(neutrinoAssetId))
     info.quantity - assetBalance(this, neutrinoAssetId)
 }
-
-func getAdminVoteInt(owner: String) = if(getBoolByKey(AdminVoteKey + owner)) then 1 else 0
-func getAdminVotePrice(owner: String) = getNumberByKey(AdminVotePriceKey + owner)
-func getWavesBalance(owner : String) = getNumberByKey(WavesBalanceKey + owner)
-func getNeutrinoBalance(owner : String) = getNumberByKey(NeutrinoBalanceKey + owner)
-func getBalanceBlock(owner : String) = getNumberByKey(BalanceUnlockBlockKey + owner)
-func getOrderTotal(id : String) = getNumberByKey(OrderTotalKey + id)
-func getOrderOwner(id : String) = getStringByKey(OrderOwnerKey + id)
-func getOrderFilledTotal(id : String) = getNumberByKey(OrderFilledTotalKey + id)
-func getRPDProfit(count: Int) = getNumberByKey(getRPDProfitKey(count))
-
-#end data store function
-
-func convertNeutrinoToWaves(amount: Int) = amount*100/price 
-func convertWavesToNeutrino(amount: Int) = amount*price/100 
-func convertNeutrinoToBond(amount: Int) = amount/Wavelet 
-func convertBondToNeutrino(amount: Int) = amount*Wavelet 
-func convertWavesToBond(amount: Int) = convertNeutrinoToBond(convertWavesToNeutrino(amount))
 let surplus = convertWavesToNeutrino(reserve) - neutrinoSupply
+let oracleOne = getStringByKey(getOracleKey(0))
+let oracleTwo = getStringByKey(getOracleKey(1))
+let oracleThree = getStringByKey(getOracleKey(2))
+let adminOne = getStringByKey(getAdminKey(0))
+let adminTwo = getStringByKey(getAdminKey(1))
+let adminThree = getStringByKey(getAdminKey(2))
+#end global vars
 
-let CANCELED = "canceled"
-let NEW = "new"
-let FILLED = "filled"
+# get func
+func getAdminVoteInt(owner: String) = if(getBoolByKey(getAdminVoteKey(owner))) then 1 else 0
+func getAdminVotePrice(owner: String) = getNumberByKey(getAdminVotePriceKey(owner))
+func isOracleProvide(owner: String) = getBoolByKey(getOracleIsProvideKey(owner))
+func isOracleProvideInt(owner: String) = if(isOracleProvide(owner)) then 1 else 0
+func getOracleProvidePrice(owner: String) = getNumberByKey(getOracleProvidePriceKey(owner))
 
-func throwIfBlackSwarm() = {
+func getWavesBalance(owner : String) = getNumberByKey(getWavesBalanceKey(owner))
+func getNeutrinoBalance(owner : String) = getNumberByKey(getNeutrinoBalanceKey(owner))
+func getUnlockBalanceBlock(owner : String) = getNumberByKey(getBalanceUnlockBlockKey(owner))
+func getOrderTotal(id : String) = getNumberByKey(getOrderTotalKey(id))
+func getOrderOwner(id : String) = getStringByKey(getOrderOwnerKey(id))
+func getOrderFilledTotal(id : String) = getNumberByKey(getOrderFilledTotalKey(id))
+func getRPDProfit(count: Int) = getNumberByKey(getRPDProfitKey(count))
+#end get func
+
+func getOrderElementById(id : String) = id + LISTSPLITSYMBOL
+func addOrder(orderId: String) = {
+    orderbook + getOrderElementById(orderId)
+}
+func dropOrder(orderId: String) = {
+    let parts = orderbook.split(getOrderElementById(orderId))
+    parts[0] + parts[1]
+}
+
+#-------------------Callable----------------------
+
+@Callable(i)
+func setCurrentPrice(newPrice : Int) = {
+    let account = toString(i.caller)
+    let priceProvidingCount = isOracleProvideInt(oracleOne) + isOracleProvideInt(oracleTwo) + isOracleProvideInt(oracleThree) + 1
+
     if(isBlocked)
         then throw("contract is blocked")
-    else false
+    else if(account != oracleOne && account != oracleTwo && account != oracleThree)
+        then throw("permission denied")
+    else if(height <= blockExpireProviding &&  isOracleProvide(account))
+        then throw("price is already provided")
+    else if(height > blockExpireProviding && isPricePending)
+        then throw("use finilizeCurrentPrice")
+    else 
+        WriteSet([
+            DataEntry(getOracleProvidePriceKey(account), newPrice),
+            DataEntry(BlockExpireProvidingKey, if(height > blockExpireProviding) then height + providingInterval else blockExpireProviding),
+            DataEntry(getOracleIsProvideKey(oracleOne), if(height > blockExpireProviding) then false else isOracleProvide(oracleOne)),
+            DataEntry(getOracleIsProvideKey(oracleTwo), if(height > blockExpireProviding) then false else isOracleProvide(oracleTwo)),
+            DataEntry(getOracleIsProvideKey(oracleThree), if(height > blockExpireProviding) then false else isOracleProvide(oracleThree)),
+            DataEntry(getOracleIsProvideKey(account), true),
+            DataEntry(IsPricePendingKey, if(height <= blockExpireProviding && priceProvidingCount >= 2) then true else isPricePending)
+        ])
 }
 
 @Callable(i)
-func finalizeCurrentPrice(newPrice : Int) = {
-    let isBlackSwarm = throwIfBlackSwarm()
+func finilizeCurrentPrice() = {
     let account = toString(i.caller)
-    if(account != oracle)
+    let priceProvidingCount = isOracleProvideInt(oracleOne) + isOracleProvideInt(oracleTwo) + isOracleProvideInt(oracleThree)
+
+    let newPrice = (getOracleProvidePrice(oracleOne)*isOracleProvideInt(oracleOne) + 
+                    getOracleProvidePrice(oracleTwo)*isOracleProvideInt(oracleTwo) + 
+                    getOracleProvidePrice(oracleThree)*isOracleProvideInt(oracleThree))/priceProvidingCount
+    if(isBlocked)
+        then throw("contract is blocked")
+    else if(account != oracleOne && account != oracleTwo && account != oracleThree)
         then throw("permission denied")
-    else if(price + price*PercentPriceOffset/100 <= newPrice || price - price*PercentPriceOffset/100 >= newPrice) then {
+    else if(!isPricePending || height <= blockExpireProviding)
+        then throw("wait for the end of the price providing")
+    else if(priceProvidingCount < 2)
+        then throw("2/3 oracles need to set a price")
+    else if(newPrice >= (price + price*percentPriceOffset/100) || newPrice <= (price - price*percentPriceOffset/100)) then {
         WriteSet([
             DataEntry(IsBlockedKey, true),
-            DataEntry(BlackSwarmPriceKey + ListSplitSymbol + toString(height), newPrice)
+            DataEntry(getBlackSwarmPriceKey(height), newPrice)
         ])
     }
     else 
         WriteSet([
-            DataEntry(PriceKey, price),
-            DataEntry(PriceKey + ListSplitSymbol + toString(height), newPrice)
+            DataEntry(PriceKey, newPrice),
+            DataEntry(getPriceHistoryKey(height), newPrice),
+            DataEntry(IsPricePendingKey, false)
         ])
 }
 
 @Callable(i)
 func adminUnlock(newPrice : Int) = {
     let account = toString(i.caller)
-    let adminOneVote = if(account != ADMINONE) then getAdminVoteInt(ADMINONE) else 0
-    let adminTwoVote = if(account != ADMINTWO) then getAdminVoteInt(ADMINTWO) else 0
-    let adminThreeVote = if(account != ADMINTHREE) then getAdminVoteInt(ADMINTHREE) else 0
+    let adminOneVote = if(account != adminOne) then getAdminVoteInt(adminOne) else 0
+    let adminTwoVote = if(account != adminTwo) then getAdminVoteInt(adminTwo) else 0
+    let adminThreeVote = if(account != adminThree) then getAdminVoteInt(adminThree) else 0
     
-    let adminOnePrice = if(getAdminVotePrice(ADMINONE)*adminOneVote == newPrice) then 1  else 0
-    let adminTwoPrice = if(getAdminVotePrice(ADMINTWO)*adminTwoVote == newPrice) then 1 else 0
-    let adminThreePrice = if(getAdminVotePrice(ADMINTHREE)*adminThreeVote == newPrice) then 1 else 0
+    let adminOnePrice = if(getAdminVotePrice(adminOne)*adminOneVote == newPrice) then 1  else 0
+    let adminTwoPrice = if(getAdminVotePrice(adminTwo)*adminTwoVote == newPrice) then 1 else 0
+    let adminThreePrice = if(getAdminVotePrice(adminThree)*adminThreeVote == newPrice) then 1 else 0
     
     if(!isBlocked) 
         then throw("Contract is not blocked")
@@ -167,20 +235,22 @@ func adminUnlock(newPrice : Int) = {
         WriteSet([
             DataEntry(IsBlockedKey, false),
             DataEntry(PriceKey, newPrice),
-            DataEntry(PriceKey + ListSplitSymbol + toString(height), newPrice),
-            DataEntry(AdminVoteKey + ADMINONE, false),
-            DataEntry(AdminVoteKey + ADMINTWO, false),
-            DataEntry(AdminVoteKey + ADMINTHREE, false),
-            DataEntry(BlockExpireVoteKey, 0)
+            DataEntry(getPriceHistoryKey(height), newPrice),
+            DataEntry(getAdminVoteKey(adminOne), false),
+            DataEntry(getAdminVoteKey(adminTwo), false),
+            DataEntry(getAdminVoteKey(adminThree), false),
+            DataEntry(BlockExpireVoteKey, 0),
+            DataEntry(BlockExpireProvidingKey, 0),
+            DataEntry(IsPricePendingKey, false)
         ])
     }else 
         WriteSet([
-            DataEntry(AdminVotePriceKey + account, newPrice),
+            DataEntry(getAdminVotePriceKey(account), newPrice),
             DataEntry(BlockExpireVoteKey, if(height > blockExpireVote) then height + voteInterval else blockExpireVote),
-            DataEntry(AdminVoteKey + ADMINONE, if(height > blockExpireVote) then false else adminOneVote),
-            DataEntry(AdminVoteKey + ADMINTWO, if(height > blockExpireVote) then false else adminTwoVote),
-            DataEntry(AdminVoteKey + ADMINTHREE, if(height > blockExpireVote) then false else adminThreeVote),
-            DataEntry(AdminVoteKey + account, true)
+            DataEntry(getAdminVoteKey(adminOne), if(height > blockExpireVote) then false else adminOneVote == 1),
+            DataEntry(getAdminVoteKey(adminTwo), if(height > blockExpireVote) then false else adminTwoVote == 1),
+            DataEntry(getAdminVoteKey(adminThree), if(height > blockExpireVote) then false else adminThreeVote == 1),
+            DataEntry(getAdminVoteKey(account), true)
         ])
 }
 
@@ -188,86 +258,93 @@ func adminUnlock(newPrice : Int) = {
 func adminLock() = {
     let account = toString(i.caller)
     
-    let adminOneVote = if(account != ADMINONE) then getAdminVoteInt(ADMINONE) else 1
-    let adminTwoVote = if(account != ADMINTWO) then getAdminVoteInt(ADMINTWO) else 1
-    let adminThreeVote = if(account != ADMINTHREE) then getAdminVoteInt(ADMINTHREE) else 1
+    let adminOneVote = if(account != adminOne) then getAdminVoteInt(adminOne) else 1
+    let adminTwoVote = if(account != adminTwo) then getAdminVoteInt(adminTwo) else 1
+    let adminThreeVote = if(account != adminThree) then getAdminVoteInt(adminThree) else 1
     
     if(isBlocked) 
         then throw("Contract is blocked")
     else if(adminOneVote + adminTwoVote + adminThreeVote >= 2) then {
         WriteSet([
             DataEntry(IsBlockedKey, true),
-            DataEntry(AdminVoteKey + ADMINONE, false),
-            DataEntry(AdminVoteKey + ADMINTWO, false),
-            DataEntry(AdminVoteKey + ADMINTHREE, false),
+            DataEntry(getAdminVoteKey(adminOne), false),
+            DataEntry(getAdminVoteKey(adminTwo), false),
+            DataEntry(getAdminVoteKey(adminThree), false),
             DataEntry(BlockExpireVoteKey, 0)
         ])
     }
     else 
         WriteSet([
             DataEntry(BlockExpireVoteKey, if(height > blockExpireVote) then height + voteInterval else blockExpireVote),
-            DataEntry(AdminVoteKey + ADMINONE, if(height > blockExpireVote) then false else adminOneVote),
-            DataEntry(AdminVoteKey + ADMINTWO, if(height > blockExpireVote) then false else adminTwoVote),
-            DataEntry(AdminVoteKey + ADMINTHREE, if(height > blockExpireVote) then false else adminThreeVote)
+            DataEntry(getAdminVoteKey(adminOne), if(height > blockExpireVote) then false else adminOneVote == 1),
+            DataEntry(getAdminVoteKey(adminTwo), if(height > blockExpireVote) then false else adminTwoVote == 1),
+            DataEntry(getAdminVoteKey(adminThree), if(height > blockExpireVote) then false else adminThreeVote == 1)
         ])
 }
 
 @Callable(i)
 func swapWavesToNeutrino() = {
-    let isBlackSwarm = throwIfBlackSwarm()
     let pmt = extract(i.payment)
-    if (isDefined(pmt.assetId)) 
+    if (pmt.amount < minSwapAmount)
+        then throw("amount less min")
+    else if (isDefined(pmt.assetId)) 
         then throw("can use waves only")
+    else if(isBlocked)
+        then throw("contract is blocked")
     else{
         let account = toBase58String(i.caller.bytes)
         let amount = convertWavesToNeutrino(pmt.amount)
         WriteSet([
-            DataEntry(NeutrinoBalanceKey + toString(i.caller), amount + getNeutrinoBalance(account)),
-            DataEntry(BalanceUnlockBlockKey + toString(i.caller), height + balanceLockBlock)
+            DataEntry(getNeutrinoBalanceKey(account),  getNeutrinoBalance(account) + amount),
+            DataEntry(getBalanceUnlockBlockKey(account), height + balanceLockInterval)
         ])
     }
 }
 
 @Callable(i)
 func swapNeutrinoToWaves() = {
-    let isBlackSwarm = throwIfBlackSwarm()
     let pmt = extract(i.payment)
-    if (pmt.assetId != neutrinoAssetId) 
+    if (pmt.amount < minSwapAmount)
+        then throw("amount less min")
+    else if(isBlocked)
+        then throw("contract is blocked")
+    else if (pmt.assetId != neutrinoAssetId) 
         then throw("can use neutrino only")
     else{
         let account = toBase58String(i.caller.bytes)
         let amount = convertNeutrinoToWaves(pmt.amount)
         WriteSet([
-            DataEntry(WavesBalanceKey + toString(i.caller), amount + getWavesBalance(account)),
-            DataEntry(BalanceUnlockBlockKey + toString(i.caller), height + balanceLockBlock)
+            DataEntry(getWavesBalanceKey(account), getWavesBalance(account) + amount),
+            DataEntry(getBalanceUnlockBlockKey(account), height + balanceLockInterval)
         ])
     }
 }
 
 @Callable(i)
 func withdraw(account : String) = {
-    if(getBalanceBlock(account) >= height)
+    if(getUnlockBalanceBlock(account) > height)
         then throw("wait a couple of blocks for withdraw")
     else
         ScriptResult(
             WriteSet([
-                DataEntry(WavesBalanceKey + account, 0),
-                DataEntry(NeutrinoBalanceKey + account, 0)
+                DataEntry(getWavesBalanceKey(account), 0),
+                DataEntry(getNeutrinoBalanceKey(account), 0)
             ]),
             TransferSet([
                 ScriptTransfer(addressFromStringValue(account), getNeutrinoBalance(account), neutrinoAssetId),
-                ScriptTransfer(addressFromStringValue(account),  getWavesBalance(account), unit)
+                ScriptTransfer(addressFromStringValue(account), getWavesBalance(account), unit)
             ])
         )
 }
 
 @Callable(i)
 func generateBond() = {
-    let isBlackSwarm = throwIfBlackSwarm()
     let deficit = neutrinoSupply - convertWavesToNeutrino(reserve)
     let balanceAuction = assetBalance(addressFromStringValue(auctionContract), bondAssetId)
     let amount = convertNeutrinoToBond(deficit) - balanceAuction
-    if(amount > 0)
+    if(isBlocked)
+        then throw("contract is blocked") 
+    else if(amount > 0)
         then TransferSet([ScriptTransfer(addressFromStringValue(auctionContract), amount, bondAssetId)])
     else throw("bond were generated or do not need it")
 }
@@ -283,12 +360,12 @@ func setOrder() = {
         then throw("order exists")
     else {
         WriteSet([
-            DataEntry(OrderbookKey, orderbook + newOrderId + ListSplitSymbol),
+            DataEntry(OrderbookKey, addOrder(newOrderId)),
 
-            DataEntry(OrderTotalKey + newOrderId, pmt.amount),
-            DataEntry(OrderOwnerKey + newOrderId, toString(i.caller)),
-            DataEntry(OrderHeightKey + newOrderId, height),
-            DataEntry(OrderStatusKey + newOrderId, NEW)
+            DataEntry(getOrderTotalKey(newOrderId), pmt.amount),
+            DataEntry(getOrderOwnerKey(newOrderId), toString(i.caller)),
+            DataEntry(getOrderHeightKey(newOrderId), height),
+            DataEntry(getOrderStatusKey(newOrderId), NEW)
         ])
     }
 }
@@ -300,12 +377,10 @@ func cancelOrder(orderId : String) = {
     if(owner != toString(i.caller)) 
         then throw("permission denied")
     else {
-        let parts = orderbook.split(orderId + ListSplitSymbol)
-
         ScriptResult(
             WriteSet([
-                DataEntry(OrderbookKey, parts[0] + parts[1]),
-                DataEntry(OrderStatusKey + orderId, CANCELED)
+                DataEntry(OrderbookKey, dropOrder(orderId)),
+                DataEntry(getOrderStatusKey(orderId), CANCELED)
             ]), 
             TransferSet([
                 ScriptTransfer(i.caller, amount, bondAssetId)
@@ -316,13 +391,14 @@ func cancelOrder(orderId : String) = {
 
 @Callable(i)
 func executeOrder() = {
-    let isBlackSwarm = throwIfBlackSwarm()
-    let orderId = orderbook.split(ListSplitSymbol)[0]
+    let orderId = orderbook.split(LISTSPLITSYMBOL)[0]
     let orderTotal = getOrderTotal(orderId)
     let orderOwner = getOrderOwner(orderId)
     let filledTotal = getOrderFilledTotal(orderId)
 
-    if(surplus <= 0) 
+    if(isBlocked)
+        then throw("contract is blocked") 
+    else if(surplus <= 0) 
         then throw("surplus is less than zero")
     else if(orderOwner == "") then {
         let newRpdCount = rpdCount + 1
@@ -331,7 +407,7 @@ func executeOrder() = {
                 DataEntry(getRPDProfitKey(newRpdCount), surplus)
             ]),
             TransferSet([
-                ScriptTransfer(addressFromStringValue(orderOwner), convertBondToNeutrino(surplus), neutrinoAssetId)
+                ScriptTransfer(addressFromStringValue(rpdContract), convertBondToNeutrino(surplus), neutrinoAssetId)
             ])
         )
     }
@@ -343,9 +419,9 @@ func executeOrder() = {
 
         ScriptResult(
             WriteSet([
-                DataEntry(OrderbookKey, orderbook.split(orderId + ListSplitSymbol)[1]),
-                DataEntry(OrderFilledTotalKey + orderId, filledTotal + newFilledTotal),
-                DataEntry(OrderStatusKey + orderId, status)
+                DataEntry(OrderbookKey, dropOrder(orderId)),
+                DataEntry(getOrderFilledTotalKey(orderId), filledTotal + newFilledTotal),
+                DataEntry(getOrderStatusKey(orderId), status)
             ]), 
             TransferSet([
                 ScriptTransfer(addressFromStringValue(orderOwner), convertBondToNeutrino(newFilledTotal), neutrinoAssetId)
