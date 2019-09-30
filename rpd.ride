@@ -56,6 +56,7 @@ let isClaimedKey = "is_claimed"
 
 func getLockHistoryKey(owner: String) = LockHistoryKey + "_" + owner
 func getNeutrinoRPDBalanceKey(owner: String) = NeutrinoRPDBalanceKey + "_" + owner
+func getNeutrinoRPDSnapshotBalanceKey(count: Int) = NeutrinoRPDBalanceKey + "_" +  toString(count)
 func getNeutrinoRPDBalanceKeyByCount(owner: String, count: Int) = NeutrinoRPDBalanceKey + "_" + owner + "_" + toString(count)
 func getBondRPDBalanceKey(owner: String) = BondRPDBalanceKey + "_" + owner
 func getBondRPDBalanceKeyByCount(owner: String, count: Int) = BondRPDBalanceKey + "_" + owner + "_" + toString(count)
@@ -71,6 +72,8 @@ let rpdCount = getNumberByAddressAndKey(neutrinoContract, RPDCountKey)
 #end global vars
 
 # get func
+
+func getNeutrinoRPDSnapshotBalance(count: Int) = getNumberByAddressAndKey(neutrinoContract, getNeutrinoRPDSnapshotBalanceKey(count))
 func getRPDProfit(count: Int) = getNumberByAddressAndKey(neutrinoContract, getRPDProfitKey(count))
 func getNeutrinoRPDBalance(owner : String) = getNumberByKey(getNeutrinoRPDBalanceKey(owner))
 func getBondRPDBalance(owner : String) = getNumberByKey(getBondRPDBalanceKey(owner))
@@ -94,8 +97,8 @@ func lockNeutrino() = {
     let balance = getNeutrinoRPDBalance(account) + pmt.amount
     let historyString = getLockHistory(account)
     let history = historyString.split(LISTSPLITSYMBOL)
-    let index = size(history) - 1;
-    let newHistory = if(parseIntValue(history[if(index < 0) then 0 else index]) == rpdCount) 
+    let index = size(history) - 2;
+    let newHistory = if(historyString != "" && parseIntValue(history[index]) == rpdCount) 
                         then historyString 
                      else (addBalanceHistory(historyString, getHistoryElement(rpdCount)))
     if (pmt.assetId != neutrinoAssetId) 
@@ -115,19 +118,22 @@ func unlockNeutrino(unlockAmount: Int) = {
     let balance = getNeutrinoRPDBalance(account) - unlockAmount
     let historyString = getLockHistory(account)
     let history = historyString.split(LISTSPLITSYMBOL)
-    let index = size(history) - 1;
-    let newHistory = if(parseIntValue(history[if(index < 0) then 0 else index]) == rpdCount) 
+    let index = size(history) - 2;
+    let newHistory = if(historyString != "" && parseIntValue(history[index]) == rpdCount) 
                         then historyString 
                      else (addBalanceHistory(historyString, getHistoryElement(rpdCount)))
     if (balance < 0) 
         then throw("invalid amount")
     else 
+    ScriptResult(
         WriteSet([
             DataEntry(NeutrinoRPDBalanceKey, neutrinoRPDBalance - unlockAmount),
             DataEntry(getNeutrinoRPDBalanceKey(account), balance),
             DataEntry(getNeutrinoRPDBalanceKeyByCount(account, rpdCount), balance),
             DataEntry(getLockHistoryKey(account), newHistory)
-        ])
+        ]),
+        TransferSet([ScriptTransfer(addressFromStringValue(account), unlockAmount, neutrinoAssetId)])
+    )
 }
 
 @Callable(i)
@@ -138,10 +144,10 @@ func withdrawRPD(rpd: Int, historyIndex: Int) = {
     let lockActual = parseIntValue(history[historyIndex])
     if(isClaimedRPD(account, rpd)) 
         then throw("account is claimed rpd_count:" + toString(rpd))
-    else if(rpd > lockActual || ( historyIndex + 1 < size(history) && rpd < parseIntValue(history[historyIndex+1]) ))
+    else if(rpd > lockActual || (historyIndex + 2 < size(history) && rpd < parseIntValue(history[historyIndex+1]) ))
         then throw("invalid history index")
     else {
-        let sharePercent = getNeutrinoRPDBalanceByCount(account, lockActual)*PERCENTACCURACY*100/neutrinoRPDBalance
+        let sharePercent = getNeutrinoRPDBalanceByCount(account, lockActual)*PERCENTACCURACY*100/getNeutrinoRPDSnapshotBalance(rpd)
         let profit = sharePercent*getRPDProfit(rpd)/100/PERCENTACCURACY
         
         ScriptResult(

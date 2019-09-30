@@ -15,7 +15,7 @@ let oracleThreeAddress = seed + "oracle_three"
 describe('Deploy', async function () {
     before(async function () {
         let accountOne = seed + "1"
-        var massTx = massTransfer({
+       /* var massTx = massTransfer({
             transfers: [
                 {
                     amount: 10 * wvs,
@@ -51,51 +51,12 @@ describe('Deploy', async function () {
         await broadcast(massTx);
         await waitForTx(massTx.id)
 
-        // issue Neutrino
-        const issueTx = issue({
-            name: 'EUR-N',
-            description: 'Neutrino EUR Alpha 0.0.1',
-            quantity: "100000000000000000",
-            decimals: 8
-        }, nc)
-
-        await broadcast(issueTx);
-        await waitForTx(issueTx.id)
-        assetId = issueTx.id;
-
-        // issue Bond
-        const issueBondTx = issue({
-            name: 'N-EURB',
-            description: 'Neutrino EUR Bond Alpha 0.0.1',
-            quantity: "1000000000",
-            decimals: 0
-        }, nc)
-
-        await broadcast(issueBondTx);
-        await waitForTx(issueBondTx.id)
-        bondAssetId = issueBondTx.id;
-
-        // set startup auction variable
-        const dataTx = data({
-            data: [
-                { key: 'neutrino_asset_id', value: assetId },
-                { key: 'neutrino_contract', value: address(nc) },
-                { key: 'bond_asset_id', value: bondAssetId }
-            ],
-
-            fee: 500000
-        }, ac);
-
         await broadcast(dataTx);
-        await waitForTx(dataTx.id)
+        await waitForTx(dataTx.id)*/
 
         // set startup neutrino  variable
         const neutrinoDataTx = data({
             data: [
-                { key: 'neutrino_asset_id', value: assetId },
-                { key: 'bond_asset_id', value: bondAssetId },
-                { key: 'auction_contract', value: address(ac) },
-                { key: "rpd_contract", value: address(rpd) },
                 { key: "balance_lock_interval", value: 1 },
                 { key: "vote_interval", value: 5 },
                 { key: "min_swap_amount", value: 100000000 },
@@ -106,26 +67,13 @@ describe('Deploy', async function () {
                 { key: 'oracle_2', value: address(oracleThreeAddress) },
                 { key: 'admin_0', value: address(oracleOneAddress) },
                 { key: 'admin_1', value: address(oracleTwoAddress) },
-                { key: 'admin_2', value: address(oracleThreeAddress) },
-                { key: 'price', value: 100 },
+                { key: 'admin_2', value: address(oracleThreeAddress) }
             ],
             fee: 500000
         }, nc);
 
         await broadcast(neutrinoDataTx);
         await waitForTx(neutrinoDataTx.id)
-
-        const rpdDataTx = data({ 
-            data: [
-                { key: 'neutrino_asset_id', value: assetId },
-                { key: 'neutrino_contract', value: address(nc)}
-            ],
-
-            fee: 500000
-        }, rpd);
-    
-        await broadcast(rpdDataTx);
-        await waitForTx(rpdDataTx.id)
     });
     it('Finalizing', async function () {
 

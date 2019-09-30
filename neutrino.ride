@@ -21,6 +21,12 @@ func getBoolByKey(key: String) = {
             case _ => false
     }
 }
+func getNumberByAddressAndKey(address: String, key: String) = {
+    match getInteger(addressFromStringValue(address), key) {
+            case a:Int => a
+            case _ => 0
+    }
+}
 #end base function
 
 # consts
@@ -57,6 +63,7 @@ let OrderFilledTotalKey = "order_filled_total_"
 let OrderStatusKey = "order_status_"
 let RPDCountKey = "rpd_count"
 let RPDProfitKey = "rpd_profit"
+let NeutrinoRPDBalanceKey = "neutrino_rpd"
 let IsBlockedKey = "is_blocked"
 let BlackSwarmPriceKey = "black_swarm_price"
 let AdminVoteKey = "admin_vote_"
@@ -78,6 +85,7 @@ func getOracleIsProvideKey(owner: String) = OracleIsProvideKey + owner
 func getOracleProvidePriceKey(owner: String) = OracleProvidePriceKey + owner
 
 
+func getNeutrinoRPDSnapshotBalanceKey(count: Int) = NeutrinoRPDBalanceKey + "_" +  toString(count)
 func getRPDProfitKey(count: Int) = RPDProfitKey + "_" + toString(count)
 func getNeutrinoBalanceKey(owner: String) = NeutrinoBalanceKey + owner
 func getWavesBalanceKey(owner: String) = WavesBalanceKey + owner
@@ -134,6 +142,7 @@ let oracleThree = getStringByKey(getOracleKey(2))
 let adminOne = getStringByKey(getAdminKey(0))
 let adminTwo = getStringByKey(getAdminKey(1))
 let adminThree = getStringByKey(getAdminKey(2))
+let neutrinoRPDBalance = getNumberByAddressAndKey(rpdContract, NeutrinoRPDBalanceKey)
 #end global vars
 
 # get func
@@ -404,10 +413,12 @@ func executeOrder() = {
         let newRpdCount = rpdCount + 1
         ScriptResult(
             WriteSet([
-                DataEntry(getRPDProfitKey(newRpdCount), surplus)
+                DataEntry(RPDCountKey, newRpdCount),
+                DataEntry(getRPDProfitKey(rpdCount), surplus),
+                DataEntry(getNeutrinoRPDSnapshotBalanceKey(rpdCount), neutrinoRPDBalance)
             ]),
             TransferSet([
-                ScriptTransfer(addressFromStringValue(rpdContract), convertBondToNeutrino(surplus), neutrinoAssetId)
+                ScriptTransfer(addressFromStringValue(rpdContract), surplus, neutrinoAssetId)
             ])
         )
     }
