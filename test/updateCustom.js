@@ -53,7 +53,7 @@ describe('Deploy', async function () {
 
         await broadcast(dataTx);
         await waitForTx(dataTx.id)*/
-
+        return;
         // set startup neutrino  variable
         const neutrinoDataTx = data({
             data: [
@@ -77,17 +77,18 @@ describe('Deploy', async function () {
     });
     it('Finalizing', async function () {
 
-        const script = compile(file('../auction.ride'));
-        const ssTx = setScript({ script: script, fee: 1400000 ,}, ac);
-              
-        await broadcast(ssTx);
-        await waitForTx(ssTx.id)
+       
         
         const scriptNeutrino = compile(file('../neutrino.ride'));
         const setNeutrinoScriptTx = setScript({ script: scriptNeutrino, fee: 1400000 ,}, nc);
         await broadcast(setNeutrinoScriptTx);
         await waitForTx(setNeutrinoScriptTx.id)
-
+        
+        const script = compile(file('../auction.ride'));
+        const ssTx = setScript({ script: script, fee: 1400000 ,}, ac);
+              
+        await broadcast(ssTx);
+        await waitForTx(ssTx.id)
         const scriptRPD = compile(file('../rpd.ride'));
         const scriptRPDTx = setScript({ script: scriptRPD, fee: 1400000 ,}, rpd);
         await broadcast(scriptRPDTx);

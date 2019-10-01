@@ -43,44 +43,43 @@ let PERCENTACCURACY = 10000
 
 #constructor 
 let NeutrinoAssetIdKey = "neutrino_asset_id"
+let BondAssetIdKey = "bond_asset_id"
 let NeutrinoContractKey = "neutrino_contract"
 #end constructor
  
 # keys
-let NeutrinoRPDBalanceKey = "neutrino_rpd"
-let BondRPDBalanceKey = "bond_rpd"
-let RPDCountKey = "rpd_count"
-let RPDProfitKey = "rpd_profit"
-let LockHistoryKey = "lock_history"
-let isClaimedKey = "is_claimed"
+let BalanceKey = "rpd_balance"
+let SyncIndexKey = "rpd_sync_index"
+let ProfitKey = "rpd_profit"
+let BalanceHistoryKey = "balance_history"
+let IsClaimedKey = "is_claimed"
 
-func getLockHistoryKey(owner: String) = LockHistoryKey + "_" + owner
-func getNeutrinoRPDBalanceKey(owner: String) = NeutrinoRPDBalanceKey + "_" + owner
-func getNeutrinoRPDSnapshotBalanceKey(count: Int) = NeutrinoRPDBalanceKey + "_" +  toString(count)
-func getNeutrinoRPDBalanceKeyByCount(owner: String, count: Int) = NeutrinoRPDBalanceKey + "_" + owner + "_" + toString(count)
-func getBondRPDBalanceKey(owner: String) = BondRPDBalanceKey + "_" + owner
-func getBondRPDBalanceKeyByCount(owner: String, count: Int) = BondRPDBalanceKey + "_" + owner + "_" + toString(count)
-func getIsClaimedRPDKey(owner: String, count: Int) = isClaimedKey + "_" + owner + "_" + toString(count)
-func getRPDProfitKey(count: Int) = RPDProfitKey + "_" + toString(count)
+func getUserBalanceHistoryKey(owner: String) = BalanceHistoryKey + "_" + owner
+func getUserBalanceKey(owner: String, assetId: String) = BalanceKey + "_" + assetId + "_" + owner
+func getUserBalanceKeyByCount(owner: String, count: Int, assetId: String) = getUserBalanceKey(owner, assetId) + "_" + toString(count)
+func getIsClaimedKey(owner: String, count: Int) = IsClaimedKey + "_" + owner + "_" + toString(count)
+
+func getContractBalanceKey(assetId: String) = BalanceKey + "_" + assetId
+func getSnapshotContractBalanceKey(count: Int, assetId: String) = BalanceKey + "_" + assetId + "_" + toString(count)
+func getProfitKey(count: Int) = ProfitKey + "_" + toString(count)
 #end keys
 
 #global vars
-let neutrinoRPDBalance = getNumberByKey(NeutrinoRPDBalanceKey)
 let neutrinoContract = getStringByKey(NeutrinoContractKey)
 let neutrinoAssetId = fromBase58String(getStringByAddressAndKey(neutrinoContract, NeutrinoAssetIdKey))
-let rpdCount = getNumberByAddressAndKey(neutrinoContract, RPDCountKey)
+let bondAssetId = fromBase58String(getStringByAddressAndKey(neutrinoContract, BondAssetIdKey))
+let syncIndex = getNumberByAddressAndKey(neutrinoContract, SyncIndexKey)
 #end global vars
 
 # get func
+func getContractBalance(assetId: String) = getNumberByKey(getContractBalanceKey(assetId))
+func getSnapshotContractBalance(count: Int, assetId: String) = getNumberByAddressAndKey(neutrinoContract, getSnapshotContractBalanceKey(count, assetId))
+func getProfit(count: Int) = getNumberByAddressAndKey(neutrinoContract, getProfitKey(count))
 
-func getNeutrinoRPDSnapshotBalance(count: Int) = getNumberByAddressAndKey(neutrinoContract, getNeutrinoRPDSnapshotBalanceKey(count))
-func getRPDProfit(count: Int) = getNumberByAddressAndKey(neutrinoContract, getRPDProfitKey(count))
-func getNeutrinoRPDBalance(owner : String) = getNumberByKey(getNeutrinoRPDBalanceKey(owner))
-func getBondRPDBalance(owner : String) = getNumberByKey(getBondRPDBalanceKey(owner))
-func getNeutrinoRPDBalanceByCount(owner : String, count: Int) = getNumberByKey(getNeutrinoRPDBalanceKeyByCount(owner, count))
-func getBondRPDBalanceByCount(owner : String, count: Int) = getNumberByKey(getBondRPDBalanceKeyByCount(owner, count))
-func isClaimedRPD(owner: String, count: Int) = getBoolByKey(getIsClaimedRPDKey(owner, count))
-func getLockHistory(owner: String) = getStringByKey(getLockHistoryKey(owner))
+func getUserBalance(owner : String, assetId: String) = getNumberByKey(getUserBalanceKey(owner, assetId))
+func getUserBalanceByCount(owner : String, count: Int, assetId: String) = getNumberByKey(getUserBalanceKeyByCount(owner, count, assetId))
+func getUserBalanceHistory(owner: String) = getStringByKey(getUserBalanceHistoryKey(owner))
+func isClaimed(owner: String, count: Int) = getBoolByKey(getIsClaimedKey(owner, count))
 #end get func
 
 func getHistoryElement(count: Int) = {
@@ -92,66 +91,76 @@ func addBalanceHistory(history: String, element: String) = {
 
 @Callable(i)
 func lockNeutrino() = {
-    let account = toString(i.caller)
     let pmt = extract(i.payment)
-    let balance = getNeutrinoRPDBalance(account) + pmt.amount
-    let historyString = getLockHistory(account)
-    let history = historyString.split(LISTSPLITSYMBOL)
-    let index = size(history) - 2;
-    let newHistory = if(historyString != "" && parseIntValue(history[index]) == rpdCount) 
+    if (pmt.assetId != neutrinoAssetId && pmt.assetId != bondAssetId) 
+        then throw("can use neutrino or bond only")
+    else {
+        let account = toString(i.caller)
+        let assetIdString = toBase58String(value(pmt.assetId))
+        let balance = getUserBalance(account, assetIdString) + pmt.amount
+        let historyString = getUserBalanceHistory(account)
+        let history = historyString.split(LISTSPLITSYMBOL)
+        let index = size(history) - 2;
+        let newHistory = if(historyString != "" && parseIntValue(history[index]) == syncIndex) 
                         then historyString 
-                     else (addBalanceHistory(historyString, getHistoryElement(rpdCount)))
-    if (pmt.assetId != neutrinoAssetId) 
-        then throw("can use neutrino only")
-    else 
+                    else (addBalanceHistory(historyString, getHistoryElement(syncIndex)))
         WriteSet([
-            DataEntry(NeutrinoRPDBalanceKey, neutrinoRPDBalance + pmt.amount),
-            DataEntry(getNeutrinoRPDBalanceKey(account), balance),
-            DataEntry(getNeutrinoRPDBalanceKeyByCount(account, rpdCount), balance),
-            DataEntry(getLockHistoryKey(account), newHistory)
+            DataEntry(getContractBalanceKey(assetIdString), getContractBalance(assetIdString) + pmt.amount),
+            DataEntry(getUserBalanceKey(account, assetIdString), balance),
+            DataEntry(getUserBalanceKeyByCount(account, syncIndex, assetIdString), balance),
+            DataEntry(getUserBalanceHistoryKey(account), newHistory)
         ])
+    }
 }
 
 @Callable(i)
-func unlockNeutrino(unlockAmount: Int) = {
+func unlockNeutrino(unlockAmount: Int, assetIdString: String) = {
     let account = toString(i.caller)
-    let balance = getNeutrinoRPDBalance(account) - unlockAmount
-    let historyString = getLockHistory(account)
-    let history = historyString.split(LISTSPLITSYMBOL)
-    let index = size(history) - 2;
-    let newHistory = if(historyString != "" && parseIntValue(history[index]) == rpdCount) 
-                        then historyString 
-                     else (addBalanceHistory(historyString, getHistoryElement(rpdCount)))
+    let assetId = fromBase58String(assetIdString)
+    let balance = getUserBalance(account, assetIdString) - unlockAmount
     if (balance < 0) 
         then throw("invalid amount")
-    else 
-    ScriptResult(
-        WriteSet([
-            DataEntry(NeutrinoRPDBalanceKey, neutrinoRPDBalance - unlockAmount),
-            DataEntry(getNeutrinoRPDBalanceKey(account), balance),
-            DataEntry(getNeutrinoRPDBalanceKeyByCount(account, rpdCount), balance),
-            DataEntry(getLockHistoryKey(account), newHistory)
-        ]),
-        TransferSet([ScriptTransfer(addressFromStringValue(account), unlockAmount, neutrinoAssetId)])
-    )
+    else if(assetId != neutrinoAssetId && assetId != bondAssetId)
+        then throw("can use neutrino or bond only")
+    else {
+        let historyString = getUserBalanceHistory(account)
+        let history = historyString.split(LISTSPLITSYMBOL)
+        let index = size(history) - 2;
+        let newHistory = if(historyString != "" && parseIntValue(history[index]) == syncIndex) 
+                        then historyString 
+                     else (addBalanceHistory(historyString, getHistoryElement(syncIndex)))
+        ScriptResult(
+            WriteSet([
+                DataEntry(BalanceKey, getContractBalance(assetIdString) - unlockAmount),
+                DataEntry(getUserBalanceKey(account, assetIdString), balance),
+                DataEntry(getUserBalanceKeyByCount(account, syncIndex, assetIdString), balance),
+                DataEntry(getUserBalanceHistoryKey(account), newHistory)
+            ]),
+            TransferSet([ScriptTransfer(addressFromStringValue(account), unlockAmount, neutrinoAssetId)])
+        )
+    }
 }
 
 @Callable(i)
-func withdrawRPD(rpd: Int, historyIndex: Int) = {
+func withdrawRPD(profitSyncIndex: Int, historyIndex: Int) = {
     let account = toString(i.caller)
-    let historyString = getLockHistory(account)
+    let historyString = getUserBalanceHistory(account)
     let history = historyString.split(LISTSPLITSYMBOL)
     let lockActual = parseIntValue(history[historyIndex])
-    if(isClaimedRPD(account, rpd)) 
-        then throw("account is claimed rpd_count:" + toString(rpd))
-    else if(rpd > lockActual || (historyIndex + 2 < size(history) && rpd < parseIntValue(history[historyIndex+1]) ))
+
+    if(isClaimed(account, profitSyncIndex)) 
+        then throw("account is claimed rpd_count:" + toString(profitSyncIndex))
+    else if(profitSyncIndex > lockActual || (historyIndex + 2 < size(history) && profitSyncIndex < parseIntValue(history[historyIndex+1]) ))
         then throw("invalid history index")
     else {
-        let sharePercent = getNeutrinoRPDBalanceByCount(account, lockActual)*PERCENTACCURACY*100/getNeutrinoRPDSnapshotBalance(rpd)
-        let profit = sharePercent*getRPDProfit(rpd)/100/PERCENTACCURACY
+        let neutrinoAssetIdString = toBase58String(neutrinoAssetId)
+        let bondAssetIdString = toBase58String(bondAssetId)
+        let balance = getUserBalanceByCount(account, lockActual, neutrinoAssetIdString) + getUserBalanceByCount(account, lockActual, bondAssetIdString)
+        let sharePercent = balance*PERCENTACCURACY*100/(getSnapshotContractBalance(profitSyncIndex, neutrinoAssetIdString) + getSnapshotContractBalance(profitSyncIndex, bondAssetIdString))
+        let profit = sharePercent*getProfit(profitSyncIndex)/100/PERCENTACCURACY
         
         ScriptResult(
-            WriteSet([DataEntry(getIsClaimedRPDKey(account, rpd), true)]),
+            WriteSet([DataEntry(getIsClaimedKey(account, profitSyncIndex), true)]),
             TransferSet([ScriptTransfer(addressFromStringValue(account), profit, neutrinoAssetId)])
         )
     }

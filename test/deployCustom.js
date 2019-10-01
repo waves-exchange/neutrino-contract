@@ -56,7 +56,8 @@ describe('Deploy', async function () {
             name: 'EUR-N',
             description: 'Neutrino EUR Alpha 0.0.1',
             quantity: "100000000000000000",
-            decimals: 8
+            decimals: 8,
+            fee: 100400000
         }, nc)
 
         await broadcast(issueTx);
@@ -68,7 +69,8 @@ describe('Deploy', async function () {
             name: 'N-EURB',
             description: 'Neutrino EUR Bond Alpha 0.0.1',
             quantity: "1000000000",
-            decimals: 0
+            decimals: 0,
+            fee: 100400000
         }, nc)
 
         await broadcast(issueBondTx);

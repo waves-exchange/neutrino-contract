@@ -61,9 +61,9 @@ let OrderOwnerKey = "order_owner_"
 let OrderHeightKey = "order_height_"
 let OrderFilledTotalKey = "order_filled_total_"
 let OrderStatusKey = "order_status_"
-let RPDCountKey = "rpd_count"
+let RPDSyncIndexKey = "rpd_sync_index"
 let RPDProfitKey = "rpd_profit"
-let NeutrinoRPDBalanceKey = "neutrino_rpd"
+let RPDBalanceKey = "rpd_balance"
 let IsBlockedKey = "is_blocked"
 let BlackSwarmPriceKey = "black_swarm_price"
 let AdminVoteKey = "admin_vote_"
@@ -84,8 +84,8 @@ func getOracleKey(count: Int) = OracleKey + toString(count)
 func getOracleIsProvideKey(owner: String) = OracleIsProvideKey + owner
 func getOracleProvidePriceKey(owner: String) = OracleProvidePriceKey + owner
 
-
-func getNeutrinoRPDSnapshotBalanceKey(count: Int) = NeutrinoRPDBalanceKey + "_" +  toString(count)
+func getRPDSnapshotContractBalanceKey(count: Int, assetId: ByteVector) = RPDBalanceKey + "_" + toBase58String(assetId) + "_" + toString(count)
+func getRPDContractBalanceKey(assetId: ByteVector) = RPDBalanceKey + "_" + toBase58String(assetId)
 func getRPDProfitKey(count: Int) = RPDProfitKey + "_" + toString(count)
 func getNeutrinoBalanceKey(owner: String) = NeutrinoBalanceKey + owner
 func getWavesBalanceKey(owner: String) = WavesBalanceKey + owner
@@ -115,7 +115,7 @@ let providingInterval = getNumberByKey(ProvidingIntervalKey)
 let blockExpireProviding = getNumberByKey(BlockExpireProvidingKey)
 let isPricePending = getBoolByKey(IsPricePendingKey)
 let percentPriceOffset = getNumberByKey(PriceOffsetKey)
-let rpdCount = getNumberByKey(RPDCountKey)
+let rpdSyncIndex = getNumberByKey(RPDSyncIndexKey)
 let voteInterval = getNumberByKey(VoteIntervalKey)
 let blockExpireVote = getNumberByKey(BlockExpireVoteKey)
 let balanceLockInterval = getNumberByKey(BalanceLockIntervalKey)
@@ -142,10 +142,11 @@ let oracleThree = getStringByKey(getOracleKey(2))
 let adminOne = getStringByKey(getAdminKey(0))
 let adminTwo = getStringByKey(getAdminKey(1))
 let adminThree = getStringByKey(getAdminKey(2))
-let neutrinoRPDBalance = getNumberByAddressAndKey(rpdContract, NeutrinoRPDBalanceKey)
 #end global vars
 
 # get func
+func getRPDContractBalance(assetId: ByteVector) = getNumberByAddressAndKey(rpdContract, getRPDContractBalanceKey(assetId))
+
 func getAdminVoteInt(owner: String) = if(getBoolByKey(getAdminVoteKey(owner))) then 1 else 0
 func getAdminVotePrice(owner: String) = getNumberByKey(getAdminVotePriceKey(owner))
 func isOracleProvide(owner: String) = getBoolByKey(getOracleIsProvideKey(owner))
@@ -301,11 +302,9 @@ func swapWavesToNeutrino() = {
     else if(isBlocked)
         then throw("contract is blocked")
     else{
-        let account = toBase58String(i.caller.bytes)
         let amount = convertWavesToNeutrino(pmt.amount)
-        WriteSet([
-            DataEntry(getNeutrinoBalanceKey(account),  getNeutrinoBalance(account) + amount),
-            DataEntry(getBalanceUnlockBlockKey(account), height + balanceLockInterval)
+        TransferSet([
+            ScriptTransfer(i.caller, amount, neutrinoAssetId)
         ])
     }
 }
@@ -410,12 +409,13 @@ func executeOrder() = {
     else if(surplus <= 0) 
         then throw("surplus is less than zero")
     else if(orderOwner == "") then {
-        let newRpdCount = rpdCount + 1
+        let newRpdSyncIndex = rpdSyncIndex + 1
         ScriptResult(
             WriteSet([
-                DataEntry(RPDCountKey, newRpdCount),
-                DataEntry(getRPDProfitKey(rpdCount), surplus),
-                DataEntry(getNeutrinoRPDSnapshotBalanceKey(rpdCount), neutrinoRPDBalance)
+                DataEntry(RPDSyncIndexKey, newRpdSyncIndex),
+                DataEntry(getRPDProfitKey(rpdSyncIndex), surplus),
+                DataEntry(getRPDSnapshotContractBalanceKey(rpdSyncIndex, neutrinoAssetId), getRPDContractBalance(neutrinoAssetId)),
+                DataEntry(getRPDSnapshotContractBalanceKey(rpdSyncIndex, bondAssetId), getRPDContractBalance(bondAssetId))
             ]),
             TransferSet([
                 ScriptTransfer(addressFromStringValue(rpdContract), surplus, neutrinoAssetId)
