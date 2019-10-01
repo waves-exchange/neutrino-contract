@@ -142,7 +142,7 @@ func unlockNeutrino(unlockAmount: Int, assetIdString: String) = {
 }
 
 @Callable(i)
-func withdrawRPD(profitSyncIndex: Int, historyIndex: Int) = {
+func withdraw(profitSyncIndex: Int, historyIndex: Int) = {
     let account = toString(i.caller)
     let historyString = getUserBalanceHistory(account)
     let history = historyString.split(LISTSPLITSYMBOL)
