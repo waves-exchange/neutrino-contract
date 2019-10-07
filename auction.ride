@@ -21,11 +21,17 @@ func getStringByKey(key: String) = {
             case _ => ""
     }
 }
+func getStringByAddressAndKey(address: String, key: String) = {
+   match getString(this, key) {
+            case a:String => a
+            case _ => ""
+    }
+}
 #end base function
 
 # consts
 let ORDERSPLITSYMBOL = "_"
-let WAVELET = 100000000
+let CENTSINDOLLAR = 100
 let CANCELED = "canceled"
 let NEW = "new"
 let FILLED = "filled"
@@ -53,10 +59,10 @@ func getOrderFilledTotalKey(orderId: String) = OrderFilledTotalKey + orderId
 #end keys
 
 # global vars
-let neutrinoAssetId = fromBase58String(getStringByKey(NeutrinoAssetIdKey))
-let bondAssetId = fromBase58String(getStringByKey(BondAssetIdKey))
 let neutrinoContract = getStringByKey(NeutrinoContractKey)
 let price = getNumberByAddressAndKey(neutrinoContract, PriceKey)
+let neutrinoAssetId = fromBase58String(getStringByAddressAndKey(neutrinoContract, NeutrinoAssetIdKey))
+let bondAssetId = fromBase58String(getStringByAddressAndKey(neutrinoContract, BondAssetIdKey))
 let orderbook = getStringByKey(OrderBookKey)
 let reserve = wavesBalance(addressFromStringValue(neutrinoContract))
 let neutrinoSupply = {
@@ -153,7 +159,7 @@ func cancelOrder(orderId : String) = {
 @Callable(i)
 func executeOrder() = {
     let bondBalance = assetBalance(this, bondAssetId)
-    let deficit = (neutrinoSupply - reserve*price/100)/WAVELET
+    let deficit = (neutrinoSupply - reserve*price/100)/CENTSINDOLLAR
     let deficitPositive = if(deficit <= 0) then 0 else deficit
     let bondAmount = if(deficitPositive >= bondBalance) then bondBalance else deficitPositive
     let returnAmount = if(deficitPositive >= bondBalance) then 0 else bondBalance-deficitPositive
@@ -169,12 +175,12 @@ func executeOrder() = {
         let orderTotal = getOrderTotal(orderId)
         let orderPrice = getOrderPrice(orderId)
         let orderOwner = getOrderOwner(orderId)
-        let amount = (orderTotal-filledTotal)*100/orderPrice/WAVELET;
+        let amount = (orderTotal-filledTotal)*100/orderPrice/CENTSINDOLLAR;
     
         let newOrderbook = if(bondAmount >= amount) then dropOrder(orderId) else orderbook
         let filledAmount = if(bondAmount >= amount) then amount else bondAmount
 
-        let total = filledAmount*orderPrice/100*WAVELET;
+        let total = filledAmount*orderPrice/100*CENTSINDOLLAR;
 
         let status = if(bondAmount >= amount) then FILLED else NEW
 

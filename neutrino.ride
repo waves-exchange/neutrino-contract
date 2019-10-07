@@ -40,6 +40,7 @@ func getStringByAddressAndKey(address: String, key: String) = {
 let LISTSPLITSYMBOL = "_"
 let LISTDATASYMBOL = "+"
 let WAVELET = 100000000
+let CENTSINDOLLAR = 100
 let CANCELED = "canceled"
 let NEW = "new"
 let FILLED = "filled"
@@ -52,7 +53,8 @@ let AuctionContractKey = "auction_contract"
 let RPDContractKey = "rpd_contract"
 let BalanceLockIntervalKey = "balance_lock_interval"
 let VoteIntervalKey = "vote_interval"
-let MinSwapAmountKey = "min_swap_amount"
+let MinWavesSwapAmountKey = "min_waves_swap_amount"
+let MinNeutrinoSwapAmountKey = "min_neutrino_swap_amount"
 let PriceOffsetKey = "price_offset"
 let ProvidingIntervalKey = "providing_interval"
 #end constructor
@@ -115,10 +117,10 @@ func getOrderFilledTotalKey(orderId: String) = OrderFilledTotalKey + orderId
 let price = getNumberByKey(PriceKey)
 
 #convert func
-func convertNeutrinoToWaves(amount: Int) = amount*100/price 
-func convertWavesToNeutrino(amount: Int) = amount*price/100 
-func convertNeutrinoToBond(amount: Int) = amount/WAVELET 
-func convertBondToNeutrino(amount: Int) = amount*WAVELET 
+func convertNeutrinoToWaves(amount: Int) = amount*100/price*WAVELET/CENTSINDOLLAR
+func convertWavesToNeutrino(amount: Int) = amount*price/100*CENTSINDOLLAR/WAVELET 
+func convertNeutrinoToBond(amount: Int) = amount/CENTSINDOLLAR 
+func convertBondToNeutrino(amount: Int) = amount*CENTSINDOLLAR 
 func convertWavesToBond(amount: Int) = convertNeutrinoToBond(convertWavesToNeutrino(amount))
 #end convert func
 
@@ -132,7 +134,8 @@ let voteInterval = getNumberByKey(VoteIntervalKey)
 let blockExpireVote = getNumberByKey(BlockExpireVoteKey)
 let balanceLockInterval = getNumberByKey(BalanceLockIntervalKey)
 let isBlocked = getBoolByKey(IsBlockedKey)
-let minSwapAmount = getNumberByKey(MinSwapAmountKey)
+let minWavesSwapAmount = getNumberByKey(MinWavesSwapAmountKey)
+let minNeutrinoSwapAmount = getNumberByKey(MinNeutrinoSwapAmountKey)
 let neutrinoAssetId = fromBase58String(getStringByKey(NeutrinoAssetIdKey))
 let auctionContract = getStringByKey(AuctionContractKey)
 let rpdContract = getStringByKey(RPDContractKey)
@@ -310,7 +313,7 @@ func adminLock() = {
 @Callable(i)
 func swapWavesToNeutrino() = {
     let pmt = extract(i.payment)
-    if (pmt.amount < minSwapAmount)
+    if (pmt.amount < minWavesSwapAmount)
         then throw("amount less min")
     else if (isDefined(pmt.assetId)) 
         then throw("can use waves only")
@@ -327,7 +330,7 @@ func swapWavesToNeutrino() = {
 @Callable(i)
 func swapNeutrinoToWaves() = {
     let pmt = extract(i.payment)
-    if (pmt.amount < minSwapAmount)
+    if (pmt.amount < minNeutrinoSwapAmount)
         then throw("amount less min")
     else if(isBlocked)
         then throw("contract is blocked")
@@ -480,7 +483,7 @@ func executeOrder() = {
 }
 
 @Callable(i)
-func transfer (account: String) = {
+func transfer(account: String) = {
     let pmt = extract(i.payment)
     if (isDefined(pmt.assetId))
         then throw("can use waves only at the moment")
