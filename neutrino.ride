@@ -479,6 +479,14 @@ func executeOrder() = {
     }
 }
 
+@Callable(i)
+func transfer (account: String) = {
+    let pmt = extract(i.payment)
+    if (isDefined(pmt.assetId))
+        then throw("can use waves only at the moment")
+    else TransferSet([ScriptTransfer(addressFromStringValue(account), pmt.amount, unit)])
+}
+
 @Verifier(tx)
 func verify() = {
     match tx {
