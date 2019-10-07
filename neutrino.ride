@@ -27,6 +27,13 @@ func getNumberByAddressAndKey(address: String, key: String) = {
             case _ => 0
     }
 }
+
+func getStringByAddressAndKey(address: String, key: String) = {
+     match getString(this, key) {
+            case a:String => a
+            case _ => ""
+    }
+}
 #end base function
 
 # consts
@@ -75,6 +82,8 @@ let OracleKey = "oracle_"
 let OracleIsProvideKey = "oracle_is_provide_"
 let OracleProvidePriceKey = "oracle_price_provide_"
 let BlockExpireProvidingKey = "providing_expire_block"
+let ApprovedLeaseTxKey = "leasetx"
+let IsLeasingProfitTxExistKey = "is_leasing_profit"
 
 func getAdminKey(count: Int) = AdminKey + toString(count)
 func getAdminVoteKey(owner: String) = AdminVoteKey + owner
@@ -92,6 +101,9 @@ func getWavesBalanceKey(owner: String) = WavesBalanceKey + owner
 func getBalanceUnlockBlockKey(owner: String) = BalanceUnlockBlockKey + owner
 func getBlackSwarmPriceKey(block: Int) = BlackSwarmPriceKey + "_" + toString(block)
 func getPriceHistoryKey(block: Int) = PriceKey + "_" + toString(block)
+
+func getOwnerPubKeyByLeaseTxIdKey(txId: String) = ApprovedLeaseTxKey + "_" + txId
+func getIsLeasingProfitTxExistKey(txId: String) = IsLeasingProfitTxExistKey + "_" + txId
 
 func getOrderTotalKey(orderId: String) = OrderTotalKey + orderId
 func getOrderOwnerKey(orderId: String) = OrderOwnerKey + orderId
@@ -145,7 +157,10 @@ let adminThree = getStringByKey(getAdminKey(2))
 #end global vars
 
 # get func
+func getOwnerPubKeyByLeaseTxId(owner: String) = getStringByAddressAndKey(rpdContract, getOwnerPubKeyByLeaseTxIdKey(owner))
+
 func getRPDContractBalance(assetId: ByteVector) = getNumberByAddressAndKey(rpdContract, getRPDContractBalanceKey(assetId))
+func isLeasingProfitTxExist(txId: String) = getBoolByKey(getIsLeasingProfitTxExistKey(txId))
 
 func getAdminVoteInt(owner: String) = if(getBoolByKey(getAdminVoteKey(owner))) then 1 else 0
 func getAdminVotePrice(owner: String) = getNumberByKey(getAdminVotePriceKey(owner))
@@ -398,6 +413,29 @@ func cancelOrder(orderId : String) = {
 }
 
 @Callable(i)
+func addLeasingCheck(id: String) = {
+    let tx = value(transferTransactionById(fromBase58String(id)))
+    if(tx.recipient != addressFromStringValue(rpdContract) || isLeasingProfitTxExist(id))
+        then throw("invalid transaction id")
+    else {
+        let amount = convertWavesToNeutrino(tx.amount)
+        let newRpdSyncIndex = rpdSyncIndex + 1
+        ScriptResult(
+            WriteSet([
+                DataEntry(RPDSyncIndexKey, newRpdSyncIndex),
+                DataEntry(getRPDProfitKey(rpdSyncIndex), amount),
+                DataEntry(getRPDSnapshotContractBalanceKey(rpdSyncIndex, neutrinoAssetId), getRPDContractBalance(neutrinoAssetId)),
+                DataEntry(getRPDSnapshotContractBalanceKey(rpdSyncIndex, bondAssetId), getRPDContractBalance(bondAssetId)),
+                DataEntry(getIsLeasingProfitTxExistKey(id), true)
+            ]),
+            TransferSet([
+                ScriptTransfer(addressFromStringValue(rpdContract), amount, neutrinoAssetId)
+            ])
+        )
+    }
+}
+
+@Callable(i)
 func executeOrder() = {
     let orderId = orderbook.split(LISTSPLITSYMBOL)[0]
     let orderTotal = getOrderTotal(orderId)
@@ -441,3 +479,14 @@ func executeOrder() = {
     }
 }
 
+@Verifier(tx)
+func verify() = {
+    match tx {
+        case leaseTx: LeaseTransaction =>
+            sigVerify(tx.bodyBytes, tx.proofs[0], fromBase58String(getOwnerPubKeyByLeaseTxId(toBase58String(leaseTx.id))))
+        case unleaseTx: LeaseCancelTransaction =>
+            sigVerify(tx.bodyBytes, tx.proofs[0], fromBase58String(getOwnerPubKeyByLeaseTxId(toBase58String(unleaseTx.leaseId))))
+        case _ => 
+            sigVerify(tx.bodyBytes, tx.proofs[0], tx.senderPublicKey)
+    }
+}

@@ -45,6 +45,7 @@ let PERCENTACCURACY = 10000
 let NeutrinoAssetIdKey = "neutrino_asset_id"
 let BondAssetIdKey = "bond_asset_id"
 let NeutrinoContractKey = "neutrino_contract"
+let NodeAddressKey = "node_address"
 #end constructor
  
 # keys
@@ -53,18 +54,28 @@ let SyncIndexKey = "rpd_sync_index"
 let ProfitKey = "rpd_profit"
 let BalanceHistoryKey = "balance_history"
 let IsClaimedKey = "is_claimed"
+let ApprovedLeaseTxKey = "leasetx"
+let ApprovedLeaseAmountKey = "leasetx_amount"
 
 func getUserBalanceHistoryKey(owner: String) = BalanceHistoryKey + "_" + owner
 func getUserBalanceKey(owner: String, assetId: String) = BalanceKey + "_" + assetId + "_" + owner
 func getUserBalanceKeyByCount(owner: String, count: Int, assetId: String) = getUserBalanceKey(owner, assetId) + "_" + toString(count)
 func getIsClaimedKey(owner: String, count: Int) = IsClaimedKey + "_" + owner + "_" + toString(count)
+func getApprovedLeaseTxByOwnerKey(owner: String) = ApprovedLeaseTxKey + "_" + owner
+func getOwnerPubKeyByLeaseTxIdKey(txId: String) = ApprovedLeaseTxKey + "_" + txId
+func getApprovedLeaseAmountByOwnerKey(owner: String) = ApprovedLeaseAmountKey + "_" + owner
 
 func getContractBalanceKey(assetId: String) = BalanceKey + "_" + assetId
 func getSnapshotContractBalanceKey(count: Int, assetId: String) = BalanceKey + "_" + assetId + "_" + toString(count)
 func getProfitKey(count: Int) = ProfitKey + "_" + toString(count)
+func getApprovedLeaseTxByOwner(owner: String) = getStringByKey(getApprovedLeaseTxByOwnerKey(owner))
+func getApprovedLeaseAmountByOwner(owner: String) = getNumberByKey(getApprovedLeaseAmountByOwnerKey(owner))
+func getOwnerPubKeyByLeaseTxId(txId: String) = getStringByKey(getOwnerPubKeyByLeaseTxIdKey(txId))
+
 #end keys
 
 #global vars
+let nodeAddress = getStringByKey(NodeAddressKey)
 let neutrinoContract = getStringByKey(NeutrinoContractKey)
 let neutrinoAssetId = fromBase58String(getStringByAddressAndKey(neutrinoContract, NeutrinoAssetIdKey))
 let bondAssetId = fromBase58String(getStringByAddressAndKey(neutrinoContract, BondAssetIdKey))
@@ -114,11 +125,62 @@ func lockNeutrino() = {
 }
 
 @Callable(i)
+func registrationLeaseTx(amount: Int, fee: Int, timestamp: Int, proof: String) = {
+    let addressPubKey = i.callerPublicKey 
+    let address = toString(i.caller)
+    let txBytes = base64'CAIA' + fromBase58String(neutrinoContract) + fromBase58String(nodeAddress) + toBytes(amount) + toBytes(fee) + toBytes(timestamp)
+    let isValid = sigVerify(txBytes, fromBase58String(proof), addressPubKey)
+    let balance = getUserBalance(address, toBase58String(neutrinoAssetId))
+    if (!isValid)
+        then throw("sign is not valid")
+    else if(fee > 500000)
+        then throw("invalid fee")
+    else if(amount != balance || amount == 0)
+        then throw("invalid amount")
+    else if(getApprovedLeaseTxByOwner(address) != "")
+        then throw("leaseTx is exist")
+    else {
+        let txHash = toBase58String(blake2b256(txBytes))
+        WriteSet([
+            DataEntry(getApprovedLeaseTxByOwnerKey(address), txHash),
+            DataEntry(getApprovedLeaseAmountByOwnerKey(address), balance),
+            DataEntry(getOwnerPubKeyByLeaseTxId(txHash), addressPubKey)
+        ])
+    }
+}
+
+
+@Callable(i)
+func registrationUnleaseTx(chainIdBase64: String, fee: Int, timestamp: Int, proof: String) = {
+    let addressPubKey = i.callerPublicKey 
+    let address = toString(i.caller)
+    let leaseTxHash = getApprovedLeaseTxByOwner(address)
+    let txBytes = base64'CQI=' + fromBase64String(chainIdBase64) + fromBase58String(neutrinoContract) + toBytes(fee) + toBytes(timestamp) +  fromBase58String(leaseTxHash)
+    let isValid = sigVerify(txBytes, fromBase58String(proof), addressPubKey)
+    let txHash = blake2b256(txBytes)
+    if (!isValid)
+        then throw("sign is not valid")
+    else if(transactionHeightById(txHash) == 0)
+        then throw("blockchain does not contain this transaction")
+    else if(fee > 500000)
+        then throw("invalid fee")
+    else if(getApprovedLeaseTxByOwner(address) != "")
+        then throw("leaseTx is exist")
+    else {
+        WriteSet([
+            DataEntry(getApprovedLeaseTxByOwnerKey(address), ""),
+            DataEntry(getApprovedLeaseAmountByOwnerKey(address), 0)
+        ])
+    }
+}
+
+@Callable(i)
 func unlockNeutrino(unlockAmount: Int, assetIdString: String) = {
     let account = toString(i.caller)
     let assetId = fromBase58String(assetIdString)
     let balance = getUserBalance(account, assetIdString) - unlockAmount
-    if (balance < 0) 
+    let availableBalance = balance - getApprovedLeaseAmountByOwner(account)
+    if (availableBalance < 0) 
         then throw("invalid amount")
     else if(assetId != neutrinoAssetId && assetId != bondAssetId)
         then throw("can use neutrino or bond only")
