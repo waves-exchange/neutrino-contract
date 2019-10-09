@@ -5,10 +5,6 @@ let main = "waves private node seed with waves tokens"
 let seed = "minute sail fortune shuffle gun submit reveal few fever nest chunk slow actor peanut warm"
 let nc = seed + "neutrino"
 let ac = seed + "auction"
-let rpd = seed + "rpd"
-//minute sail fortune shuffle gun submit reveal few fever nest chunk slow actor peanut warmoracle_one
-//minute sail fortune shuffle gun submit reveal few fever nest chunk slow actor peanut warmoracle_two
-//minute sail fortune shuffle gun submit reveal few fever nest chunk slow actor peanut warmoracle_three
 let oracleOneAddress = seed + "oracle_one"
 let oracleTwoAddress = seed + "oracle_two"
 let oracleThreeAddress = seed + "oracle_three"
@@ -36,10 +32,6 @@ describe('Deploy', async function () {
                 {
                     amount: 10 * wvs,
                     recipient: address(oracleThreeAddress),
-                },
-                {
-                    amount: 10 * wvs,
-                    recipient: address(rpd)
                 },
                 {
                     amount: 10 * wvs,
@@ -97,7 +89,6 @@ describe('Deploy', async function () {
                 { key: 'neutrino_asset_id', value: assetId },
                 { key: 'bond_asset_id', value: bondAssetId },
                 { key: 'auction_contract', value: address(ac) },
-                { key: "rpd_contract", value: address(rpd) },
                 { key: "balance_lock_interval", value: 1 },
                 { key: "vote_interval", value: 5 },
                 { key: "min_swap_amount", value: 100000000 },
@@ -117,17 +108,6 @@ describe('Deploy', async function () {
         await broadcast(neutrinoDataTx);
         await waitForTx(neutrinoDataTx.id)
 
-        const rpdDataTx = data({ 
-            data: [
-                { key: 'neutrino_asset_id', value: assetId },
-                { key: 'neutrino_contract', value: address(nc)}
-            ],
-
-            fee: 500000
-        }, rpd);
-    
-        await broadcast(rpdDataTx);
-        await waitForTx(rpdDataTx.id)
     });
     it('Finalizing', async function () {
 
@@ -141,12 +121,6 @@ describe('Deploy', async function () {
         const setNeutrinoScriptTx = setScript({ script: scriptNeutrino, fee: 1400000 ,}, nc);
         await broadcast(setNeutrinoScriptTx);
         await waitForTx(setNeutrinoScriptTx.id)
-
-        const scriptRPD = compile(file('../rpd.ride'));
-        const scriptRPDTx = setScript({ script: scriptRPD, fee: 1400000 ,}, rpd);
-        await broadcast(scriptRPDTx);
-        await waitForTx(scriptRPDTx.id)
-        console.log('Script has been set')
 
     })
 })
