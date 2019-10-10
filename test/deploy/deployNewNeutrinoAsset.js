@@ -1,24 +1,68 @@
 const wvs = 10 ** 8;
+
 const symbolNeutrino = "BTC-N"
 const symbolBond = "BTC-NB"
 const descriptionNeutrino = "Bitcoin neutrino asset" 
 const descriptionBond = "Bitcoin neutrino bond asset" 
 
+const accounts = 
+    {
+        oracleOne: wavesCrypto.randomSeed(),
+        oracleTwo: wavesCrypto.randomSeed(),
+        oracleThree: wavesCrypto.randomSeed(),
+        adminOne: wavesCrypto.randomSeed(),
+        adminTwo: wavesCrypto.randomSeed(),
+        adminThree: wavesCrypto.randomSeed(),
+        auctionContract: wavesCrypto.randomSeed(),
+        neutrinoContract: wavesCrypto.randomSeed(),
+        rpdContract: wavesCrypto.randomSeed()
+    }
 describe('Deploy', async function () {
     before(async function () {
-        await setupAccounts(
-            {
-                oracleOne: 0,
-                oracleTwo: 0,
-                oracleThree: 0,
-                adminOne: 0,
-                adminTwo: 0,
-                adminThree: 0,
-                auctionContract: 1500000,
-                neutrinoContract: 201500000,
-                rpdContract: 1500000
-            }
-        );
+        var massTx = massTransfer({
+            transfers: [
+                {
+                    amount: 1500000,
+                    recipient: address(accounts.auctionContract),
+                },
+                {
+                    amount: 201500000,
+                    recipient: address(accounts.neutrinoContract),
+                },
+                {
+                    amount: 1500000,
+                    recipient: address(accounts.rpdContract),
+                }
+            ],
+            fee: 700000
+        }, env.SEED)
+
+        await broadcast(massTx)
+        await waitForTx(massTx.id)
+
+        console.log("Seeds:")
+        console.log("Oracle one: " + accounts.oracleOne)
+        console.log("Oracle two: " + accounts.oracleTwo)
+        console.log("Oracle three: " + accounts.oracleThree)
+        console.log("Address one: " + accounts.adminOne)
+        console.log("Address two: " + accounts.adminTwo)
+        console.log("Address three: " + accounts.adminThree)
+
+        console.log("Auction contract: " + accounts.auctionContract)
+        console.log("Neutrino contract: " + accounts.neutrinoContract)
+        console.log("RPD contract: " + accounts.rpdContract)
+
+        console.log("Addresses:")
+        console.log("Oracle one: " + address(accounts.oracleOne))
+        console.log("Oracle two: " + address(accounts.oracleTwo))
+        console.log("Oracle three: " + address(accounts.oracleThree))
+        console.log("Address one: " + address(accounts.adminOne))
+        console.log("Address two: " + address(accounts.adminTwo))
+        console.log("Address three: " + address(accounts.adminThree))
+
+        console.log("Auction contract: " + address(accounts.auctionContract))
+        console.log("Neutrino contract: " + address(accounts.neutrinoContract))
+        console.log("RPD contract: " + address(accounts.rpdContract))
 
         const issueTx = issue({
             name: symbolNeutrino,
