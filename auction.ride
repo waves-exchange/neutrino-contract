@@ -22,7 +22,7 @@ func getStringByKey(key: String) = {
     }
 }
 func getStringByAddressAndKey(address: String, key: String) = {
-   match getString(this, key) {
+   match getString(addressFromStringValue(address), key) {
             case a:String => a
             case _ => ""
     }

@@ -1,4 +1,5 @@
 /test/deployMain.js
 /test/deploy.js
+/test/deploy/*.development.js
 npm-debug.log
-surfboard.dev.config.json
+surfboard.development.config.json
