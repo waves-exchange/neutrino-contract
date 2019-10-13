@@ -3,12 +3,6 @@
 {-# SCRIPT_TYPE ACCOUNT #-}
 
 #base function
-func getNumberByAddressAndKey(address: String, key: String) = {
-    match getInteger(addressFromStringValue(address), key) {
-            case a:Int => a
-            case _ => 0
-    }
-}
 func getNumberByKey(key: String) = {
     match getInteger(this, key) {
             case a:Int => a
@@ -27,11 +21,17 @@ func getStringByAddressAndKey(address: String, key: String) = {
             case _ => ""
     }
 }
+func getNumberByAddressAndKey(address: String, key: String) = {
+    match getInteger(addressFromStringValue(address), key) {
+            case a:Int => a
+            case _ => 0
+    }
+}
 #end base function
 
 # consts
 let ORDERSPLITSYMBOL = "_"
-let CENTSINDOLLAR = 100
+let PAULI = 100
 let CANCELED = "canceled"
 let NEW = "new"
 let FILLED = "filled"
@@ -49,6 +49,7 @@ let PriceKey = "price"
 let BondAssetIdKey = "bond_asset_id"
 let NeutrinoAssetIdKey = "neutrino_asset_id"
 let NeutrinoContractKey = "neutrino_contract"
+let OrderHistoryKey = "order_history_"
 
 func getOrderPriceKey(orderId: String) = OrderPriceKey + orderId
 func getOrderTotalKey(orderId: String) = OrderTotalKey + orderId
@@ -56,6 +57,7 @@ func getOrderOwnerKey(orderId: String) = OrderOwnerKey + orderId
 func getOrderHeightKey(orderId: String) = OrderHeightKey + orderId
 func getOrderStatusKey(orderId: String) = OrderStatusKey + orderId
 func getOrderFilledTotalKey(orderId: String) = OrderFilledTotalKey + orderId
+func getOrderHistoryKey(height: Int) = OrderHistoryKey + toString(height)
 #end keys
 
 # global vars
@@ -159,7 +161,7 @@ func cancelOrder(orderId : String) = {
 @Callable(i)
 func executeOrder() = {
     let bondBalance = assetBalance(this, bondAssetId)
-    let deficit = (neutrinoSupply - reserve*price/100)/CENTSINDOLLAR
+    let deficit = (neutrinoSupply - reserve*price/100)/PAULI
     let deficitPositive = if(deficit <= 0) then 0 else deficit
     let bondAmount = if(deficitPositive >= bondBalance) then bondBalance else deficitPositive
     let returnAmount = if(deficitPositive >= bondBalance) then 0 else bondBalance-deficitPositive
@@ -175,12 +177,12 @@ func executeOrder() = {
         let orderTotal = getOrderTotal(orderId)
         let orderPrice = getOrderPrice(orderId)
         let orderOwner = getOrderOwner(orderId)
-        let amount = (orderTotal-filledTotal)*100/orderPrice/CENTSINDOLLAR;
+        let amount = (orderTotal-filledTotal)*100/orderPrice/PAULI;
     
         let newOrderbook = if(bondAmount >= amount) then dropOrder(orderId) else orderbook
         let filledAmount = if(bondAmount >= amount) then amount else bondAmount
 
-        let total = filledAmount*orderPrice/100*CENTSINDOLLAR;
+        let total = filledAmount*orderPrice/100*PAULI;
 
         let status = if(bondAmount >= amount) then FILLED else NEW
 
@@ -188,7 +190,8 @@ func executeOrder() = {
             WriteSet([
                 DataEntry(OrderBookKey, newOrderbook),
                 DataEntry(getOrderFilledTotalKey(orderId), filledTotal + total),
-                DataEntry(getOrderStatusKey(orderId), status)
+                DataEntry(getOrderStatusKey(orderId), status),
+                DataEntry(getOrderHistoryKey(height), price)
             ]), 
             TransferSet([
                 ScriptTransfer(addressFromStringValue(orderOwner), filledAmount, bondAssetId),
