@@ -1,5 +1,5 @@
 {
-    "ride_directory": "*",
+    "ride_directory": "script",
     "test_directory": "test",
     "envs": {
         "custom": {
@@ -21,7 +21,7 @@
             "SEED": "X"
         }
     },
-    "defaultEnv": "testnet",
+    "defaultEnv": "custom",
     "mocha": {
         "timeout": 60000
     }

@@ -134,17 +134,17 @@ describe('Deploy', async function () {
 
     });
     it('Finalizing', async function () { 
-        const scriptNeutrino = compile(file('../neutrino.ride'));
+        const scriptNeutrino = compile(file('../script/neutrino.ride'));
         const setScriptNeutrino = setScript({ script: scriptNeutrino, fee: 1000000 ,}, accounts.neutrinoContract);
         await broadcast(setScriptNeutrino);
         await waitForTx(setScriptNeutrino.id)
 
-        const scriptAuction = compile(file('../auction.ride'));
+        const scriptAuction = compile(file('../script/auction.ride'));
         const setScriptAuctionTx = setScript({ script: scriptAuction, fee: 1000000,}, accounts.auctionContract);        
         await broadcast(setScriptAuctionTx);
         await waitForTx(setScriptAuctionTx.id)
 
-        const scriptRPD = compile(file('../rpd.ride'));
+        const scriptRPD = compile(file('../script/rpd.ride'));
         const setScriptRPDTx = setScript({ script: scriptRPD, fee: 1000000,}, accounts.rpdContract);        
         await broadcast(setScriptRPDTx);
         await waitForTx(setScriptRPDTx.id)

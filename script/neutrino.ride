@@ -27,11 +27,16 @@ func getNumberByAddressAndKey(address: String, key: String) = {
             case _ => 0
     }
 }
-
 func getStringByAddressAndKey(address: String, key: String) = {
      match getString(this, key) {
             case a:String => a
             case _ => ""
+    }
+}
+func isInt(val: Int|Unit) = {
+     match val {
+            case a:Int => true
+            case _ => false
     }
 }
 #end base function
@@ -41,9 +46,14 @@ let LISTSPLITSYMBOL = "_"
 let LISTDATASYMBOL = "+"
 let WAVELET = 100000000
 let PAULI = 100
+let CRYTICALSHARE = 20
+let LEASINGSHARE = 50
 let CANCELED = "canceled"
 let NEW = "new"
 let FILLED = "filled"
+let BLOCK = "block"
+let UNBLOCK = "unblock"
+let UPDATE = "update"
 #end consts
 
 #constructor 
@@ -57,6 +67,11 @@ let MinWavesSwapAmountKey = "min_waves_swap_amount"
 let MinNeutrinoSwapAmountKey = "min_neutrino_swap_amount"
 let PriceOffsetKey = "price_offset"
 let ProvidingIntervalKey = "providing_interval"
+let CoefficientOracleKey = "coefficient_oracle"
+let CoefficientAdminKey = "coefficient_admin"
+let ScriptUpdateIntervalKey = "script_update_interval"
+let NodeAddressKey = "node_address"
+let LeasingIntervalKey = "leasing_interval"
 #end constructor
 
 # keys
@@ -76,22 +91,28 @@ let RPDBalanceKey = "rpd_balance"
 let IsBlockedKey = "is_blocked"
 let BlackSwarmPriceKey = "black_swarm_price"
 let AdminVoteKey = "admin_vote_"
-let AdminVotePriceKey = "admin_vote_price_"
 let BlockExpireVoteKey = "vote_expire_block"
-let AdminKey = "admin_"
+let AdminsKey = "admins"
 let IsPricePendingKey = "is_pending_price"
-let OracleKey = "oracle_"
+let OraclesKey = "oracles"
 let OracleIsProvideKey = "oracle_is_provide_"
 let OracleProvidePriceKey = "oracle_price_provide_"
 let BlockExpireProvidingKey = "providing_expire_block"
-let ApprovedLeaseTxKey = "leasetx"
 let IsLeasingProfitTxExistKey = "is_leasing_profit"
+let ActionKey = "action"
+let ArgsKey = "args"
+let ScriptUpdateBlockKey = "script_update_block"
+let LeaseTxKey = "lease_tx"
+let LeasingAmountKey = "leasing_amount"
+let LeaseTxExpireSendBlockKey = "leasing_expire_send"
+let LeasingExpireBlockKey = "leasing_expire_block"
+let IsRebalanceKey = "rebalance_key"
+let SwapLockedBalanceKey = "swap_locked_balance"
 
-func getAdminKey(count: Int) = AdminKey + toString(count)
 func getAdminVoteKey(owner: String) = AdminVoteKey + owner
-func getAdminVotePriceKey(owner: String) = AdminVotePriceKey + owner
+func getAdminVoteActionKey(owner: String) = getAdminVoteKey(owner) + "_" + ActionKey
+func getAdminVoteArgsKey(owner: String) = getAdminVoteKey(owner) + "_" + ArgsKey
 
-func getOracleKey(count: Int) = OracleKey + toString(count)
 func getOracleIsProvideKey(owner: String) = OracleIsProvideKey + owner
 func getOracleProvidePriceKey(owner: String) = OracleProvidePriceKey + owner
 
@@ -104,9 +125,6 @@ func getBalanceUnlockBlockKey(owner: String) = BalanceUnlockBlockKey + owner
 func getBlackSwarmPriceKey(block: Int) = BlackSwarmPriceKey + "_" + toString(block)
 func getPriceHistoryKey(block: Int) = PriceKey + "_" + toString(block)
 
-func getOwnerPubKeyByLeaseTxIdKey(txId: String) = ApprovedLeaseTxKey + "_" + txId
-func getIsLeasingProfitTxExistKey(txId: String) = IsLeasingProfitTxExistKey + "_" + txId
-
 func getOrderTotalKey(orderId: String) = OrderTotalKey + orderId
 func getOrderOwnerKey(orderId: String) = OrderOwnerKey + orderId
 func getOrderHeightKey(orderId: String) = OrderHeightKey + orderId
@@ -115,7 +133,6 @@ func getOrderFilledTotalKey(orderId: String) = OrderFilledTotalKey + orderId
 #end keys
 
 let price = getNumberByKey(PriceKey)
-
 #convert func
 func convertNeutrinoToWaves(amount: Int) = amount*100/price*WAVELET/PAULI
 func convertWavesToNeutrino(amount: Int) = amount*price/100*PAULI/WAVELET 
@@ -125,6 +142,17 @@ func convertWavesToBond(amount: Int) = convertNeutrinoToBond(convertWavesToNeutr
 #end convert func
 
 #global vars
+let isRebalance = getBoolByKey(IsRebalanceKey)
+let leasingInterval = getNumberByKey(LeasingIntervalKey)
+let leaseTxExpireSendBlock = getNumberByKey(LeaseTxExpireSendBlockKey)
+let leasingExpireBlock = getNumberByKey(LeasingExpireBlockKey)
+let leaseTxHash = getStringByKey(LeaseTxKey) 
+let leasingAmount = getNumberByKey(LeasingAmountKey)
+
+let swapLockedBalance = getNumberByKey(SwapLockedBalanceKey)
+let nodeAddress = getStringByKey(NodeAddressKey)
+let scriptUpdateInterval = getNumberByKey(ScriptUpdateIntervalKey)
+let scriptUpdateBlock = getNumberByKey(ScriptUpdateBlockKey)
 let providingInterval = getNumberByKey(ProvidingIntervalKey)
 let blockExpireProviding = getNumberByKey(BlockExpireProvidingKey)
 let isPricePending = getBoolByKey(IsPricePendingKey)
@@ -139,7 +167,7 @@ let minNeutrinoSwapAmount = getNumberByKey(MinNeutrinoSwapAmountKey)
 let neutrinoAssetId = fromBase58String(getStringByKey(NeutrinoAssetIdKey))
 let auctionContract = getStringByKey(AuctionContractKey)
 let rpdContract = getStringByKey(RPDContractKey)
-let reserve = wavesBalance(this)
+let reserve = wavesBalance(this) + leasingAmount - swapLockedBalance
 let orderbook = getStringByKey(OrderbookKey)
 let bondAssetId = fromBase58String(getStringByKey(BondAssetIdKey))
 let bondSupply = {
@@ -151,22 +179,20 @@ let neutrinoSupply = {
     info.quantity - assetBalance(this, neutrinoAssetId)
 }
 let surplus = convertWavesToNeutrino(reserve) - neutrinoSupply
-let oracleOne = getStringByKey(getOracleKey(0))
-let oracleTwo = getStringByKey(getOracleKey(1))
-let oracleThree = getStringByKey(getOracleKey(2))
-let adminOne = getStringByKey(getAdminKey(0))
-let adminTwo = getStringByKey(getAdminKey(1))
-let adminThree = getStringByKey(getAdminKey(2))
+
+let oracles = getStringByKey(OraclesKey) # json array
+let admins = getStringByKey(AdminsKey) # json array
+
+let bftCoefficientOracle = getNumberByKey(CoefficientOracleKey)
+let bftCoefficientAdmin = getNumberByKey(CoefficientAdminKey)
 #end global vars
 
 # get func
-func getOwnerPubKeyByLeaseTxId(owner: String) = getStringByAddressAndKey(rpdContract, getOwnerPubKeyByLeaseTxIdKey(owner))
 
 func getRPDContractBalance(assetId: ByteVector) = getNumberByAddressAndKey(rpdContract, getRPDContractBalanceKey(assetId))
-func isLeasingProfitTxExist(txId: String) = getBoolByKey(getIsLeasingProfitTxExistKey(txId))
 
-func getAdminVoteInt(owner: String) = if(getBoolByKey(getAdminVoteKey(owner))) then 1 else 0
-func getAdminVotePrice(owner: String) = getNumberByKey(getAdminVotePriceKey(owner))
+func getAdminVoteAction(owner: String) = getStringByKey(getAdminVoteActionKey(owner))
+
 func isOracleProvide(owner: String) = getBoolByKey(getOracleIsProvideKey(owner))
 func isOracleProvideInt(owner: String) = if(isOracleProvide(owner)) then 1 else 0
 func getOracleProvidePrice(owner: String) = getNumberByKey(getOracleProvidePriceKey(owner))
@@ -180,6 +206,25 @@ func getOrderFilledTotal(id : String) = getNumberByKey(getOrderFilledTotalKey(id
 func getRPDProfit(count: Int) = getNumberByKey(getRPDProfitKey(count))
 #end get func
 
+func filterAdminsVoteByAction(result: List[String], address: String, action: String) = 
+   address :: result
+
+func convertJsonArrayToList(jsonArray: String) = {
+    jsonArray.drop(1).dropRight(1).split(",")
+}
+func isOracle(address: String) = {
+    match(indexOf(oracles.drop(1).dropRight(1), address)) {
+        case _: Int => true
+        case _ => false
+    }
+}
+func isAdmin(address: String) = {
+    match(indexOf(admins.drop(1).dropRight(1), address)) {
+        case _: Int => true
+        case _ => false
+    }
+}
+
 func getOrderElementById(id : String) = id + LISTSPLITSYMBOL
 func addOrder(orderId: String) = {
     orderbook + getOrderElementById(orderId)
@@ -188,49 +233,81 @@ func dropOrder(orderId: String) = {
     let parts = orderbook.split(getOrderElementById(orderId))
     parts[0] + parts[1]
 }
+func dropElementInJsonArray(array: String, element: String) = {
+    let splitedArray = array.split(element)
+    if(splitedArray[0].take(1) == "[") then
+        splitedArray[0] + splitedArray[1].drop(1)
+    else 
+        splitedArray[0].dropRight(1) + splitedArray[1]
+}
+
+# FOLD func
+func sumOraclePrice(base: Int, address: String) = 
+   base + getOracleProvidePrice(address)*isOracleProvideInt(address)
+
+func filterIsOracleProvide(result: List[String], address: String) = 
+   if (isOracleProvide(address)) then address :: result else result
+
+func filterAdminsVoteByBlockAction(result: List[String], address: String) = 
+   filterAdminsVoteByAction(result, address, BLOCK)
+
+func filterAdminsVoteByUnblockAction(result: List[String], address: String) = 
+   filterAdminsVoteByAction(result, address, UNBLOCK)
+
+func filterAdminsVoteByUpdateAction(result: List[String], address: String) = 
+   filterAdminsVoteByAction(result, address, UPDATE)
+
+func addDataEntry(result: List[DataEntry], data: DataEntry) = 
+    data :: result
+
+func getResetVoteDataEntries(result: List[DataEntry], address: String) = 
+    DataEntry(getAdminVoteActionKey(address), "") :: result
+
+func getDataEntryOracleProviding(result: List[DataEntry], address: String) = 
+    DataEntry(getOracleIsProvideKey(address), if(height > blockExpireProviding) then false else isOracleProvide(address)) :: result
+
+#end FOLD func
 
 #-------------------Callable----------------------
 
 @Callable(i)
 func setCurrentPrice(newPrice : Int) = {
     let account = toString(i.caller)
-    let priceProvidingCount = isOracleProvideInt(oracleOne) + isOracleProvideInt(oracleTwo) + isOracleProvideInt(oracleThree) + 1
-
+    let oraclesList = convertJsonArrayToList(oracles)
+    let priceProvidingCount = size(FOLD<5>(oraclesList, [], filterIsOracleProvide))
+    let oracleDataEntries = FOLD<5>(oraclesList, [], getDataEntryOracleProviding)
     if(isBlocked)
         then throw("contract is blocked")
-    else if(account != oracleOne && account != oracleTwo && account != oracleThree)
+    else if(!isOracle(account))
         then throw("permission denied")
     else if(height <= blockExpireProviding &&  isOracleProvide(account))
         then throw("price is already provided")
     else if(height > blockExpireProviding && isPricePending)
         then throw("use finilizeCurrentPrice")
-    else 
-        WriteSet([
+    else {
+        let dataEntries = [
             DataEntry(getOracleProvidePriceKey(account), newPrice),
             DataEntry(BlockExpireProvidingKey, if(height > blockExpireProviding) then height + providingInterval else blockExpireProviding),
-            DataEntry(getOracleIsProvideKey(oracleOne), if(height > blockExpireProviding) then false else isOracleProvide(oracleOne)),
-            DataEntry(getOracleIsProvideKey(oracleTwo), if(height > blockExpireProviding) then false else isOracleProvide(oracleTwo)),
-            DataEntry(getOracleIsProvideKey(oracleThree), if(height > blockExpireProviding) then false else isOracleProvide(oracleThree)),
             DataEntry(getOracleIsProvideKey(account), true),
             DataEntry(IsPricePendingKey, if(height <= blockExpireProviding && priceProvidingCount >= 2) then true else isPricePending)
-        ])
+        ]
+        WriteSet(FOLD<4>(dataEntries, oracleDataEntries, addDataEntry))
+    }
 }
 
 @Callable(i)
 func finilizeCurrentPrice() = {
     let account = toString(i.caller)
-    let priceProvidingCount = isOracleProvideInt(oracleOne) + isOracleProvideInt(oracleTwo) + isOracleProvideInt(oracleThree)
+    let oraclesList = convertJsonArrayToList(oracles)
+    let priceProvidingCount = size(FOLD<5>(oraclesList, [], filterIsOracleProvide))
 
-    let newPrice = (getOracleProvidePrice(oracleOne)*isOracleProvideInt(oracleOne) + 
-                    getOracleProvidePrice(oracleTwo)*isOracleProvideInt(oracleTwo) + 
-                    getOracleProvidePrice(oracleThree)*isOracleProvideInt(oracleThree))/priceProvidingCount
+    let newPrice = FOLD<5>(oraclesList, 0, sumOraclePrice)/priceProvidingCount
+    
     if(isBlocked)
         then throw("contract is blocked")
-    else if(account != oracleOne && account != oracleTwo && account != oracleThree)
-        then throw("permission denied")
     else if(!isPricePending || height <= blockExpireProviding)
         then throw("wait for the end of the price providing")
-    else if(priceProvidingCount < 2)
+    else if(priceProvidingCount < bftCoefficientOracle)
         then throw("2/3 oracles need to set a price")
     else if(newPrice >= (price + price*percentPriceOffset/100) || newPrice <= (price - price*percentPriceOffset/100)) then {
         WriteSet([
@@ -247,67 +324,53 @@ func finilizeCurrentPrice() = {
 }
 
 @Callable(i)
-func adminUnlock(newPrice : Int) = {
+func vote(action: String) = {
     let account = toString(i.caller)
-    let adminOneVote = if(account != adminOne) then getAdminVoteInt(adminOne) else 0
-    let adminTwoVote = if(account != adminTwo) then getAdminVoteInt(adminTwo) else 0
-    let adminThreeVote = if(account != adminThree) then getAdminVoteInt(adminThree) else 0
+    let adminsListWithoutAccount = convertJsonArrayToList(dropElementInJsonArray(admins, account))
+    let lastAction = getAdminVoteAction(account) 
     
-    let adminOnePrice = if(getAdminVotePrice(adminOne)*adminOneVote == newPrice) then 1  else 0
-    let adminTwoPrice = if(getAdminVotePrice(adminTwo)*adminTwoVote == newPrice) then 1 else 0
-    let adminThreePrice = if(getAdminVotePrice(adminThree)*adminThreeVote == newPrice) then 1 else 0
+    let blockVotes = FOLD<5>(adminsListWithoutAccount, [], filterAdminsVoteByBlockAction)
+    let unblockVotes = FOLD<5>(adminsListWithoutAccount, [], filterAdminsVoteByUnblockAction)
+    let updateVotes = FOLD<5>(adminsListWithoutAccount, [], filterAdminsVoteByUpdateAction)
     
-    if(!isBlocked) 
-        then throw("Contract is not blocked")
-    else if(adminOnePrice + adminTwoPrice + adminThreePrice + 1 >= 2 && height <= blockExpireVote) then {
-        WriteSet([
-            DataEntry(IsBlockedKey, false),
-            DataEntry(PriceKey, newPrice),
-            DataEntry(getPriceHistoryKey(height), newPrice),
-            DataEntry(getAdminVoteKey(adminOne), false),
-            DataEntry(getAdminVoteKey(adminTwo), false),
-            DataEntry(getAdminVoteKey(adminThree), false),
+    let blockVoteCount = size(blockVotes) + if( action == BLOCK) then 1 else 0 
+    let unblockVoteCount = size(unblockVotes) + if( action == UNBLOCK) then 1 else 0 
+    let updateVotesCount = size(updateVotes) + if( action == UPDATE) then 1 else 0 
+
+    let resetVotes = FOLD<5>(adminsListWithoutAccount, [DataEntry(getAdminVoteActionKey(account), "")], getResetVoteDataEntries)
+   
+    if(blockVoteCount >= bftCoefficientAdmin || unblockVoteCount >= bftCoefficientAdmin) then {
+        let dataEntries = [
+            DataEntry(IsBlockedKey, if(blockVoteCount >= bftCoefficientAdmin) then true else false),
             DataEntry(BlockExpireVoteKey, 0),
             DataEntry(BlockExpireProvidingKey, 0),
             DataEntry(IsPricePendingKey, false)
-        ])
-    }else 
+        ]
+        let data = FOLD<4>(dataEntries, resetVotes, addDataEntry)
+        WriteSet(data)
+    }
+    else if(updateVotesCount > bftCoefficientAdmin) then {
+        let dataEntries = [
+            DataEntry(BlockExpireVoteKey, 0),
+            DataEntry(BlockExpireProvidingKey, 0),
+            DataEntry(ScriptUpdateBlockKey, height + scriptUpdateInterval)
+        ]
+        let data = FOLD<3>(dataEntries, resetVotes, addDataEntry)
+        WriteSet(data)
+    }
+    else if(height > blockExpireVote) then {
+        let dataEntries = [
+            DataEntry(BlockExpireVoteKey, height + voteInterval),
+            DataEntry(getAdminVoteActionKey(account), action)
+        ]
+        let data = FOLD<2>(dataEntries, resetVotes, addDataEntry)
+        WriteSet(data)
+    }
+    else {
         WriteSet([
-            DataEntry(getAdminVotePriceKey(account), newPrice),
-            DataEntry(BlockExpireVoteKey, if(height > blockExpireVote) then height + voteInterval else blockExpireVote),
-            DataEntry(getAdminVoteKey(adminOne), if(height > blockExpireVote) then false else adminOneVote == 1),
-            DataEntry(getAdminVoteKey(adminTwo), if(height > blockExpireVote) then false else adminTwoVote == 1),
-            DataEntry(getAdminVoteKey(adminThree), if(height > blockExpireVote) then false else adminThreeVote == 1),
-            DataEntry(getAdminVoteKey(account), true)
-        ])
-}
-
-@Callable(i)
-func adminLock() = {
-    let account = toString(i.caller)
-    
-    let adminOneVote = if(account != adminOne) then getAdminVoteInt(adminOne) else 1
-    let adminTwoVote = if(account != adminTwo) then getAdminVoteInt(adminTwo) else 1
-    let adminThreeVote = if(account != adminThree) then getAdminVoteInt(adminThree) else 1
-    
-    if(isBlocked) 
-        then throw("Contract is blocked")
-    else if(adminOneVote + adminTwoVote + adminThreeVote >= 2) then {
-        WriteSet([
-            DataEntry(IsBlockedKey, true),
-            DataEntry(getAdminVoteKey(adminOne), false),
-            DataEntry(getAdminVoteKey(adminTwo), false),
-            DataEntry(getAdminVoteKey(adminThree), false),
-            DataEntry(BlockExpireVoteKey, 0)
+            DataEntry(getAdminVoteActionKey(account), action)
         ])
     }
-    else 
-        WriteSet([
-            DataEntry(BlockExpireVoteKey, if(height > blockExpireVote) then height + voteInterval else blockExpireVote),
-            DataEntry(getAdminVoteKey(adminOne), if(height > blockExpireVote) then false else adminOneVote == 1),
-            DataEntry(getAdminVoteKey(adminTwo), if(height > blockExpireVote) then false else adminTwoVote == 1),
-            DataEntry(getAdminVoteKey(adminThree), if(height > blockExpireVote) then false else adminThreeVote == 1)
-        ])
 }
 
 @Callable(i)
@@ -341,7 +404,9 @@ func swapNeutrinoToWaves() = {
         let amount = convertNeutrinoToWaves(pmt.amount)
         WriteSet([
             DataEntry(getWavesBalanceKey(account), getWavesBalance(account) + amount),
-            DataEntry(getBalanceUnlockBlockKey(account), height + balanceLockInterval)
+            DataEntry(getBalanceUnlockBlockKey(account), height + balanceLockInterval),
+            DataEntry(IsRebalanceKey, (wavesBalance(this) - amount - swapLockedBalance) <= reserve*CRYTICALSHARE/100),
+            DataEntry(SwapLockedBalanceKey, swapLockedBalance + amount)
         ])
     }
 }
@@ -354,7 +419,8 @@ func withdraw(account : String) = {
         ScriptResult(
             WriteSet([
                 DataEntry(getWavesBalanceKey(account), 0),
-                DataEntry(getNeutrinoBalanceKey(account), 0)
+                DataEntry(getNeutrinoBalanceKey(account), 0),
+                DataEntry(SwapLockedBalanceKey, swapLockedBalance - getWavesBalance(account))
             ]),
             TransferSet([
                 ScriptTransfer(addressFromStringValue(account), getNeutrinoBalance(account), neutrinoAssetId),
@@ -416,29 +482,6 @@ func cancelOrder(orderId : String) = {
 }
 
 @Callable(i)
-func addLeasingCheck(id: String) = {
-    let tx = value(transferTransactionById(fromBase58String(id)))
-    if(tx.recipient != addressFromStringValue(rpdContract) || isLeasingProfitTxExist(id))
-        then throw("invalid transaction id")
-    else {
-        let amount = convertWavesToNeutrino(tx.amount)
-        let newRpdSyncIndex = rpdSyncIndex + 1
-        ScriptResult(
-            WriteSet([
-                DataEntry(RPDSyncIndexKey, newRpdSyncIndex),
-                DataEntry(getRPDProfitKey(rpdSyncIndex), amount),
-                DataEntry(getRPDSnapshotContractBalanceKey(rpdSyncIndex, neutrinoAssetId), getRPDContractBalance(neutrinoAssetId)),
-                DataEntry(getRPDSnapshotContractBalanceKey(rpdSyncIndex, bondAssetId), getRPDContractBalance(bondAssetId)),
-                DataEntry(getIsLeasingProfitTxExistKey(id), true)
-            ]),
-            TransferSet([
-                ScriptTransfer(addressFromStringValue(rpdContract), amount, neutrinoAssetId)
-            ])
-        )
-    }
-}
-
-@Callable(i)
 func executeOrder() = {
     let orderId = orderbook.split(LISTSPLITSYMBOL)[0]
     let orderTotal = getOrderTotal(orderId)
@@ -455,7 +498,6 @@ func executeOrder() = {
             WriteSet([
                 DataEntry(RPDSyncIndexKey, newRpdSyncIndex),
                 DataEntry(getRPDProfitKey(rpdSyncIndex), surplus),
-                DataEntry(getRPDSnapshotContractBalanceKey(rpdSyncIndex, neutrinoAssetId), getRPDContractBalance(neutrinoAssetId)),
                 DataEntry(getRPDSnapshotContractBalanceKey(rpdSyncIndex, bondAssetId), getRPDContractBalance(bondAssetId))
             ]),
             TransferSet([
@@ -490,14 +532,80 @@ func transfer(account: String) = {
     else TransferSet([ScriptTransfer(addressFromStringValue(account), pmt.amount, unit)])
 }
 
+@Callable(i)
+func nodeReward() = {
+    let pmt = value(i.payment)
+    if(i.caller != addressFromStringValue(nodeAddress))
+        then throw("permission denied")
+    else if(isDefined(pmt.assetId))
+        then throw("waves only")
+    else {
+        let amount = convertWavesToNeutrino(pmt.amount)
+        let newRpdSyncIndex = rpdSyncIndex + 1
+        ScriptResult(
+            WriteSet([
+                DataEntry(RPDSyncIndexKey, newRpdSyncIndex),
+                DataEntry(getRPDProfitKey(rpdSyncIndex), amount),
+                DataEntry(getRPDSnapshotContractBalanceKey(rpdSyncIndex, bondAssetId), getRPDContractBalance(bondAssetId))
+            ]),
+            TransferSet([
+                ScriptTransfer(addressFromStringValue(rpdContract), amount, neutrinoAssetId)
+            ])
+        )
+    }
+}
+
+@Callable(i)
+func registrationLeaseTx(amount: Int, fee: Int, timestamp: Int) = {
+    let txBytes = base64'CAIA' + fromBase58String(toString(this)) + fromBase58String(nodeAddress) + toBytes(amount) + toBytes(fee) + toBytes(timestamp)
+    let balance = reserve*LEASINGSHARE/100
+    let txHashBytes = blake2b256(txBytes)
+    let txHash = toBase58String(txHashBytes)
+    
+    if(timestamp < lastBlock.timestamp || timestamp > lastBlock.timestamp + 18000) 
+        then throw("invalid timestamp")
+    else if(leaseTxHash != "" && (isInt(transactionHeightById(fromBase58String(leaseTxHash))) || height <= leaseTxExpireSendBlock))
+        then throw("leasing not canceled")
+    else if(fee > 1000000)
+        then throw("invalid fee")
+    else if(amount != balance || amount == 0)
+        then throw("invalid amount")
+    else {
+        WriteSet([
+            DataEntry(LeaseTxKey, txHash),
+            DataEntry(LeasingAmountKey, balance),
+            DataEntry(LeaseTxExpireSendBlockKey, height + 30),
+            DataEntry(LeasingExpireBlockKey, height + leasingInterval)
+        ])
+    }
+}
+
+@Callable(i)
+func registrationUnleaseTx(chainIdBase64: String, fee: Int, timestamp: Int) = {
+    let txBytes = base64'CQI=' + fromBase64String(chainIdBase64) + fromBase58String(toString(this)) + toBytes(fee) + toBytes(timestamp) +  fromBase58String(leaseTxHash)
+    let txHash = blake2b256(txBytes)
+
+    if(!isInt(transactionHeightById(txHash)))
+        then throw("blockchain does not contain this transaction")
+    else if(fee > 500000)
+        then throw("invalid fee")
+    else {
+        WriteSet([
+            DataEntry(LeaseTxKey, ""),
+            DataEntry(LeasingAmountKey, 0),
+            DataEntry(LeaseTxExpireSendBlockKey, 0),
+            DataEntry(LeasingExpireBlockKey, 0)
+        ])
+    }
+}
+
 @Verifier(tx)
 func verify() = {
     match tx {
         case leaseTx: LeaseTransaction =>
-            sigVerify(tx.bodyBytes, tx.proofs[0], fromBase58String(getOwnerPubKeyByLeaseTxId(toBase58String(leaseTx.id))))
+            fromBase58String(leaseTxHash) == leaseTx.id && height <= leasingExpireBlock && height <= leaseTxExpireSendBlock
         case unleaseTx: LeaseCancelTransaction =>
-            sigVerify(tx.bodyBytes, tx.proofs[0], fromBase58String(getOwnerPubKeyByLeaseTxId(toBase58String(unleaseTx.leaseId))))
-        case _ => 
-            sigVerify(tx.bodyBytes, tx.proofs[0], tx.senderPublicKey)
+            fromBase58String(leaseTxHash) == unleaseTx.leaseId && height > leasingExpireBlock
+        case _ => sigVerify(tx.bodyBytes, tx.proofs[0], tx.senderPublicKey) && (height <= scriptUpdateBlock || isRebalance)
     }
 }
