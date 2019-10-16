@@ -15,14 +15,14 @@ func getStringByKey(key: String) = {
             case _ => ""
     }
 }
-func getStringByAddressAndKey(address: String, key: String) = {
-   match getString(addressFromStringValue(address), key) {
+func getStringByAddressAndKey(address: Address, key: String) = {
+   match getString(address, key) {
             case a:String => a
             case _ => ""
     }
 }
-func getNumberByAddressAndKey(address: String, key: String) = {
-    match getInteger(addressFromStringValue(address), key) {
+func getNumberByAddressAndKey(address: Address, key: String) = {
+    match getInteger(address, key) {
             case a:Int => a
             case _ => 0
     }
@@ -61,15 +61,16 @@ func getOrderHistoryKey(height: Int) = OrderHistoryKey + toString(height)
 #end keys
 
 # global vars
-let neutrinoContract = getStringByKey(NeutrinoContractKey)
-let price = getNumberByAddressAndKey(neutrinoContract, PriceKey)
+let neutrinoContract = addressFromStringValue(getStringByKey(NeutrinoContractKey))
+let controlContract = addressFromStringValue(getStringByAddressAndKey(neutrinoContract, NeutrinoContractKey))
+let priceNeutrino = getNumberByAddressAndKey(controlContract, PriceKey)
 let neutrinoAssetId = fromBase58String(getStringByAddressAndKey(neutrinoContract, NeutrinoAssetIdKey))
 let bondAssetId = fromBase58String(getStringByAddressAndKey(neutrinoContract, BondAssetIdKey))
 let orderbook = getStringByKey(OrderBookKey)
-let reserve = wavesBalance(addressFromStringValue(neutrinoContract))
+let reserve = wavesBalance(neutrinoContract)
 let neutrinoSupply = {
     let info = extract(assetInfo(neutrinoAssetId))
-    info.quantity - assetBalance(addressFromStringValue(neutrinoContract), neutrinoAssetId)
+    info.quantity - assetBalance(neutrinoContract, neutrinoAssetId)
 }
 #end global vars
 
@@ -161,14 +162,14 @@ func cancelOrder(orderId : String) = {
 @Callable(i)
 func executeOrder() = {
     let bondBalance = assetBalance(this, bondAssetId)
-    let deficit = (neutrinoSupply - reserve*price/100)/PAULI
+    let deficit = (neutrinoSupply - reserve*priceNeutrino/100)/PAULI
     let deficitPositive = if(deficit <= 0) then 0 else deficit
     let bondAmount = if(deficitPositive >= bondBalance) then bondBalance else deficitPositive
     let returnAmount = if(deficitPositive >= bondBalance) then 0 else bondBalance-deficitPositive
 
     if(bondAmount == 0) then {
         TransferSet([
-            ScriptTransfer(addressFromStringValue(neutrinoContract), returnAmount, bondAssetId)
+            ScriptTransfer(neutrinoContract, returnAmount, bondAssetId)
         ])
     }
     else {
@@ -191,11 +192,11 @@ func executeOrder() = {
                 DataEntry(OrderBookKey, newOrderbook),
                 DataEntry(getOrderFilledTotalKey(orderId), filledTotal + total),
                 DataEntry(getOrderStatusKey(orderId), status),
-                DataEntry(getOrderHistoryKey(height), price)
+                DataEntry(getOrderHistoryKey(height), orderPrice)
             ]), 
             TransferSet([
                 ScriptTransfer(addressFromStringValue(orderOwner), filledAmount, bondAssetId),
-                ScriptTransfer(addressFromStringValue(neutrinoContract), total, neutrinoAssetId)
+                ScriptTransfer(neutrinoContract, total, neutrinoAssetId)
             ])
         )
     }

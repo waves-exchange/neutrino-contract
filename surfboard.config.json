@@ -14,6 +14,12 @@
             "timeout": 60000,
             "SEED": "X"
         },
+        "main": {
+            "API_BASE": "https://nodes.wavesnodes.com",
+            "CHAIN_ID": "W",
+            "timeout": 60000,
+            "SEED": "X"
+        },
         "stagenet": {
             "API_BASE": "https://nodes-stagenet.wavesnodes.com",
             "CHAIN_ID": "T",

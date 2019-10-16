@@ -4,21 +4,45 @@ const symbolNeutrino = "BTC-N"
 const symbolBond = "BTC-NB"
 const descriptionNeutrino = "Bitcoin neutrino asset" 
 const descriptionBond = "Bitcoin neutrino bond asset" 
+const nodeAddress = ""
 
 const accounts = 
     {
-        oracleOne: wavesCrypto.randomSeed(),
-        oracleTwo: wavesCrypto.randomSeed(),
-        oracleThree: wavesCrypto.randomSeed(),
-        adminOne: wavesCrypto.randomSeed(),
-        adminTwo: wavesCrypto.randomSeed(),
-        adminThree: wavesCrypto.randomSeed(),
+        oracles: [ wavesCrypto.randomSeed(), wavesCrypto.randomSeed(), wavesCrypto.randomSeed(), wavesCrypto.randomSeed(), wavesCrypto.randomSeed()] ,
+        admins: [wavesCrypto.randomSeed(), wavesCrypto.randomSeed(), wavesCrypto.randomSeed(), wavesCrypto.randomSeed(), wavesCrypto.randomSeed()],
         auctionContract: wavesCrypto.randomSeed(),
         neutrinoContract: wavesCrypto.randomSeed(),
-        rpdContract: wavesCrypto.randomSeed()
+        rpdContract: wavesCrypto.randomSeed(),
+        controlContract: wavesCrypto.randomSeed()
     }
 describe('Deploy', async function () {
     before(async function () {
+        console.log("Seeds:")
+
+        for(let i = 0; i < accounts.oracles.length; i++)
+            console.log('Oracle ' + (i+1) + ': ' + accounts.oracles[i])
+        
+        for(let i = 0; i < accounts.admins.length; i++)
+            console.log('Admin ' + (i+1) + ': ' + accounts.admins[i])
+    
+        console.log("Auction contract: " + accounts.auctionContract)
+        console.log("Neutrino contract: " + accounts.neutrinoContract)
+        console.log("RPD contract: " + accounts.rpdContract)
+        console.log("Control contract: " + accounts.controlContract)
+        
+        console.log("Addresses:")
+      
+        for(let i = 0; i < accounts.oracles.length; i++)
+            console.log('Oracle ' + (i+1) + ': ' + address(accounts.oracles[i]))
+
+        for(let i = 0; i < accounts.admins.length; i++)
+            console.log('Admin ' + (i+1) + ': ' + address(accounts.admins[i]))
+        
+        console.log("Auction contract: " + address(accounts.auctionContract))
+        console.log("Neutrino contract: " + address(accounts.neutrinoContract))
+        console.log("RPD contract: " + address(accounts.rpdContract))
+        console.log("Control contract: " + accounts.controlContract)
+
         var massTx = massTransfer({
             transfers: [
                 {
@@ -32,37 +56,17 @@ describe('Deploy', async function () {
                 {
                     amount: 1500000,
                     recipient: address(accounts.rpdContract),
+                },
+                {
+                    amount: 1500000,
+                    recipient: address(accounts.controlContract),
                 }
             ],
-            fee: 700000
+            fee: 800000
         }, env.SEED)
 
         await broadcast(massTx)
         await waitForTx(massTx.id)
-
-        console.log("Seeds:")
-        console.log("Oracle one: " + accounts.oracleOne)
-        console.log("Oracle two: " + accounts.oracleTwo)
-        console.log("Oracle three: " + accounts.oracleThree)
-        console.log("Address one: " + accounts.adminOne)
-        console.log("Address two: " + accounts.adminTwo)
-        console.log("Address three: " + accounts.adminThree)
-
-        console.log("Auction contract: " + accounts.auctionContract)
-        console.log("Neutrino contract: " + accounts.neutrinoContract)
-        console.log("RPD contract: " + accounts.rpdContract)
-
-        console.log("Addresses:")
-        console.log("Oracle one: " + address(accounts.oracleOne))
-        console.log("Oracle two: " + address(accounts.oracleTwo))
-        console.log("Oracle three: " + address(accounts.oracleThree))
-        console.log("Address one: " + address(accounts.adminOne))
-        console.log("Address two: " + address(accounts.adminTwo))
-        console.log("Address three: " + address(accounts.adminThree))
-
-        console.log("Auction contract: " + address(accounts.auctionContract))
-        console.log("Neutrino contract: " + address(accounts.neutrinoContract))
-        console.log("RPD contract: " + address(accounts.rpdContract))
 
         const issueTx = issue({
             name: symbolNeutrino,
@@ -78,7 +82,7 @@ describe('Deploy', async function () {
         const issueBondTx = issue({
             name: symbolBond,
             description: descriptionBond,
-            quantity: "1000000000",
+            quantity: "1000000000000",
             decimals: 0
         }, accounts.neutrinoContract)
 
@@ -96,8 +100,23 @@ describe('Deploy', async function () {
         await broadcast(auctionDataTx);
         await waitForTx(auctionDataTx.id)
 
+        let oraclesAddress = ""
+        for(let i = 0; i < accounts.oracles.length; i++){
+            if(oraclesAddress != "")
+                oraclesAddress += ","
+            oraclesAddress += address(accounts.oracles[i])
+        }
+
+        let adminsAddress = ""
+        for(let i = 0; i < accounts.admins.length; i++){
+            if(adminsAddress != "")
+                adminsAddress += ","
+            adminsAddress += address(accounts.admins[i])
+        }
+        
         const neutrinoDataTx = data({
             data: [
+                { key: "control_contract", value: address(accounts.controlContract) },
                 { key: 'neutrino_asset_id', value: neutrinoAssetId },
                 { key: 'bond_asset_id', value: bondAssetId },
                 { key: 'auction_contract', value: address(accounts.auctionContract) },
@@ -105,22 +124,32 @@ describe('Deploy', async function () {
                 { key: "vote_interval", value: 10 },
                 { key: "min_waves_swap_amount", value: 100000000 },
                 { key: "min_neutrino_swap_amount", value: 10000 },
-                { key: "price_offset", value: 25 },
-                { key: "providing_interval", value: 5 },
-                { key: 'oracle_0', value: address(accounts.oracleOne) },
-                { key: 'oracle_1', value: address(accounts.oracleTwo)  },
-                { key: 'oracle_2', value: address(accounts.oracleThree)  },
-                { key: 'admin_0', value: address(accounts.adminOne) },
-                { key: 'admin_1', value: address(accounts.adminTwo) },
-                { key: 'admin_2', value: address(accounts.adminThree) },
                 { key: 'rpd_contract', value: address(accounts.rpdContract) },
-                { key: 'price', value: 100 },
+                { key: 'node_address', value: nodeAddress },
+                { key: 'leasing_interval', value: 10080 }
             ],
             fee: 500000
         }, accounts.neutrinoContract);
 
         await broadcast(neutrinoDataTx);
         await waitForTx(neutrinoDataTx.id);
+
+        const controlDataTx = data({
+            data: [
+                { key: "price_offset", value: 1000000 },
+                { key: "providing_interval", value: 5 },
+                { key: 'oracles', value: oraclesAddress},
+                { key: 'admins', value: adminsAddress },
+                { key: 'coefficient_oracle', value: 3 },
+                { key: 'coefficient_admin', value: 3 },
+                { key: 'script_update_interval', value: 30 },
+                { key: 'price', value: 100 }
+            ],
+            fee: 500000
+        }, accounts.controlContract);
+
+        await broadcast(controlDataTx);
+        await waitForTx(controlDataTx.id);
 
         const rpdDataTx = data({
             data: [
@@ -143,6 +172,11 @@ describe('Deploy', async function () {
         const setScriptAuctionTx = setScript({ script: scriptAuction, fee: 1000000,}, accounts.auctionContract);        
         await broadcast(setScriptAuctionTx);
         await waitForTx(setScriptAuctionTx.id)
+
+        const scriptControl = compile(file('../script/control.ride'));
+        const setScriptControlTx = setScript({ script: scriptControl, fee: 1000000,}, accounts.controlContract);        
+        await broadcast(setScriptControlTx);
+        await waitForTx(setScriptControlTx.id)
 
         const scriptRPD = compile(file('../script/rpd.ride'));
         const setScriptRPDTx = setScript({ script: scriptRPD, fee: 1000000,}, accounts.rpdContract);        

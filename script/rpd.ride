@@ -42,7 +42,7 @@ let PERCENTACCURACY = 10000
 # end consts
 
 #constructor 
-let NeutrinoBondIdKey = "bond_asset_id"
+let NeutrinoNeutrinoIdKey = "neutrino_asset_id"
 let NeutrinoContractKey = "neutrino_contract"
 let NodeAddressKey = "node_address"
 #end constructor
@@ -68,7 +68,7 @@ func getProfitKey(count: Int) = ProfitKey + "_" + toString(count)
 #global vars
 let nodeAddress = getStringByKey(NodeAddressKey)
 let neutrinoContract = getStringByKey(NeutrinoContractKey)
-let bondAssetId = fromBase58String(getStringByAddressAndKey(neutrinoContract, NeutrinoBondIdKey))
+let neutrinoAssetId = fromBase58String(getStringByAddressAndKey(neutrinoContract, NeutrinoNeutrinoIdKey))
 let syncIndex = getNumberByAddressAndKey(neutrinoContract, SyncIndexKey)
 #end global vars
 
@@ -93,8 +93,8 @@ func addBalanceHistory(history: String, element: String) = {
 @Callable(i)
 func lockNeutrino() = {
     let pmt = extract(i.payment)
-    if (pmt.assetId != bondAssetId) 
-        then throw("can use bond")
+    if (pmt.assetId != neutrinoAssetId) 
+        then throw("can use neutrino")
     else {
         let account = toString(i.caller)
         let assetIdString = toBase58String(value(pmt.assetId))
@@ -122,8 +122,8 @@ func unlockNeutrino(unlockAmount: Int, assetIdString: String) = {
     let availableBalance = balance
     if (availableBalance < 0) 
         then throw("invalid amount")
-    else if(assetId != bondAssetId)
-        then throw("can use bond")
+    else if(assetId != neutrinoAssetId)
+        then throw("can use neutrino")
     else {
         let historyString = getUserBalanceHistory(account)
         let history = historyString.split(LISTSPLITSYMBOL)
@@ -138,7 +138,7 @@ func unlockNeutrino(unlockAmount: Int, assetIdString: String) = {
                 DataEntry(getUserBalanceKeyByCount(account, syncIndex, assetIdString), balance),
                 DataEntry(getUserBalanceHistoryKey(account), newHistory)
             ]),
-            TransferSet([ScriptTransfer(addressFromStringValue(account), unlockAmount, bondAssetId)])
+            TransferSet([ScriptTransfer(addressFromStringValue(account), unlockAmount, neutrinoAssetId)])
         )
     }
 }
@@ -155,14 +155,14 @@ func withdraw(profitSyncIndex: Int, historyIndex: Int) = {
     else if(profitSyncIndex < lockActual || (historyIndex + 2 < size(history) && profitSyncIndex >= parseIntValue(history[historyIndex+1]) ))
         then throw("invalid history index")
     else {
-        let bondAssetIdString = toBase58String(bondAssetId)
-        let balance = getUserBalanceByCount(account, lockActual, bondAssetIdString)
-        let sharePercent = balance*PERCENTACCURACY*100/getSnapshotContractBalance(profitSyncIndex, bondAssetIdString)
+        let neutrinoAssetIdString = toBase58String(neutrinoAssetId)
+        let balance = getUserBalanceByCount(account, lockActual, neutrinoAssetIdString)
+        let sharePercent = balance*PERCENTACCURACY*100/getSnapshotContractBalance(profitSyncIndex, neutrinoAssetIdString)
         let profit = sharePercent*getProfit(profitSyncIndex)/100/PERCENTACCURACY
         
         ScriptResult(
             WriteSet([DataEntry(getIsClaimedKey(account, profitSyncIndex), true)]),
-            TransferSet([ScriptTransfer(addressFromStringValue(account), profit, bondAssetId)])
+            TransferSet([ScriptTransfer(addressFromStringValue(account), profit, neutrinoAssetId)])
         )
     }
 }
