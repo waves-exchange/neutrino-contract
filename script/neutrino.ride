@@ -48,6 +48,7 @@ func isInt(val: Int|Unit) = {
 #end base function
 
 # consts
+
 let LISTSPLITSYMBOL = "_"
 let LISTDATASYMBOL = "+"
 let WAVELET = 100000000
@@ -254,7 +255,7 @@ func generateBond() = {
     let amount = convertNeutrinoToBond(deficit) - balanceAuction
     if(isBlocked)
         then throw("contract is blocked") 
-    else if(amount > 0)
+    else if(amount >= 10)
         then TransferSet([ScriptTransfer(addressFromStringValue(auctionContract), amount, bondAssetId)])
     else throw("bond were generated or do not need it")
 }
@@ -310,7 +311,7 @@ func executeOrder() = {
         then throw("contract is blocked") 
     else if(surplus <= 0) 
         then throw("surplus is less than zero")
-    else if(orderOwner == "") then {
+    else if(orderOwner == "" && surplus >= 10) then {
         let newRpdSyncIndex = rpdSyncIndex + 1
         ScriptResult(
             WriteSet([
