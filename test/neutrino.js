@@ -1,4 +1,5 @@
 const wvs = 10 ** 8;
+const pauli = 10**2;
 let price = 2 * wvs;
 let assetId = ""
 let bondAssetId = ""
@@ -9,7 +10,7 @@ describe('Neutrino test', async function () {
             {
                 accountOne: 3 * wvs,
                 accountTwo: 1 * wvs,
-                contract: 2.1 * wvs,
+                neutrinoContract: 2.1 * wvs,
                 auctionContract: 1 * wvs
             }
         );
@@ -18,8 +19,8 @@ describe('Neutrino test', async function () {
         const issueTx = issue({
             name: 'Neutrino ELS',
             description: 'Neutrino Test ELS',
-            quantity: "100000000000000000",
-            decimals: 8
+            quantity: "100000000000000",
+            decimals: 2
         }, accounts.contract)
 
         await broadcast(issueTx);
@@ -30,7 +31,7 @@ describe('Neutrino test', async function () {
         const issueBondTx = issue({
             name: 'Neutrino BELS',
             description: 'Neutrino Bond ELS',
-            quantity: "100000000000000000",
+            quantity: "1000000000000",
             decimals: 0
         }, accounts.contract)
 
@@ -41,9 +42,17 @@ describe('Neutrino test', async function () {
         // set startup variable
         const dataTx = data({ 
             data: [
-                { key: 'neutrino_asset_id', value: assetId },
-                { key: 'bond_asset_id', value: bondAssetId},
-                { key: 'auction_contract', value: address(accounts.auctionContract)}
+                { key: "control_contract", value: address(accounts.controlContract) },
+                { key: 'neutrino_asset_id', value: neutrinoAssetId },
+                { key: 'bond_asset_id', value: bondAssetId },
+                { key: 'auction_contract', value: address(accounts.auctionContract) },
+                { key: "balance_lock_interval", value: 10 },
+                { key: "vote_interval", value: 10 },
+                { key: "min_waves_swap_amount", value: 100000000 },
+                { key: "min_neutrino_swap_amount", value: 100 },
+                { key: 'rpd_contract', value: address(accounts.rpdContract) },
+                { key: 'node_address', value: nodeAddress },
+                { key: 'leasing_interval', value: 20 }
             ]
         }, accounts.contract);
 
@@ -52,14 +61,14 @@ describe('Neutrino test', async function () {
 
         // set script
         const script = compile(file('../neutrino.ride'));
-        const ssTx = setScript({script}, accounts.contract);
+        const ssTx = setScript({script}, accounts.neutrinoContract);
             
         await broadcast(ssTx);
         await waitForTx(ssTx.id)
 
         // set price 
         const setPriceTx = invokeScript({
-            dApp: address(accounts.contract),
+            dApp: address(accounts.neutrinoContract),
             call: {function: "setCurrentPrice", args:[{type:"integer", value: price}] },
         }, accounts.accountOne);
     

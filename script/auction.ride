@@ -49,7 +49,10 @@ let PriceKey = "price"
 let BondAssetIdKey = "bond_asset_id"
 let NeutrinoAssetIdKey = "neutrino_asset_id"
 let NeutrinoContractKey = "neutrino_contract"
+let ControlContractKey = "control_contract"
 let OrderHistoryKey = "order_history_"
+let SwapLockedBalanceKey = "swap_locked_balance"
+let LeasingAmountKey = "leasing_amount"
 
 func getOrderPriceKey(orderId: String) = OrderPriceKey + orderId
 func getOrderTotalKey(orderId: String) = OrderTotalKey + orderId
@@ -62,12 +65,14 @@ func getOrderHistoryKey(height: Int) = OrderHistoryKey + toString(height)
 
 # global vars
 let neutrinoContract = addressFromStringValue(getStringByKey(NeutrinoContractKey))
-let controlContract = addressFromStringValue(getStringByAddressAndKey(neutrinoContract, NeutrinoContractKey))
+let leasingAmount = getNumberByAddressAndKey(neutrinoContract, LeasingAmountKey)
+let swapLockedBalance = getNumberByAddressAndKey(neutrinoContract, SwapLockedBalanceKey)
+let controlContract = addressFromStringValue(getStringByAddressAndKey(neutrinoContract, ControlContractKey))
 let priceNeutrino = getNumberByAddressAndKey(controlContract, PriceKey)
 let neutrinoAssetId = fromBase58String(getStringByAddressAndKey(neutrinoContract, NeutrinoAssetIdKey))
 let bondAssetId = fromBase58String(getStringByAddressAndKey(neutrinoContract, BondAssetIdKey))
 let orderbook = getStringByKey(OrderBookKey)
-let reserve = wavesBalance(neutrinoContract)
+let reserve = wavesBalance(this) + leasingAmount - swapLockedBalance
 let neutrinoSupply = {
     let info = extract(assetInfo(neutrinoAssetId))
     info.quantity - assetBalance(neutrinoContract, neutrinoAssetId)
@@ -167,7 +172,9 @@ func executeOrder() = {
     let bondAmount = if(deficitPositive >= bondBalance) then bondBalance else deficitPositive
     let returnAmount = if(deficitPositive >= bondBalance) then 0 else bondBalance-deficitPositive
 
-    if(bondAmount == 0) then {
+    if(returnAmount == 0 && bondAmount == 0) 
+        then throw("without dificit")
+    else if(bondAmount == 0) then {
         TransferSet([
             ScriptTransfer(neutrinoContract, returnAmount, bondAssetId)
         ])
