@@ -307,11 +307,13 @@ func executeOrder() = {
     let orderOwner = getOrderOwner(orderId)
     let filledTotal = getOrderFilledTotal(orderId)
 
+    let surplusBond = convertNeutrinoToBond(surplus)
+    
     if(isBlocked)
         then throw("contract is blocked") 
-    else if(surplus <= 0) 
+    else if(surplusBond <= 0) 
         then throw("surplus is less than zero")
-    else if(orderOwner == "" && surplus >= 10) then {
+    else if(orderOwner == "" && surplusBond >= 10) then {
         let newRpdSyncIndex = rpdSyncIndex + 1
         ScriptResult(
             WriteSet([
@@ -326,13 +328,12 @@ func executeOrder() = {
     }
     else {
         let amount = orderTotal-filledTotal;
-        let surplusBond = convertNeutrinoToBond(surplus)
         let status = if(surplusBond >= amount) then FILLED else NEW
         let newFilledTotal = if(surplusBond >= amount) then orderTotal else surplusBond
 
         ScriptResult(
             WriteSet([
-                DataEntry(OrderbookKey, dropOrder(orderId)),
+                DataEntry(OrderbookKey, if(surplusBond >= amount) then dropOrder(orderId) else orderbook),
                 DataEntry(getOrderFilledTotalKey(orderId), filledTotal + newFilledTotal),
                 DataEntry(getOrderStatusKey(orderId), status)
             ]), 
