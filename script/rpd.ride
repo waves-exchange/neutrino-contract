@@ -119,8 +119,7 @@ func unlockNeutrino(unlockAmount: Int, assetIdString: String) = {
     let account = toString(i.caller)
     let assetId = fromBase58String(assetIdString)
     let balance = getUserBalance(account, assetIdString) - unlockAmount
-    let availableBalance = balance
-    if (availableBalance < 0) 
+    if (balance < 0) 
         then throw("invalid amount")
     else if(assetId != neutrinoAssetId)
         then throw("can use neutrino")
@@ -133,7 +132,7 @@ func unlockNeutrino(unlockAmount: Int, assetIdString: String) = {
                      else (addBalanceHistory(historyString, getHistoryElement(syncIndex)))
         ScriptResult(
             WriteSet([
-                DataEntry(BalanceKey, getContractBalance(assetIdString) - unlockAmount),
+                DataEntry(getContractBalanceKey(assetIdString), getContractBalance(assetIdString) - unlockAmount),
                 DataEntry(getUserBalanceKey(account, assetIdString), balance),
                 DataEntry(getUserBalanceKeyByCount(account, syncIndex, assetIdString), balance),
                 DataEntry(getUserBalanceHistoryKey(account), newHistory)
@@ -157,8 +156,8 @@ func withdraw(profitSyncIndex: Int, historyIndex: Int) = {
     else {
         let neutrinoAssetIdString = toBase58String(neutrinoAssetId)
         let balance = getUserBalanceByCount(account, lockActual, neutrinoAssetIdString)
-        let sharePercent = balance*PERCENTACCURACY*100/getSnapshotContractBalance(profitSyncIndex, neutrinoAssetIdString)
-        let profit = sharePercent*getProfit(profitSyncIndex)/100/PERCENTACCURACY
+        let sharePercent = balance*PERCENTACCURACY/getSnapshotContractBalance(profitSyncIndex, neutrinoAssetIdString)
+        let profit = sharePercent*getProfit(profitSyncIndex)/PERCENTACCURACY
         
         ScriptResult(
             WriteSet([DataEntry(getIsClaimedKey(account, profitSyncIndex), true)]),

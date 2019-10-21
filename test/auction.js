@@ -1,137 +1,216 @@
-const wvs = 10 ** 8;
-let assetId = ""
-let bondAssetId = ""
+var deployHelper = require('../helpers/deployHelper.js');
 
+let deployResult = {}
+const orderCount = 4;
 describe('Auction test', async function () {
     before(async function () {
-        await setupAccounts(
-            {
-                accountOne: 10 * wvs,
-                accountTwo: 10 * wvs,
-                contract: 10 * wvs,
-                neutrinoContract: 1 * wvs
-            }
-        );
+        deployResult = await deployHelper.deploy("TST-N", "TST-NB", "test asset", "test bond asset", "")
 
-        // issue Neutrino
-        const issueTx = issue({
-            name: 'Neutrino ELS',
-            description: 'Neutrino Test ELS',
-            quantity: "100000000000000000",
-            decimals: 8
-        }, accounts.accountTwo)
+        setupAccounts({
+            testAccount: 100000 * deployHelper.WAVELET
+        })
 
-        await broadcast(issueTx);
-        await waitForTx(issueTx.id)
-        assetId = issueTx.id;
+        var massTx = massTransfer({
+            transfers: [
+                {
+                    amount: 1800000,
+                    recipient: address(deployResult.accounts.neutrinoContract)
+                },
+                {
+                    amount: 500000,
+                    recipient: address(deployResult.accounts.controlContract)
+                }
+            ],
+            fee: 500000
+        }, env.SEED)
+        await broadcast(massTx);
+        await waitForTx(massTx.id);
 
-        const transferTx = transfer({
-            amount: 1000000000,
-            recipient: address(accounts.accountOne),
-            assetId: assetId
-        }, accounts.accountTwo)
+        var massNeutrinoTx = massTransfer({
+            transfers: [
+                {
+                    amount: deployHelper.getRandomArbitrary(1, 9999) * deployHelper.PAULI,
+                    recipient: address(accounts.testAccount)
+                }
+            ],
+            fee: 600000,
+            assetId: deployResult.assets.neutrinoAssetId
+        }, deployResult.accounts.neutrinoContract)
+        await broadcast(massNeutrinoTx);
 
-        await broadcast(transferTx);
-        await waitForTx(transferTx.id)
+        await waitForTx(massNeutrinoTx.id);
 
-        // issue Bond
-        const issueBondTx = issue({
-            name: 'Neutrino BELS',
-            description: 'Neutrino Bond ELS',
-            quantity: "100000000000000000",
-            decimals: 0
-        }, accounts.accountTwo)
-
-        await broadcast(issueBondTx);
-        await waitForTx(issueBondTx.id)
-        bondAssetId = issueBondTx.id;
-
-        // set startup variable
-        const dataTx = data({ 
-            data: [
-                { key: 'neutrino_asset_id', value: assetId},
-                { key: 'neutrino_contract_address', value: address(accounts.neutrinoContract)},
-                { key: 'bond_asset_id', value: bondAssetId}
-            ]
-        }, accounts.contract);
-
-        await broadcast(dataTx);
-        await waitForTx(dataTx.id)
-
-        // set script
-        const script = compile(file('../auction.ride'));
-        const ssTx = setScript({script}, accounts.contract);
-            
-        await broadcast(ssTx);
-        await waitForTx(ssTx.id)
-
-        console.log('Script has been set')
+        price = deployHelper.getRandomArbitrary(1, 9999)
+         
+       /* const priceDataTx = data({
+             data: [
+                 { key: "price", value: price }
+             ],
+             fee: 500000
+        }, deployResult.accounts.controlContract);
+ 
+        await broadcast(priceDataTx);
+ 
+        await waitForTx(priceDataTx.id);*/
     });
+    it('Add orders', async function () {
+        let orderPrice = deployHelper.getRandomArbitrary(1, 100)
+        for (let i = 0; i < orderCount; i++) {
+            const balance = await assetBalance(deployResult.assets.neutrinoAssetId, address(accounts.testAccount));
+            const amount = Math.floor(balance / (deployHelper.getRandomArbitrary(2, 10)))
+            const tx = invokeScript({
+                dApp: address(deployResult.accounts.auctionContract),
+                call: { function: "setOrder", args: [{ type: "integer", value: orderPrice }, { type: "integer", value: i }] },
+                payment: [{ assetId: deployResult.assets.neutrinoAssetId, amount: amount }]
+            }, accounts.testAccount);
 
-    it('Add first order', async function () {
+            await broadcast(tx);
+            await waitForTx(tx.id);
+
+            const state = await stateChanges(tx.id);
+            const data = deployHelper.convertDataStateToObject(state.data)
+            const orderHash = data.orderbook.split("_")[i] //TODO hash
+
+            if (data["order_total_" + orderHash] != amount)
+                throw "invalid order total"
+            else if (data["order_owner_" + orderHash] != address(accounts.testAccount))
+                throw "invalid order owner"
+            else if (data["order_status_" + orderHash]!= "new")
+                throw "invalid order status"
+
+            orderPrice = orderPrice - Math.floor(orderPrice/2)
+        }
+    })
+    it('Cancel order', async function () {
+        const index = deployHelper.getRandomArbitrary(0, orderCount-1)
+        const data = await accountData(address(deployResult.accounts.auctionContract))
+        const orders = data.orderbook.value.split("_")
+        
         const tx = invokeScript({
-            dApp: address(accounts.contract),
-            call: {function: "setOrder", args:[{type:"integer", value: 0.5 * wvs},{type:"integer", value: 0}] },
-            payment: [{assetId: assetId, amount: 1 * wvs}]
-        }, accounts.accountOne);
+            dApp: address(deployResult.accounts.auctionContract),
+            call: { function: "cancelOrder", args: [{ type: "string", value: orders[index] }] }
+        }, accounts.testAccount);
 
         await broadcast(tx);
         await waitForTx(tx.id);
+
+        const state = await stateChanges(tx.id);
+        const dataState = deployHelper.convertDataStateToObject(state.data)
+
+        const newOrderbookItems = data.orderbook.value.split(orders[index] + "_")
+        const newOrderbook  = newOrderbookItems[0] + newOrderbookItems[1]
+
+        const amount = data["order_total_" + orders[index]].value
+        if (dataState.orderbook != newOrderbook)
+            throw "invalid order total"
+        else if (dataState["order_status_" + orders[index]] != "canceled")
+            throw "invalid order status"
+        else if(state.transfers[0].address != address(accounts.testAccount))
+            throw "invalid receiver address"
+        else if(state.transfers[0].amount != amount)
+            throw "invalid receiver amount"
+        else if(state.transfers[0].asset != deployResult.assets.neutrinoAssetId)
+            throw "invalid asset"
     })
-
-    it('Add second order', async function () {
-        const tx = invokeScript({
-            dApp: address(accounts.contract),
-            call: {function: "setOrder", args:[{type:"integer", value: 0.4 * wvs},{type:"integer", value: 1}] },
-            payment: [{assetId: assetId, amount: 1 * wvs}]
-        }, accounts.accountOne);
-
-        await broadcast(tx);
-        await waitForTx(tx.id);
-    })
-    let thirdOrderId = "";
-    it('Add third order', async function () {
-        const tx = invokeScript({
-            dApp: address(accounts.contract),
-            call: {function: "setOrder", args:[{type:"integer", value: 0.45 * wvs},{type:"integer", value: 1}] },
-            payment: [{assetId: assetId, amount: 0.1 * wvs}]
-        }, accounts.accountOne);
-
-        await broadcast(tx);
-        await waitForTx(tx.id);
-
-        let state = await stateChanges(tx.id);
-        thirdOrderId = state.data[1].key.replace("order_price_", "")
-    })
-
-    it('Cancel third order', async function () {
-        const tx = invokeScript({
-            dApp: address(accounts.contract),
-            call: {function: "cancelOrder", args:[{type:"string", value: thirdOrderId}] },
-            payment: [{assetId: null, amount: 0.1 * wvs}]
-        }, accounts.accountOne);
-
-        await broadcast(tx);
-        await waitForTx(tx.id);
-    })
-
-    it('Excexute full order', async function () {
-
-        const transferTx = transfer({
-            amount: 200000000,
-            recipient: address(accounts.contract),
-            assetId: bondAssetId
-        }, accounts.accountTwo)
-
+    it('Partially filled order', async function () {
+        const data = await accountData(address(deployResult.accounts.auctionContract))
+        const orderHash = data.orderbook.value.split("_")[0]
+        const price = data["order_price_" + orderHash].value
+        const totalOrder = Math.floor(data["order_total_" + orderHash].value/2)
+        const amount = Math.floor(totalOrder*100/price/deployHelper.PAULI)
+        const realTotal = Math.floor(amount*price*deployHelper.PAULI/100)
+        
+        var transferTx = transfer({
+            amount: amount,
+            recipient: address(deployResult.accounts.auctionContract),
+            fee: 600000,
+            assetId: deployResult.assets.bondAssetId
+        }, deployResult.accounts.neutrinoContract)
         await broadcast(transferTx);
-        await waitForTx(transferTx.id)
+        await waitForTx(transferTx.id);
 
         const tx = invokeScript({
-            dApp: address(accounts.contract),
-            call: {function: "execute" }
-        }, accounts.accountOne);
+            dApp: address(deployResult.accounts.auctionContract),
+            call: { function: "executeOrder" }
+        }, accounts.testAccount);
 
         await broadcast(tx);
         await waitForTx(tx.id);
+
+        const state = await stateChanges(tx.id);
+        const dataState = deployHelper.convertDataStateToObject(state.data)
+
+        const transferToNeutrinoContract = state.transfers.find(x=>x.address == address(deployResult.accounts.neutrinoContract))
+        const transferToOrderOwner = state.transfers.find(x=>x.address == address(accounts.testAccount))
+        
+        if (dataState.orderbook != data.orderbook.value)
+            throw "invalid orderbook"
+        else if (dataState["order_status_" + orderHash] != "new")
+            throw "invalid order status"
+        else if(transferToNeutrinoContract == null)
+            throw "not find transfer to neutrino contract"
+        else if(transferToOrderOwner == null)
+            throw "not find transfer to order owner"
+        else if(transferToNeutrinoContract.amount != realTotal)
+            throw "invalid receiver amount transfer to neutrino contract"
+        else if(transferToNeutrinoContract.asset != deployResult.assets.neutrinoAssetId)
+            throw "invalid asset transfer to neutrino contract"
+        else if(transferToOrderOwner.amount != amount)
+            throw "invalid receiver amount to order owner"
+        else if(transferToOrderOwner.asset != deployResult.assets.bondAssetId)
+            throw "invalid asset to order owner"
+        
+    })
+    it('Fully filled order', async function () {
+        const data = await accountData(address(deployResult.accounts.auctionContract))
+        const orderHash = data.orderbook.value.split("_")[0]
+        const price = data["order_price_" + orderHash].value
+        const totalOrder = data["order_total_" + orderHash].value - data["order_filled_total_" + orderHash].value
+        const amount = Math.floor(totalOrder*100/price/deployHelper.PAULI)
+        const realTotal = Math.floor(amount*price*deployHelper.PAULI/100)
+
+        var transferTx = transfer({
+            amount: amount,
+            recipient: address(deployResult.accounts.auctionContract),
+            fee: 600000,
+            assetId: deployResult.assets.bondAssetId
+        }, deployResult.accounts.neutrinoContract)
+        await broadcast(transferTx);
+        await waitForTx(transferTx.id);
+
+        const tx = invokeScript({
+            dApp: address(deployResult.accounts.auctionContract),
+            call: { function: "executeOrder" }
+        }, accounts.testAccount);
+
+        await broadcast(tx);
+        await waitForTx(tx.id);
+
+        const state = await stateChanges(tx.id);
+        const dataState = deployHelper.convertDataStateToObject(state.data)
+        
+        const transferToNeutrinoContract = state.transfers.find(x=>x.address == address(deployResult.accounts.neutrinoContract))
+        const transferToOrderOwner = state.transfers.find(x=>x.address == address(accounts.testAccount))
+
+        const orderbookElements = data.orderbook.value.split(orderHash + "_")
+        const newOrderbook = orderbookElements[0] + orderbookElements[1]
+        
+        if (dataState.orderbook != newOrderbook)
+            throw "invalid orderbook"
+        else if (dataState["order_status_" + orderHash] != "filled")
+            throw "invalid order status"
+        else if(transferToNeutrinoContract == null)
+            throw "not find transfer to neutrino contract"
+        else if(transferToOrderOwner == null)
+            throw "not find transfer to order owner"
+        else if(transferToNeutrinoContract.amount != realTotal)
+            throw "invalid amount transfer to neutrino contract"
+        else if(transferToNeutrinoContract.asset != deployResult.assets.neutrinoAssetId)
+            throw "invalid asset transfer to neutrino contract"
+        else if(transferToOrderOwner.amount != amount)
+            throw "invalid amount to order owner"
+        else if(transferToOrderOwner.asset != deployResult.assets.bondAssetId)
+            throw "invalid asset to order owner"
+        
     })
 })

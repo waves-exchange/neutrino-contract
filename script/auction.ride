@@ -30,11 +30,13 @@ func getNumberByAddressAndKey(address: Address, key: String) = {
 #end base function
 
 # consts
+let WAVELET = 100000000
 let ORDERSPLITSYMBOL = "_"
 let PAULI = 100
 let CANCELED = "canceled"
 let NEW = "new"
 let FILLED = "filled"
+let PERCENTACCURACY = 1000
 #end consts
 
 # keys
@@ -52,7 +54,6 @@ let NeutrinoContractKey = "neutrino_contract"
 let ControlContractKey = "control_contract"
 let OrderHistoryKey = "order_history_"
 let SwapLockedBalanceKey = "swap_locked_balance"
-let LeasingAmountKey = "leasing_amount"
 
 func getOrderPriceKey(orderId: String) = OrderPriceKey + orderId
 func getOrderTotalKey(orderId: String) = OrderTotalKey + orderId
@@ -63,20 +64,28 @@ func getOrderFilledTotalKey(orderId: String) = OrderFilledTotalKey + orderId
 func getOrderHistoryKey(height: Int) = OrderHistoryKey + toString(height)
 #end keys
 
-# global vars
 let neutrinoContract = addressFromStringValue(getStringByKey(NeutrinoContractKey))
-let leasingAmount = getNumberByAddressAndKey(neutrinoContract, LeasingAmountKey)
-let swapLockedBalance = getNumberByAddressAndKey(neutrinoContract, SwapLockedBalanceKey)
 let controlContract = addressFromStringValue(getStringByAddressAndKey(neutrinoContract, ControlContractKey))
 let priceNeutrino = getNumberByAddressAndKey(controlContract, PriceKey)
+#convert func
+func convertNeutrinoToWaves(amount: Int) = amount*100/priceNeutrino*WAVELET/PAULI
+func convertWavesToNeutrino(amount: Int) = amount*priceNeutrino/100*PAULI/WAVELET 
+func convertNeutrinoToBond(amount: Int) = amount/PAULI 
+func convertBondToNeutrino(amount: Int) = amount*PAULI 
+func convertWavesToBond(amount: Int) = convertNeutrinoToBond(convertWavesToNeutrino(amount))
+#end convert func
+
+# global vars
+let swapLockedBalance = getNumberByAddressAndKey(neutrinoContract, SwapLockedBalanceKey)
 let neutrinoAssetId = fromBase58String(getStringByAddressAndKey(neutrinoContract, NeutrinoAssetIdKey))
 let bondAssetId = fromBase58String(getStringByAddressAndKey(neutrinoContract, BondAssetIdKey))
 let orderbook = getStringByKey(OrderBookKey)
-let reserve = wavesBalance(this) + leasingAmount - swapLockedBalance
+let reserve = wavesBalance(this) - swapLockedBalance
 let neutrinoSupply = {
     let info = extract(assetInfo(neutrinoAssetId))
     info.quantity - assetBalance(neutrinoContract, neutrinoAssetId)
 }
+let deficit = neutrinoSupply - convertWavesToNeutrino(reserve)
 #end global vars
 
 # get func
@@ -150,6 +159,8 @@ func cancelOrder(orderId : String) = {
     let amount = getOrderTotal(orderId) - getOrderFilledTotal(orderId)
     if(owner != toString(i.caller)) 
         then throw("permission denied")
+    else if(getOrderStatus(orderId) != NEW)
+        then throw("invalid order status")
     else {
         ScriptResult(
             WriteSet([
@@ -167,13 +178,12 @@ func cancelOrder(orderId : String) = {
 @Callable(i)
 func executeOrder() = {
     let bondBalance = assetBalance(this, bondAssetId)
-    let deficit = (neutrinoSupply - reserve*priceNeutrino/100)/PAULI
     let deficitPositive = if(deficit <= 0) then 0 else deficit
     let bondAmount = if(deficitPositive >= bondBalance) then bondBalance else deficitPositive
     let returnAmount = if(deficitPositive >= bondBalance) then 0 else bondBalance-deficitPositive
 
     if(returnAmount == 0 && bondAmount == 0) 
-        then throw("without dificit")
+        then throw("without deficit")
     else if(bondAmount == 0) then {
         TransferSet([
             ScriptTransfer(neutrinoContract, returnAmount, bondAssetId)
@@ -185,12 +195,12 @@ func executeOrder() = {
         let orderTotal = getOrderTotal(orderId)
         let orderPrice = getOrderPrice(orderId)
         let orderOwner = getOrderOwner(orderId)
-        let amount = (orderTotal-filledTotal)*100/orderPrice/PAULI;
+        let amount = convertNeutrinoToBond((orderTotal-filledTotal)*100/orderPrice);
     
         let newOrderbook = if(bondAmount >= amount) then dropOrder(orderId) else orderbook
         let filledAmount = if(bondAmount >= amount) then amount else bondAmount
 
-        let total = filledAmount*orderPrice/100*PAULI;
+        let total = filledAmount*orderPrice*PAULI/100;
 
         let status = if(bondAmount >= amount) then FILLED else NEW
 

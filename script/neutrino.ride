@@ -158,18 +158,19 @@ let neutrinoSupply = {
     info.quantity - assetBalance(this, neutrinoAssetId)
 }
 let surplus = convertWavesToNeutrino(reserve) - neutrinoSupply
+let deficit = neutrinoSupply - convertWavesToNeutrino(reserve)
 
 #end global vars
 
 # get func
 
 func getRPDContractBalance(assetId: ByteVector) = getNumberByAddressAndKey(rpdContract, getRPDContractBalanceKey(assetId))
-
 func getWavesBalance(owner : String) = getNumberByKey(getWavesBalanceKey(owner))
 func getNeutrinoBalance(owner : String) = getNumberByKey(getNeutrinoBalanceKey(owner))
 func getUnlockBalanceBlock(owner : String) = getNumberByKey(getBalanceUnlockBlockKey(owner))
 func getOrderTotal(id : String) = getNumberByKey(getOrderTotalKey(id))
 func getOrderOwner(id : String) = getStringByKey(getOrderOwnerKey(id))
+func getOrderStatus(id : String) = getStringByKey(getOrderStatusKey(id))
 func getOrderFilledTotal(id : String) = getNumberByKey(getOrderFilledTotalKey(id))
 func getRPDProfit(count: Int) = getNumberByKey(getRPDProfitKey(count))
 #end get func
@@ -250,7 +251,6 @@ func withdraw(account : String) = {
 
 @Callable(i)
 func generateBond() = {
-    let deficit = neutrinoSupply - convertWavesToNeutrino(reserve)
     let balanceAuction = assetBalance(addressFromStringValue(auctionContract), bondAssetId)
     let amount = convertNeutrinoToBond(deficit) - balanceAuction
     if(isBlocked)
@@ -287,6 +287,8 @@ func cancelOrder(orderId : String) = {
     let amount = getOrderTotal(orderId) - getOrderFilledTotal(orderId)
     if(owner != toString(i.caller)) 
         then throw("permission denied")
+    else if(getOrderStatus(orderId) != NEW)
+        then throw("invalid order status")
     else {
         ScriptResult(
             WriteSet([

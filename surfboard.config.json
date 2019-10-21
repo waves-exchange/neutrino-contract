@@ -27,7 +27,7 @@
             "SEED": "X"
         }
     },
-    "defaultEnv": "main",
+    "defaultEnv": "custom",
     "mocha": {
         "timeout": 60000
     }
