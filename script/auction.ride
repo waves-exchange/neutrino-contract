@@ -66,12 +66,13 @@ func getOrderHistoryKey(height: Int) = OrderHistoryKey + toString(height)
 #end keys
 
 let neutrinoContract = addressFromStringValue(getStringByKey(NeutrinoContractKey))
-# Адрес control contract
-# The var is read from neutrino contract
+
+# The value rom neutrino.ride
 let controlContract = addressFromStringValue(getStringByAddressAndKey(neutrinoContract, ControlContractKey))
-# Актуальная цена, которую предоставляют оракулы
-# The var is read from neutrino contract
+
+# The value rom control.ride
 let priceNeutrino = getNumberByAddressAndKey(controlContract, PriceKey)
+
 #convert func
 func convertNeutrinoToWaves(amount: Int) = amount*100/priceNeutrino*WAVELET/PAULI
 func convertWavesToNeutrino(amount: Int) = amount*priceNeutrino/100*PAULI/WAVELET 
@@ -81,12 +82,13 @@ func convertWavesToBond(amount: Int) = convertNeutrinoToBond(convertWavesToNeutr
 #end convert func
 
 # global vars
-# Asset ids
-# The var is read from neutrino contract
+# Assets ids
+# The value rom neutrino.ride
 let neutrinoAssetId = fromBase58String(getStringByAddressAndKey(neutrinoContract, NeutrinoAssetIdKey))
 let bondAssetId = fromBase58String(getStringByAddressAndKey(neutrinoContract, BondAssetIdKey))
-# Общий баланс которые заблокирован после swapNeutrinoToWaves
-# The var is read from neutrino contract
+
+# locked balance from calling swapNeutrinoToWaves
+# The value rom neutrino.ride
 let swapLockedBalance = getNumberByAddressAndKey(neutrinoContract, SwapLockedBalanceKey)
 let orderbook = getStringByKey(OrderBookKey)
 let reserve = wavesBalance(neutrinoContract) - swapLockedBalance
