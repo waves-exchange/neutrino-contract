@@ -62,21 +62,26 @@ func getIsClaimedKey(owner: String, count: Int) = IsClaimedKey + "_" + owner + "
 func getContractBalanceKey(assetId: String) = BalanceKey + "_" + assetId
 func getSnapshotContractBalanceKey(count: Int, assetId: String) = BalanceKey + "_" + assetId + "_" + toString(count)
 func getProfitKey(count: Int) = ProfitKey + "_" + toString(count)
-
 #end keys
 
 #global vars
 let nodeAddress = getStringByKey(NodeAddressKey)
 let neutrinoContract = getStringByKey(NeutrinoContractKey)
+# Neutrino asset id
+# The var is read from neutrino contract
 let neutrinoAssetId = fromBase58String(getStringByAddressAndKey(neutrinoContract, NeutrinoNeutrinoIdKey))
 let syncIndex = getNumberByAddressAndKey(neutrinoContract, SyncIndexKey)
 #end global vars
 
 # get func
-func getContractBalance(assetId: String) = getNumberByKey(getContractBalanceKey(assetId))
+# Получить snapshot баланса по номеру чека.
+# The func is reading from neutrino contract
 func getSnapshotContractBalance(count: Int, assetId: String) = getNumberByAddressAndKey(neutrinoContract, getSnapshotContractBalanceKey(count, assetId))
+# Получить профит по номеру чека.
+# The func is reading from neutrino contract
 func getProfit(count: Int) = getNumberByAddressAndKey(neutrinoContract, getProfitKey(count))
 
+func getContractBalance(assetId: String) = getNumberByKey(getContractBalanceKey(assetId))
 func getUserBalance(owner : String, assetId: String) = getNumberByKey(getUserBalanceKey(owner, assetId))
 func getUserBalanceByCount(owner : String, count: Int, assetId: String) = getNumberByKey(getUserBalanceKeyByCount(owner, count, assetId))
 func getUserBalanceHistory(owner: String) = getStringByKey(getUserBalanceHistoryKey(owner))

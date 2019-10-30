@@ -85,7 +85,6 @@ let BlockExpireVoteKey = "vote_expire_block"
 let ScriptUpdateBlockKey = "script_update_block"
 let PriceIndexKey = "price_index"
 
-
 func getOracleIsProvideKey(owner: String) = OracleIsProvideKey + owner
 func getOracleProvidePriceKey(owner: String) = OracleProvidePriceKey + owner
 func getAdminVoteKey(owner: String) = AdminVoteKey + owner
