@@ -241,7 +241,7 @@ func swapNeutrinoToWaves() = {
             DataEntry(getBalanceUnlockBlockKey(account), height + balanceLockInterval),
             DataEntry(IsRebalanceKey, (reserveWithoutLeasing - amount) <= reserve*CRYTICALSHARE/100),
             DataEntry(SwapNeutrinoLockedBalanceKey, newSwapNeutrinoLockedBalance),
-            DataEntry(IsRebalanceKey, if(convertNeutrinoToWaves(newSwapNeutrinoLockedBalance) >= reserveWithoutLeasing) then false else true)
+            DataEntry(IsRebalanceKey, if(reserveWithoutLeasing >= convertNeutrinoToWaves(newSwapNeutrinoLockedBalance)) then false else true)
         ])
     }
 }
@@ -465,7 +465,7 @@ func registrationUnleaseTx(chainIdString: String, senderPublicKey: String, fee: 
             DataEntry(LeasingTxCountKey, leasingTxCount - 1),
             DataEntry(LeasingAmountKey, leasingAmount - amount),
             DataEntry(getLeaseTxStatusKey(leaseTxHash), CANCELED),
-            DataEntry(IsRebalanceKey, if(convertNeutrinoToWaves(swapNeutrinoLockedBalance) >= (reserveWithoutLeasing - amount)) then false else true)
+            DataEntry(IsRebalanceKey, if((reserveWithoutLeasing - amount) >= convertNeutrinoToWaves(swapNeutrinoLockedBalance)) then false else true)
         ])
     }
 }
