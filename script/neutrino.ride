@@ -219,6 +219,7 @@ func swapWavesToNeutrino() = {
         ])
     }
 }
+
 # Swap request Neutrino to WAVES. After {balanceLockInterval} blocks WAVES tokens will be available for withdraw with {withdraw(account : String)} method.
 # with price at the moment of {balanceLockInterval} has reached
 # [called by user]
@@ -325,9 +326,9 @@ func cancelOrder(orderId : String) = {
     let owner = getOrderOwner(orderId)
     let amount = getOrderTotal(orderId) - getOrderFilledTotal(orderId)
     if(owner != toString(i.caller)) 
-        then throw("permission denied")
+        then throw("only owner of bonds liquidation request is able to cancel it")
     else if(getOrderStatus(orderId) != NEW)
-        then throw("invalid order status")
+        then throw("invalid liquidation request status")
     else {
         ScriptResult(
             WriteSet([
@@ -341,6 +342,9 @@ func cancelOrder(orderId : String) = {
     }
 }
 
+# executing bond -> neutrino 1:1 exchange from the liquidation queue if SC has reached proficit in collateral cap
+# it's calling n-times untill all orders from the liquidation queue will be executed during proficit stage
+# [called by pacemaker oracles]
 @Callable(i)
 func executeOrder() = {
     let orderId = orderbook.split(LISTSPLITSYMBOL)[0]
@@ -351,9 +355,9 @@ func executeOrder() = {
     let surplusBond = convertNeutrinoToBond(surplus)
     
     if(isBlocked)
-        then throw("contract is blocked") 
+        then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles") # see control.ride
     else if(surplusBond <= 0) 
-        then throw("surplus is less than zero")
+        then throw("there is no proficit on the smart contract now")
     else if(orderOwner == "" && surplusBond >= 10) then {
         let newRpdSyncIndex = rpdSyncIndex + 1
         ScriptResult(
@@ -385,19 +389,23 @@ func executeOrder() = {
     }
 }
 
+# transfer tokens from one address to another through smart contact
+# [called by user]
 @Callable(i)
 func transfer(account: String) = {
     let pmt = extract(i.payment)
     TransferSet([ScriptTransfer(addressFromStringValue(account), pmt.amount, pmt.assetId)])
 }
 
+# transfer neutrino tokens to the rpd.ride smart contact (rewards payouts distribution) generated from waves in the result of leasing profit
+# [called by node]
 @Callable(i)
 func nodeReward() = {
     let pmt = value(i.payment)
     if(i.caller != addressFromStringValue(nodeAddress))
-        then throw("permission denied")
+        then throw("only node account is able to transfer staking rewards from main account")
     else if(isDefined(pmt.assetId))
-        then throw("waves only")
+        then throw("waves tokens only allowed")
     else {
         let amount = convertWavesToNeutrino(pmt.amount)
         let newRpdSyncIndex = rpdSyncIndex + 1
@@ -414,6 +422,9 @@ func nodeReward() = {
     }
 }
 
+# start leasing tx registration of almost all amount of waves on the main smart contract to the node account
+# see @Verifier's LeaseTransaction of the current script
+# [called by pacemaker oracles]
 @Callable(i)
 func registrationLeaseTx(senderPublicKey: String, fee: Int, timestamp: Int, leaseTxHash: String) = {
     let totalFreeReserve = reserve*LEASINGSHARE/100 - convertNeutrinoToWaves(swapNeutrinoLockedBalance)
@@ -448,6 +459,10 @@ func registrationLeaseTx(senderPublicKey: String, fee: Int, timestamp: Int, leas
         ])
     }
 }
+
+# cancel leasing tx registration record
+# this method can be called only if appropriate LeaseTransaction never happend during time interval after registrationLeaseTx() call
+# [called by pacemaker oracles]
 @Callable(i)
 func cancelStuckLeaseTx(txHash: String) = {
     if(getLeaseTxStatus(txHash) == NEW && !isDefined(transactionHeightById(fromBase58String(txHash))) && height > getLeaseTxExpireSendBlock(txHash)) then {
@@ -459,6 +474,9 @@ func cancelStuckLeaseTx(txHash: String) = {
     } else throw("invalid tx hash")
 }
 
+# registration unlease tx in the kv-storage
+# this method can be called only if appropriate LeaseCancelTransaction happend
+# [called by pacemaker oracles]
 @Callable(i)
 func registrationUnleaseTx(chainIdString: String, senderPublicKey: String, fee: Int, timestamp: Int, leaseTxHash: String) = {
     let txBytes = base64'CQI=' + toBytes(chainIdString) + fromBase58String(senderPublicKey) + toBytes(fee) + toBytes(timestamp) + fromBase58String(leaseTxHash)
@@ -481,6 +499,8 @@ func registrationUnleaseTx(chainIdString: String, senderPublicKey: String, fee: 
     }
 }
 
+# LeaseCancelTransaction depends from swapNeutrinoToWaves() result i.e. waves amount is not enought for future swaps
+# or end of leasing time
 @Verifier(tx)
 func verify() = {
     let id = toBase58String(tx.id)
