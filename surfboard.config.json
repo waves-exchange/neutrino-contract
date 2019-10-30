@@ -14,7 +14,7 @@
             "timeout": 60000,
             "SEED": "X"
         },
-        "main": {
+        "mainnet": {
             "API_BASE": "https://nodes.wavesnodes.com",
             "CHAIN_ID": "W",
             "timeout": 60000,
@@ -27,7 +27,7 @@
             "SEED": "X"
         }
     },
-    "defaultEnv": "custom",
+    "defaultEnv": "mainnet",
     "mocha": {
         "timeout": 60000
     }

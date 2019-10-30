@@ -83,6 +83,8 @@ let BlockExpireProvidingKey = "providing_expire_block"
 let BlackSwarmPriceKey = "black_swarm_price"
 let BlockExpireVoteKey = "vote_expire_block"
 let ScriptUpdateBlockKey = "script_update_block"
+let PriceIndexKey = "price_index"
+
 
 func getOracleIsProvideKey(owner: String) = OracleIsProvideKey + owner
 func getOracleProvidePriceKey(owner: String) = OracleProvidePriceKey + owner
@@ -90,10 +92,12 @@ func getAdminVoteKey(owner: String) = AdminVoteKey + owner
 func getAdminVoteActionKey(owner: String) = getAdminVoteKey(owner) + "_" + ActionKey
 func getBlackSwarmPriceKey(block: Int) = BlackSwarmPriceKey + "_" + toString(block)
 func getPriceHistoryKey(block: Int) = PriceKey + "_" + toString(block)
+func getHeightPriceByIndexKey(index: Int) = PriceIndexKey + "_" + toString(index)
 #end keys
 
 #global vars
 let price = getNumberByKey(PriceKey)
+let priceIndex = getNumberByKey(PriceIndexKey)
 let providingInterval = getNumberByKey(ProvidingIntervalKey)
 let blockExpireProviding = getNumberByKey(BlockExpireProvidingKey)
 let blockExpireVote = getNumberByKey(BlockExpireVoteKey)
@@ -120,16 +124,10 @@ func getOracleProvidePrice(owner: String) = getNumberByKey(getOracleProvidePrice
 
 #other func 
 func isOracle(address: String) = {
-    match(indexOf(oracles, address)) {
-        case _: Int => true
-        case _ => false
-    }
+    isDefined(indexOf(oracles, address))
 }
 func isAdmin(address: String) = {
-    match(indexOf(admins, address)) {
-        case _: Int => true
-        case _ => false
-    }
+    isDefined(indexOf(admins, address))
 }
 #end other func
 
@@ -178,7 +176,7 @@ func setCurrentPrice(newPrice : Int) = {
     else if(height <= blockExpireProviding && isOracleProvide(account))
         then throw("price is already provided")
     else if(height > blockExpireProviding && isPricePending)
-        then throw("use finilizeCurrentPrice")
+        then throw("use finalizeCurrentPrice")
     else {
         WriteSet([
             DataEntry(getOracleIsProvideKey(oraclesList[0]), if(height > blockExpireProviding) then false else isOracleProvideList[0]),
@@ -196,7 +194,7 @@ func setCurrentPrice(newPrice : Int) = {
 }
 
 @Callable(i)
-func finilizeCurrentPrice() = {
+func finalizeCurrentPrice() = { #fix to finalize
     let isOracleProvideList = [
                                 isOracleProvide(oraclesList[0]), 
                                 isOracleProvide(oraclesList[1]), 
@@ -226,19 +224,23 @@ func finilizeCurrentPrice() = {
     else if(!isPricePending || height <= blockExpireProviding)
         then throw("wait for the end of the price providing")
     else if(priceProvidingCount < bftCoefficientOracle)
-        then throw("2/3 oracles need to set a price")
+        then throw("3/5 oracles need to set a price")
     else if(newPrice >= (price + price*percentPriceOffset/100) || newPrice <= (price - price*percentPriceOffset/100)) then {
         WriteSet([
             DataEntry(IsBlockedKey, true),
             DataEntry(getBlackSwarmPriceKey(height), newPrice)
         ])
     }
-    else 
+    else {
+        let newPriceIndex = priceIndex + 1
         WriteSet([
             DataEntry(PriceKey, newPrice),
             DataEntry(getPriceHistoryKey(height), newPrice),
-            DataEntry(IsPricePendingKey, false)
+            DataEntry(IsPricePendingKey, false),
+            DataEntry(PriceIndexKey, newPriceIndex),
+            DataEntry(getHeightPriceByIndexKey(newPriceIndex), height)
         ])
+    }
 }
 
 @Callable(i)
@@ -250,46 +252,35 @@ func vote(action: String) = {
     let blockVotes = FOLD<5>(adminsListWithoutAccount, [], filterAdminsVoteByBlockAction)
     let unblockVotes = FOLD<5>(adminsListWithoutAccount, [], filterAdminsVoteByUnblockAction)
     let updateVotes = FOLD<5>(adminsListWithoutAccount, [], filterAdminsVoteByUpdateAction)
-    
+
     let blockVoteCount = size(blockVotes) + if( action == BLOCK) then 1 else 0 
     let unblockVoteCount = size(unblockVotes) + if( action == UNBLOCK) then 1 else 0 
     let updateVotesCount = size(updateVotes) + if( action == UPDATE) then 1 else 0 
 
+    let resetResult = [
+        DataEntry(BlockExpireVoteKey, 0),
+        DataEntry(BlockExpireProvidingKey, 0),
+        DataEntry(getAdminVoteActionKey(adminsListWithoutAccount[0]), ""),
+        DataEntry(getAdminVoteActionKey(adminsListWithoutAccount[1]), ""),
+        DataEntry(getAdminVoteActionKey(adminsListWithoutAccount[2]), ""),
+        DataEntry(getAdminVoteActionKey(adminsListWithoutAccount[3]), "")
+    ]
     if(blockVoteCount >= bftCoefficientAdmin || unblockVoteCount >= bftCoefficientAdmin) then {
-        WriteSet([
-            DataEntry(IsBlockedKey, if(blockVoteCount >= bftCoefficientAdmin) then true else false),
-            DataEntry(BlockExpireVoteKey, 0),
-            DataEntry(BlockExpireProvidingKey, 0),
-            DataEntry(IsPricePendingKey, false),
-            DataEntry(getAdminVoteActionKey(adminsListWithoutAccount[0]), ""),
-            DataEntry(getAdminVoteActionKey(adminsListWithoutAccount[1]), ""),
-            DataEntry(getAdminVoteActionKey(adminsListWithoutAccount[2]), ""),
-            DataEntry(getAdminVoteActionKey(adminsListWithoutAccount[3]), "")
-        ])
+        WriteSet(
+            cons(
+                DataEntry(IsPricePendingKey, false), 
+                cons(DataEntry(IsBlockedKey, if(blockVoteCount >= bftCoefficientAdmin) then true else false), resetResult)
+            )
+        )
     }
     else if(updateVotesCount > bftCoefficientAdmin) then {
-        WriteSet([
-            DataEntry(BlockExpireVoteKey, 0),
-            DataEntry(BlockExpireProvidingKey, 0),
-            DataEntry(ScriptUpdateBlockKey, height + scriptUpdateInterval),
-            DataEntry(getAdminVoteActionKey(adminsListWithoutAccount[0]), ""),
-            DataEntry(getAdminVoteActionKey(adminsListWithoutAccount[1]), ""),
-            DataEntry(getAdminVoteActionKey(adminsListWithoutAccount[2]), ""),
-            DataEntry(getAdminVoteActionKey(adminsListWithoutAccount[3]), "")
-        ])
-    }
-    else if(height > blockExpireVote) then {
-        WriteSet([
-            DataEntry(BlockExpireVoteKey, height + voteInterval),
-            DataEntry(getAdminVoteActionKey(account), action),
-            DataEntry(getAdminVoteActionKey(adminsListWithoutAccount[0]), ""),
-            DataEntry(getAdminVoteActionKey(adminsListWithoutAccount[1]), ""),
-            DataEntry(getAdminVoteActionKey(adminsListWithoutAccount[2]), ""),
-            DataEntry(getAdminVoteActionKey(adminsListWithoutAccount[3]), "")
-        ])
+        WriteSet(
+            cons(DataEntry(ScriptUpdateBlockKey, if(updateVotesCount > bftCoefficientAdmin) then height + scriptUpdateInterval else scriptUpdateBlock), resetResult)
+        )
     }
     else {
         WriteSet([
+            DataEntry(BlockExpireVoteKey, if(height > blockExpireVote) then height + voteInterval else blockExpireVote),
             DataEntry(getAdminVoteActionKey(account), action)
         ])
     }
