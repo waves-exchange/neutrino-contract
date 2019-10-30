@@ -429,7 +429,7 @@ func registrationLeaseTx(senderPublicKey: String, fee: Int, timestamp: Int, leas
         WriteSet([
             DataEntry(LeasingTxCountKey, if(getLeaseTxStatus(txHash) == "") then leasingTxCount + 1 else leasingTxCount),
             DataEntry(LeasingAmountKey, leasingAmount + amount),
-            DataEntry(LeasingExpireBlockKey, if(leasingExpireBlock > height) then height + leasingInterval else leasingExpireBlock),
+            DataEntry(LeasingExpireBlockKey, if(height > leasingExpireBlock) then height + leasingInterval else leasingExpireBlock),
             DataEntry(getLeaseTxStatusKey(txHash), NEW),
             DataEntry(getLeaseTxExpireSendBlockKey(txHash), height + SENDTXEXPIRE),
             DataEntry(getLeaseTxAmountByHashKey(txHash), amount),
@@ -477,7 +477,7 @@ func verify() = {
         case leaseTx: LeaseTransaction =>
             height <= leasingExpireBlock && height <= getLeaseTxExpireSendBlock(id) && getLeaseTxStatusKey(id) == NEW
         case unleaseTx: LeaseCancelTransaction =>
-            (leasingExpireBlock > height || isRebalance) && (unleaseTx.fee >= 500000 && unleaseTx.fee <= 1000000) && getLeaseTxStatusKey(toBase58String(unleaseTx.leaseId)) == NEW
+            (height > leasingExpireBlock || isRebalance) && (unleaseTx.fee >= 500000 && unleaseTx.fee <= 1000000) && getLeaseTxStatusKey(toBase58String(unleaseTx.leaseId)) == NEW
         case _ => sigVerify(tx.bodyBytes, tx.proofs[0], tx.senderPublicKey)
     }
 }
