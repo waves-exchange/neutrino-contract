@@ -118,8 +118,18 @@ func getLeaseTxExpireSendBlockKey(hash: String) = LeaseTxExpireSendBlockKey + "_
 func getIsRebalanceByAddressKey(address: String) = IsRebalanceKey + "_" + address
 #end keys
 
+let neutrinoAssetId = fromBase58String(getStringByKey(NeutrinoAssetIdKey))
+let reserveContract = getStringByKey(ReserveContractKey)
+let auctionContract = getStringByKey(AuctionContractKey)
+let rpdContract = getStringByKey(RPDContractKey)
 let controlContract = getStringByKey(ContolContractKey)
+
+# The price that oracles provide
+# Актуальная цена, которую предоставляют оракулы
+# The var is read from control contract
 let price = getNumberByAddressAndKey(controlContract,PriceKey)
+# Last price history iterator
+# The var is read from control contract
 let priceIndex = getNumberByAddressAndKey(controlContract, PriceIndexKey)
 
 #convert func
@@ -132,6 +142,11 @@ func convertWavesToBond(amount: Int) = convertNeutrinoToBond(convertWavesToNeutr
 #end convert func
 
 #global vars
+
+# Checks for contract locks that might happen after attacks 
+# Проверяет блокировку контракта, которая может случиться после атак
+# The var is read from control contract
+let isBlocked = getBoolByAddressAndKey(controlContract,IsBlockedKey)
 let leasingTxCount = getNumberByKey(LeasingTxCountKey)
 let isRebalance = getBoolByKey(IsRebalanceKey)
 let leasingInterval = getNumberByKey(LeasingIntervalKey)
@@ -140,17 +155,10 @@ let leasingAmount = getNumberByKey(LeasingAmountKey)
 let swapNeutrinoLockedBalance = getNumberByKey(SwapNeutrinoLockedBalanceKey) 
 let swapWavesLockedBalance = getNumberByKey(SwapLockedBalanceKey) # backward compatibility
 let nodeAddress = getStringByKey(NodeAddressKey)
-let scriptUpdateInterval = getNumberByAddressAndKey(ContolContractKey, ScriptUpdateIntervalKey)
-let scriptUpdateBlock = getNumberByAddressAndKey(controlContract,ScriptUpdateBlockKey)
 let rpdSyncIndex = getNumberByKey(RPDSyncIndexKey)
 let balanceLockInterval = getNumberByKey(BalanceLockIntervalKey)
-let isBlocked = getBoolByAddressAndKey(controlContract,IsBlockedKey)
 let minWavesSwapAmount = getNumberByKey(MinWavesSwapAmountKey)
 let minNeutrinoSwapAmount = getNumberByKey(MinNeutrinoSwapAmountKey)
-let neutrinoAssetId = fromBase58String(getStringByKey(NeutrinoAssetIdKey))
-let reserveContract = getStringByKey(ReserveContractKey)
-let auctionContract = getStringByKey(AuctionContractKey)
-let rpdContract = getStringByKey(RPDContractKey)
 let reserve = wavesBalance(this) - swapWavesLockedBalance
 let reserveWithoutLeasing = reserve - leasingAmount
 let orderbook = getStringByKey(OrderbookKey)
@@ -166,11 +174,20 @@ let neutrinoSupply = {
 let surplus = convertWavesToNeutrino(reserve) - neutrinoSupply
 let deficit = neutrinoSupply - convertWavesToNeutrino(reserve)
 
+#let scriptUpdateInterval = getNumberByAddressAndKey(ContolContractKey, ScriptUpdateIntervalKey) TODO
+#let scriptUpdateBlock = getNumberByAddressAndKey(controlContract,ScriptUpdateBlockKey) TODO
 #end global vars
 
 # get func
-
+# Получить баланс сданных средств в стейкинг
+# The func is reading from rpd contract
 func getRPDContractBalance(assetId: ByteVector) = getNumberByAddressAndKey(rpdContract, getRPDContractBalanceKey(assetId))
+# Получить цену за указанный блок
+# The func is reading from control contract
+func getPriceHistory(block: Int) = getNumberByAddressAndKey(controlContract, getPriceHistoryKey(block))
+# Получить высоту из истории цены по индексу. К каждой высоте за которую отправлена цена привязан индекс по которому можно итерироваться в RIDE 
+# The func is reading from control contract
+func getHeightPriceByIndex(index: Int) = getNumberByAddressAndKey(controlContract, getHeightPriceByIndexKey(index))
 func getWavesBalance(owner : String) = getNumberByKey(getWavesBalanceKey(owner))
 func getNeutrinoBalance(owner : String) = getNumberByKey(getNeutrinoBalanceKey(owner))
 func getUnlockBalanceBlock(owner : String) = getNumberByKey(getBalanceUnlockBlockKey(owner))
@@ -179,8 +196,6 @@ func getOrderOwner(id : String) = getStringByKey(getOrderOwnerKey(id))
 func getOrderStatus(id : String) = getStringByKey(getOrderStatusKey(id))
 func getOrderFilledTotal(id : String) = getNumberByKey(getOrderFilledTotalKey(id))
 func getRPDProfit(count: Int) = getNumberByKey(getRPDProfitKey(count))
-func getPriceHistory(block: Int) = getNumberByAddressAndKey(controlContract, getPriceHistoryKey(block))
-func getHeightPriceByIndex(index: Int) = getNumberByAddressAndKey(controlContract, getHeightPriceByIndexKey(index))
 func getLeaseTxStatus(hash: String) = getStringByKey(getLeaseTxStatusKey(hash)) 
 func getLeaseTxAmountByHash(hash: String) = getNumberByKey(getLeaseTxAmountByHashKey(hash)) 
 func getLeaseTxBytesByHash(hash: String) = getStringByKey(getLeaseTxBytesByHashKey(hash)) 
