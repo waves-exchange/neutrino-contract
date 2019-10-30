@@ -234,12 +234,10 @@ func swapNeutrinoToWaves() = {
         then throw("use withdraw")
     else{
         let neutrinoAmount = pmt.amount
-        let amount = convertNeutrinoToWaves(neutrinoAmount)
         let newSwapNeutrinoLockedBalance = swapNeutrinoLockedBalance + neutrinoAmount
         WriteSet([
             DataEntry(getNeutrinoBalanceKey(account), getNeutrinoBalance(account) + neutrinoAmount),
             DataEntry(getBalanceUnlockBlockKey(account), height + balanceLockInterval),
-            DataEntry(IsRebalanceKey, (reserveWithoutLeasing - amount) <= reserve*CRYTICALSHARE/100),
             DataEntry(SwapNeutrinoLockedBalanceKey, newSwapNeutrinoLockedBalance),
             DataEntry(IsRebalanceKey, if(reserveWithoutLeasing >= convertNeutrinoToWaves(newSwapNeutrinoLockedBalance)) then false else true)
         ])

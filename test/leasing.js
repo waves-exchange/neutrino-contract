@@ -38,9 +38,9 @@ describe('Leasing test', async function () {
                 function: "registrationLeaseTx", 
                 args:[
                     {type: "string", value: leaseTx.senderPublicKey },
-                    {type: "integer", value: leaseTx.amount },
                     {type: "integer", value: leaseTx.fee },
-                    {type: "integer", value: leaseTx.timestamp }
+                    {type: "integer", value: leaseTx.timestamp },
+                    {type: "string", value: leaseTx.id }
                 ]
             },
             payment: []
