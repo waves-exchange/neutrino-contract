@@ -201,15 +201,17 @@ func dropOrder(orderId: String) = {
 
 #-------------------Callable----------------------
 
+# Instant swap WAVES to Neutrino token for current price on SC
+# [called by user]
 @Callable(i)
 func swapWavesToNeutrino() = {
     let pmt = extract(i.payment)
     if (pmt.amount < minWavesSwapAmount)
-        then throw("amount less min")
+        then throw("an amount is less than min available amount: " + toString(minWavesSwapAmount) + " wavelets")
     else if (isDefined(pmt.assetId)) 
         then throw("can use waves only")
     else if(isBlocked)
-        then throw("contract is blocked")
+        then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles") # see control.ride
     else{
         let amount = convertWavesToNeutrino(pmt.amount)
         TransferSet([
@@ -217,35 +219,38 @@ func swapWavesToNeutrino() = {
         ])
     }
 }
-
+# Swap request Neutrino to WAVES. After {balanceLockInterval} blocks WAVES tokens will be available for withdraw with {withdraw(account : String)} method.
+# with price at the moment of {balanceLockInterval} has reached
+# [called by user]
 @Callable(i)
 func swapNeutrinoToWaves() = {
     let pmt = extract(i.payment)
     let account = toString(i.caller)
     if (pmt.amount < minNeutrinoSwapAmount)
-        then throw("amount less min")
+        then throw("an amount is less than min available amount: " + toString(minNeutrinoSwapAmount) + " neutrino cents")
     else if(isBlocked)
-        then throw("contract is blocked")
+        then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles") # see control.ride
     else if (pmt.assetId != neutrinoAssetId) 
-        then throw("can use neutrino only")
+        then throw("can use appropriate neutrino tokens only")
     else if(getUnlockBalanceBlock(account) > height)
         then throw("await " + toString(getUnlockBalanceBlock(account) - height) + " blocks")
     else if (getNeutrinoBalance(account) != 0)
-        then throw("use withdraw")
+        then throw("please withdraw locked neutrino funds first")
     else{
         let neutrinoAmount = pmt.amount
-        let amount = convertNeutrinoToWaves(neutrinoAmount)
         let newSwapNeutrinoLockedBalance = swapNeutrinoLockedBalance + neutrinoAmount
         WriteSet([
             DataEntry(getNeutrinoBalanceKey(account), getNeutrinoBalance(account) + neutrinoAmount),
             DataEntry(getBalanceUnlockBlockKey(account), height + balanceLockInterval),
-            DataEntry(IsRebalanceKey, (reserveWithoutLeasing - amount) <= reserve*CRYTICALSHARE/100),
             DataEntry(SwapNeutrinoLockedBalanceKey, newSwapNeutrinoLockedBalance),
             DataEntry(IsRebalanceKey, if(reserveWithoutLeasing >= convertNeutrinoToWaves(newSwapNeutrinoLockedBalance)) then false else true)
         ])
     }
 }
 
+# Withdraw WAVES from SC after {swapNeutrinoToWaves()} request is reached {balanceLockInterval} height 
+# with price at the moment of {balanceLockInterval} has reached.
+# [called by user]
 @Callable(i)
 func withdraw(account : String, index: Int) = {
     let indexHeight = getHeightPriceByIndex(index)
@@ -254,20 +259,19 @@ func withdraw(account : String, index: Int) = {
     let neutrinoAmount = getNeutrinoBalance(account)
     let indexPrice = getPriceHistory(indexHeight)
     let amount = convertNeutrinoToWavesByPrice(neutrinoAmount, indexPrice)
-    let totalWavesWithdraw = getWavesBalance(account) + amount # getWavesBalance(account) is backward compatibility
+    let totalWavesWithdraw = getWavesBalance(account) + amount
 
     if(isBlocked)
-        then throw("contract is blocked") 
+        then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles") # see control.ride
     else if(unlockHeight > height)
-        then throw("wait a couple of blocks for withdraw")
+        then throw("please wait for: " + toString(unlockHeight) + " block height to withdraw WAVES funds")
     else if(index > priceIndex || unlockHeight < indexHeight || (nextIndexHeight != 0 && unlockHeight >= nextIndexHeight))
-        then throw("invalid index")
+        then throw("invalid price history index")
     else {   
         ScriptResult(
             WriteSet([
-                DataEntry(getWavesBalanceKey(account), 0), # backward compatibility
-                DataEntry(getNeutrinoBalanceKey(account), 0), # backward compatibility
-                DataEntry(SwapLockedBalanceKey, swapWavesLockedBalance - getWavesBalance(account)), # backward compatibility
+                DataEntry(getWavesBalanceKey(account), 0),
+                DataEntry(SwapLockedBalanceKey, swapWavesLockedBalance - getWavesBalance(account)),
                 DataEntry(SwapNeutrinoLockedBalanceKey, swapNeutrinoLockedBalance - neutrinoAmount)
             ]),
             TransferSet([
@@ -277,26 +281,31 @@ func withdraw(account : String, index: Int) = {
     }
 }
 
+# transfering bonds from main SC to auction.ride to fill 'buy bonds' orders
+# it's calling n-times untill all orders on auction.ride will be executed during deficit stage
+# [called by pacemaker oracles]
 @Callable(i)
 func generateBond() = {
     let balanceAuction = assetBalance(addressFromStringValue(auctionContract), bondAssetId)
     let amount = convertNeutrinoToBond(deficit) - balanceAuction
     if(isBlocked)
-        then throw("contract is blocked") 
+        then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles") # see control.ride
     else if(amount >= 10)
         then TransferSet([ScriptTransfer(addressFromStringValue(auctionContract), amount, bondAssetId)])
     else throw("bond were generated or do not need it")
 }
 
+# set 'bonds liquidation order' (bond -> neutrino 1:1 exchange) to the liquidation queue
+# [called by user]
 @Callable(i)
 func setOrder() = {
     let pmt = extract(i.payment);
     let newOrderId = toBase58String(keccak256(toBytes(pmt.amount) + i.caller.bytes + toBytes(height)))
     
     if (pmt.assetId != bondAssetId) 
-        then throw("can use bond only")
+        then throw("can use appropriate neutrino bonds tokens only")
     else if(getOrderOwner(newOrderId) != "")
-        then throw("order exists")
+        then throw("an order is already exists")
     else {
         WriteSet([
             DataEntry(OrderbookKey, addOrder(newOrderId)),
@@ -309,6 +318,8 @@ func setOrder() = {
     }
 }
 
+# cancel 'bonds liquidation order' (bond -> neutrino 1:1 exchange) from the liquidation queue
+# [called by user]
 @Callable(i)
 func cancelOrder(orderId : String) = {
     let owner = getOrderOwner(orderId)
