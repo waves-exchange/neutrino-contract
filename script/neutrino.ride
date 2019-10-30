@@ -185,7 +185,6 @@ func getLeaseTxStatus(hash: String) = getStringByKey(getLeaseTxStatusKey(hash))
 func getLeaseTxAmountByHash(hash: String) = getNumberByKey(getLeaseTxAmountByHashKey(hash)) 
 func getLeaseTxBytesByHash(hash: String) = getStringByKey(getLeaseTxBytesByHashKey(hash)) 
 func getLeaseTxExpireSendBlock(hash: String) = getNumberByKey(getLeaseTxExpireSendBlockKey(hash)) 
-func isRebalanceByAddress(address: String) = getBoolByKey(getIsRebalanceByAddressKey(address))
 #end get func
 
 #other function
@@ -236,11 +235,13 @@ func swapNeutrinoToWaves() = {
     else{
         let neutrinoAmount = pmt.amount
         let amount = convertNeutrinoToWaves(neutrinoAmount)
+        let newSwapNeutrinoLockedBalance = swapNeutrinoLockedBalance + neutrinoAmount
         WriteSet([
             DataEntry(getNeutrinoBalanceKey(account), getNeutrinoBalance(account) + neutrinoAmount),
             DataEntry(getBalanceUnlockBlockKey(account), height + balanceLockInterval),
             DataEntry(IsRebalanceKey, (reserveWithoutLeasing - amount) <= reserve*CRYTICALSHARE/100),
-            DataEntry(SwapNeutrinoLockedBalanceKey, swapNeutrinoLockedBalance + neutrinoAmount)
+            DataEntry(SwapNeutrinoLockedBalanceKey, newSwapNeutrinoLockedBalance),
+            DataEntry(IsRebalanceKey, if(reserveWithoutLeasing >= convertNeutrinoToWaves(newSwapNeutrinoLockedBalance)) then false else true)
         ])
     }
 }
@@ -255,12 +256,7 @@ func withdraw(account : String, index: Int) = {
     let amount = convertNeutrinoToWavesByPrice(neutrinoAmount, indexPrice)
     let totalWavesWithdraw = getWavesBalance(account) + amount # getWavesBalance(account) is backward compatibility
 
-    if(totalWavesWithdraw > reserveWithoutLeasing) then {
-        if(!isRebalance) then {
-            throw("TODO")
-        }else throw("wait rebalance")
-    }
-    else if(isBlocked)
+    if(isBlocked)
         then throw("contract is blocked") 
     else if(unlockHeight > height)
         then throw("wait a couple of blocks for withdraw")
@@ -409,7 +405,7 @@ func nodeReward() = {
 
 @Callable(i)
 func registrationLeaseTx(senderPublicKey: String, fee: Int, timestamp: Int, leaseTxHash: String) = {
-    let totalFreeReserve = reserve*LEASINGSHARE/100
+    let totalFreeReserve = reserve*LEASINGSHARE/100 - convertNeutrinoToWaves(swapNeutrinoLockedBalance)
     let amount = totalFreeReserve/LEASINTXCOUNT
     let txBytes = base64'CAIA' + fromBase58String(senderPublicKey) + fromBase58String(nodeAddress) + toBytes(amount) + toBytes(fee) + toBytes(timestamp)
     let txHashBytes = blake2b256(txBytes)
@@ -428,7 +424,7 @@ func registrationLeaseTx(senderPublicKey: String, fee: Int, timestamp: Int, leas
     else if(fee > 1000000 || fee < 500000)
         then throw("invalid fee")
     else if(totalFreeReserve-(leasingAmount + amount) > reserveWithoutLeasing)
-        then throw("invalid amount(result:" + toString(reserve-(leasingAmount + amount) > reserveWithoutLeasing) + ")")
+        then throw("invalid amount(result:" + toString(totalFreeReserve-(leasingAmount + amount) > reserveWithoutLeasing) + ")")
     else {
         WriteSet([
             DataEntry(LeasingTxCountKey, if(getLeaseTxStatus(txHash) == "") then leasingTxCount + 1 else leasingTxCount),
@@ -464,11 +460,12 @@ func registrationUnleaseTx(chainIdString: String, senderPublicKey: String, fee: 
     else if(!isDefined(transactionHeightById(txHash)))
         then throw("blockchain does not contain this transaction")
     else {
+        let amount = getLeaseTxAmountByHash(leaseTxHash)
         WriteSet([
             DataEntry(LeasingTxCountKey, leasingTxCount - 1),
-            DataEntry(LeasingAmountKey, leasingAmount - getLeaseTxAmountByHash(leaseTxHash)),
-            DataEntry(getLeaseTxStatusKey(leaseTxHash), CANCELED)
-           #TODO DataEntry(IsRebalanceKey, if(swapNeutrinoLockedBalance))
+            DataEntry(LeasingAmountKey, leasingAmount - amount),
+            DataEntry(getLeaseTxStatusKey(leaseTxHash), CANCELED),
+            DataEntry(IsRebalanceKey, if((reserveWithoutLeasing - amount) >= convertNeutrinoToWaves(swapNeutrinoLockedBalance)) then false else true)
         ])
     }
 }
