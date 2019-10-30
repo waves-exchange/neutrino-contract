@@ -8,7 +8,7 @@ This project contains several contracts:
 #### Auction:
 * setOrder(price : Int, position: Int) - set the order into a specified position
 * cancelOrder(orderId : String) - cancel the order
-* executeOrder() - execute the order (sell USD-NB)
+* executeOrder() - execute the order (sell Token-NB)
 
 #### Neutrino:
 * setCurrentPrice(newPrice : Int) - to set the price (available only to oracles)

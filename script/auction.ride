@@ -37,6 +37,7 @@ let CANCELED = "canceled"
 let NEW = "new"
 let FILLED = "filled"
 let PERCENTACCURACY = 1000
+let MAXDISCOUNT = 50
 #end consts
 
 # keys
@@ -80,7 +81,7 @@ let swapLockedBalance = getNumberByAddressAndKey(neutrinoContract, SwapLockedBal
 let neutrinoAssetId = fromBase58String(getStringByAddressAndKey(neutrinoContract, NeutrinoAssetIdKey))
 let bondAssetId = fromBase58String(getStringByAddressAndKey(neutrinoContract, BondAssetIdKey))
 let orderbook = getStringByKey(OrderBookKey)
-let reserve = wavesBalance(this) - swapLockedBalance
+let reserve = wavesBalance(neutrinoContract) - swapLockedBalance
 let neutrinoSupply = {
     let info = extract(assetInfo(neutrinoAssetId))
     info.quantity - assetBalance(neutrinoContract, neutrinoAssetId)
@@ -120,8 +121,9 @@ func dropOrder(orderId: String) = {
 func setOrder(price : Int, position: Int) = {
     let pmt = extract(i.payment);
     let newOrderId = toBase58String(keccak256(toBytes(price) + toBytes(pmt.amount) + i.caller.bytes + toBytes(height)))
-
-    if (pmt.assetId != neutrinoAssetId) 
+    if(price < MAXDISCOUNT)
+        then throw("max discount is 50%")
+    else if (pmt.assetId != neutrinoAssetId) 
         then throw("can use neutrino only")
     else if(price <= 0)
         then throw("price less zero")
@@ -201,20 +203,23 @@ func executeOrder() = {
         let filledAmount = if(bondAmount >= amount) then amount else bondAmount
 
         let total = filledAmount*orderPrice*PAULI/100;
-
+        
         let status = if(bondAmount >= amount) then FILLED else NEW
-
-        ScriptResult(
-            WriteSet([
-                DataEntry(OrderBookKey, newOrderbook),
-                DataEntry(getOrderFilledTotalKey(orderId), filledTotal + total),
-                DataEntry(getOrderStatusKey(orderId), status),
-                DataEntry(getOrderHistoryKey(height), orderPrice)
-            ]), 
-            TransferSet([
-                ScriptTransfer(addressFromStringValue(orderOwner), filledAmount, bondAssetId),
-                ScriptTransfer(neutrinoContract, total, neutrinoAssetId)
-            ])
-        )
+        if(total == 0)
+            then throw("total equal zero")
+        else {
+            ScriptResult(
+                WriteSet([
+                    DataEntry(OrderBookKey, newOrderbook),
+                    DataEntry(getOrderFilledTotalKey(orderId), filledTotal + total),
+                    DataEntry(getOrderStatusKey(orderId), status),
+                    DataEntry(getOrderHistoryKey(height), orderPrice)
+               ]), 
+               TransferSet([
+                    ScriptTransfer(addressFromStringValue(orderOwner), filledAmount, bondAssetId),
+                    ScriptTransfer(neutrinoContract, total, neutrinoAssetId)
+                ])
+            )
+        }
     }
 }
