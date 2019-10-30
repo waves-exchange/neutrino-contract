@@ -371,19 +371,6 @@ func executeOrder() = {
         then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles") # see control.ride
     else if(surplusBond <= 0) 
         then throw("there is no proficit on the smart contract now")
-    else if(orderOwner == "" && surplusBond >= 10) then {
-        let newRpdSyncIndex = rpdSyncIndex + 1
-        ScriptResult(
-            WriteSet([
-                DataEntry(RPDSyncIndexKey, newRpdSyncIndex),
-                DataEntry(getRPDProfitKey(rpdSyncIndex), surplus),
-                DataEntry(getRPDSnapshotContractBalanceKey(rpdSyncIndex, neutrinoAssetId), getRPDContractBalance(neutrinoAssetId))
-            ]),
-            TransferSet([
-                ScriptTransfer(addressFromStringValue(rpdContract), surplus, neutrinoAssetId)
-            ])
-        )
-    }
     else {
         let amount = orderTotal-filledTotal;
         let status = if(surplusBond >= amount) then FILLED else NEW
