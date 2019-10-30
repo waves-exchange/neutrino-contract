@@ -85,6 +85,7 @@ let BlockExpireVoteKey = "vote_expire_block"
 let ScriptUpdateBlockKey = "script_update_block"
 let PriceIndexKey = "price_index"
 
+
 func getOracleIsProvideKey(owner: String) = OracleIsProvideKey + owner
 func getOracleProvidePriceKey(owner: String) = OracleProvidePriceKey + owner
 func getAdminVoteKey(owner: String) = AdminVoteKey + owner
@@ -150,6 +151,7 @@ func filterAdminsVoteByUpdateAction(result: List[String], address: String) =
 
 #-------------------Callable----------------------
 
+# [called by price oracles]
 @Callable(i)
 func setCurrentPrice(newPrice : Int) = {
     let account = toString(i.caller)
@@ -192,8 +194,9 @@ func setCurrentPrice(newPrice : Int) = {
     }
 }
 
+# [called by price oracles]
 @Callable(i)
-func finalizeCurrentPrice() = { #fix to finalize
+func finalizeCurrentPrice() = {
     let isOracleProvideList = [
                                 isOracleProvide(oraclesList[0]), 
                                 isOracleProvide(oraclesList[1]), 
@@ -242,6 +245,7 @@ func finalizeCurrentPrice() = { #fix to finalize
     }
 }
 
+# [called by emergency oracles]
 @Callable(i)
 func vote(action: String) = {
     let account = toString(i.caller)

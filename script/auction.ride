@@ -125,6 +125,8 @@ func dropOrder(orderId: String) = {
 
 #-------------------Callable----------------------
 
+# set buy bonds order
+# [called by user]
 @Callable(i)
 func setOrder(price : Int, position: Int) = {
     let pmt = extract(i.payment);
@@ -163,6 +165,8 @@ func setOrder(price : Int, position: Int) = {
     }
 }
 
+# cancel buy bonds order
+# [called by user]
 @Callable(i)
 func cancelOrder(orderId : String) = {
     let owner = getOrderOwner(orderId)
@@ -185,6 +189,10 @@ func cancelOrder(orderId : String) = {
     }
 }
 
+
+# executing buy bonds orders from the bonds orderbook if SC has reached deficit in collateral cap
+# it's calling n-times untill all orders from the lbonds orderbook will be executed during deficit stage
+# [called by pacemaker oracles]
 @Callable(i)
 func executeOrder() = {
     let bondBalance = assetBalance(this, bondAssetId)

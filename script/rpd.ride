@@ -68,17 +68,19 @@ func getProfitKey(count: Int) = ProfitKey + "_" + toString(count)
 let nodeAddress = getStringByKey(NodeAddressKey)
 let neutrinoContract = getStringByKey(NeutrinoContractKey)
 # Neutrino asset id
-# The var is read from neutrino contract
+# this value is from neutrino.ride
 let neutrinoAssetId = fromBase58String(getStringByAddressAndKey(neutrinoContract, NeutrinoNeutrinoIdKey))
 let syncIndex = getNumberByAddressAndKey(neutrinoContract, SyncIndexKey)
 #end global vars
 
 # get func
-# Получить snapshot баланса по номеру чека.
-# The func is reading from neutrino contract
+
+# get snapshot balance by payout (check) number
+# The func is reading from neutrino.ride
 func getSnapshotContractBalance(count: Int, assetId: String) = getNumberByAddressAndKey(neutrinoContract, getSnapshotContractBalanceKey(count, assetId))
-# Получить профит по номеру чека.
-# The func is reading from neutrino contract
+
+# get profit amount by payout (check) number
+# The func is reading from neutrino.ride
 func getProfit(count: Int) = getNumberByAddressAndKey(neutrinoContract, getProfitKey(count))
 
 func getContractBalance(assetId: String) = getNumberByKey(getContractBalanceKey(assetId))
@@ -95,6 +97,8 @@ func addBalanceHistory(history: String, element: String) = {
     history + element
 }
 
+# start neutrino staking 
+# [called by user]
 @Callable(i)
 func lockNeutrino() = {
     let pmt = extract(i.payment)
@@ -119,6 +123,8 @@ func lockNeutrino() = {
     }
 }
 
+# cancel neutrino staking
+# [called by user]
 @Callable(i)
 func unlockNeutrino(unlockAmount: Int, assetIdString: String) = {
     let account = toString(i.caller)
@@ -147,6 +153,8 @@ func unlockNeutrino(unlockAmount: Int, assetIdString: String) = {
     }
 }
 
+# withdraw neutrino rewards from staking 
+# [called by user]
 @Callable(i)
 func withdraw(profitSyncIndex: Int, historyIndex: Int) = {
     let account = toString(i.caller)
