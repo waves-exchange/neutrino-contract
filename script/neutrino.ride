@@ -438,10 +438,12 @@ func registrationLeaseTx(senderPublicKey: String, fee: Int, timestamp: Int, leas
 @Callable(i)
 func cancelStuckLeaseTx(txHash: String) = {
     if(getLeaseTxStatus(txHash) == NEW && !isDefined(transactionHeightById(fromBase58String(txHash))) && height > getLeaseTxExpireSendBlock(txHash)) then {
+        let amount = getLeaseTxAmountByHash(txHash)
         WriteSet([
             DataEntry(LeasingTxCountKey, leasingTxCount - 1),
-            DataEntry(LeasingAmountKey, leasingAmount - getLeaseTxAmountByHash(txHash)),
-            DataEntry(getLeaseTxStatusKey(txHash), CANCELED)
+            DataEntry(LeasingAmountKey, leasingAmount - amount),
+            DataEntry(getLeaseTxStatusKey(txHash), CANCELED),
+            DataEntry(IsRebalanceKey, if((reserveWithoutLeasing - amount) >= convertNeutrinoToWaves(swapNeutrinoLockedBalance)) then false else true)
         ])
     } else throw("invalid tx hash")
 }
