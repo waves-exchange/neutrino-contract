@@ -124,22 +124,19 @@ let auctionContract = getStringByKey(AuctionContractKey)
 let rpdContract = getStringByKey(RPDContractKey)
 let controlContract = getStringByKey(ContolContractKey)
 
-# The price that oracles provide
-# Актуальная цена, которую предоставляют оракулы
-# The var is read from control contract
+# The price that oracles are providing to control.ride
 let price = getNumberByAddressAndKey(controlContract,PriceKey)
-# Last price history iterator
-# The var is read from control contract
+# Last price history iterator from control.ride
 let priceIndex = getNumberByAddressAndKey(controlContract, PriceIndexKey)
 
-#convert func
+#convertation func
 func convertNeutrinoToWavesByPrice(amount: Int, convertPrice: Int) = amount*100/convertPrice*WAVELET/PAULI
 func convertNeutrinoToWaves(amount: Int) = amount*100/price*WAVELET/PAULI
 func convertWavesToNeutrino(amount: Int) = amount*price/100*PAULI/WAVELET 
 func convertNeutrinoToBond(amount: Int) = amount/PAULI 
 func convertBondToNeutrino(amount: Int) = amount*PAULI 
 func convertWavesToBond(amount: Int) = convertNeutrinoToBond(convertWavesToNeutrino(amount))
-#end convert func
+#end convertation func
 
 #global vars
 
@@ -179,15 +176,16 @@ let deficit = neutrinoSupply - convertWavesToNeutrino(reserve)
 #end global vars
 
 # get func
-# Получить баланс сданных средств в стейкинг
-# The func is reading from rpd contract
+
+# The func is reading balances from rpd.ride
 func getRPDContractBalance(assetId: ByteVector) = getNumberByAddressAndKey(rpdContract, getRPDContractBalanceKey(assetId))
-# Получить цену за указанный блок
-# The func is reading from control contract
+
+# The func is reading price from control.ride price history
 func getPriceHistory(block: Int) = getNumberByAddressAndKey(controlContract, getPriceHistoryKey(block))
-# Получить высоту из истории цены по индексу. К каждой высоте за которую отправлена цена привязан индекс по которому можно итерироваться в RIDE 
-# The func is reading from control contract
+
+# The func is reading from control.ride price history heights
 func getHeightPriceByIndex(index: Int) = getNumberByAddressAndKey(controlContract, getHeightPriceByIndexKey(index))
+
 func getWavesBalance(owner : String) = getNumberByKey(getWavesBalanceKey(owner))
 func getNeutrinoBalance(owner : String) = getNumberByKey(getNeutrinoBalanceKey(owner))
 func getUnlockBalanceBlock(owner : String) = getNumberByKey(getBalanceUnlockBlockKey(owner))
