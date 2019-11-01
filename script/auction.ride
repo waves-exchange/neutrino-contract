@@ -211,6 +211,8 @@ func executeOrder() = {
             ScriptTransfer(neutrinoContract, returnAmount, bondAssetId)
         ])
     }
+    else if(orderbook == "")
+        then throw("empty orderbook")
     else {
         let orderId = orderbook.split(ORDERSPLITSYMBOL)[0]
         let filledTotal = getOrderFilledTotal(orderId)

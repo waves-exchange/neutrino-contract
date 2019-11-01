@@ -42,7 +42,7 @@ let PERCENTACCURACY = 10000
 # end consts
 
 #constructor 
-let NeutrinoNeutrinoIdKey = "neutrino_asset_id"
+let NeutrinoAssetIdKey = "neutrino_asset_id"
 let NeutrinoContractKey = "neutrino_contract"
 let NodeAddressKey = "node_address"
 #end constructor
@@ -69,7 +69,7 @@ let nodeAddress = getStringByKey(NodeAddressKey)
 let neutrinoContract = getStringByKey(NeutrinoContractKey)
 # Neutrino asset id
 # this value is from neutrino.ride
-let neutrinoAssetId = fromBase58String(getStringByAddressAndKey(neutrinoContract, NeutrinoNeutrinoIdKey))
+let neutrinoAssetId = fromBase58String(getStringByAddressAndKey(neutrinoContract, NeutrinoAssetIdKey))
 let syncIndex = getNumberByAddressAndKey(neutrinoContract, SyncIndexKey)
 #end global vars
 
