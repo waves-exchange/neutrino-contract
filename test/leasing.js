@@ -7,7 +7,7 @@ describe('Leasing test', async function () {
             testAccount: 100000 * deployHelper.WAVELET
         })
 
-        deployResult = await deployHelper.deploy("TST-N", "TST-NB", "test asset", "test bond asset", address(accounts.testAccount))
+        deployResult = await deployHelper.deploy("TST-N", "TST-NB", "test asset", "test bond asset", address(accounts.testAccount), 10)
 
         let amount = deployHelper.getRandomArbitrary(1, 99999) * deployHelper.WAVELET
 
@@ -25,22 +25,23 @@ describe('Leasing test', async function () {
     });
     it('Lease', async function () {
         const balanceWaves = await balance(address(deployResult.accounts.neutrinoContract))
-        const amount = Math.floor(balanceWaves/2)
+        const amount = Math.floor(Math.floor(balanceWaves * 90 / 100) / 10)
         const leaseTx = lease({
             amount: amount,
             recipient: address(accounts.testAccount),
-            fee: 500000
+            fee: 500000,
+            timestamp: Date.now() + 2400000
         }, deployResult.accounts.neutrinoContract)
 
         const tx = invokeScript({
             dApp: address(deployResult.accounts.neutrinoContract),
-            call: { 
-                function: "registrationLeaseTx", 
-                args:[
-                    {type: "string", value: leaseTx.senderPublicKey },
-                    {type: "integer", value: leaseTx.amount },
-                    {type: "integer", value: leaseTx.fee },
-                    {type: "integer", value: leaseTx.timestamp }
+            call: {
+                function: "registrationLeaseTx",
+                args: [
+                    { type: "string", value: leaseTx.senderPublicKey },
+                    { type: "integer", value: leaseTx.fee },
+                    { type: "integer", value: leaseTx.timestamp },
+                    { type: "string", value: leaseTx.id }
                 ]
             },
             payment: []
@@ -51,20 +52,22 @@ describe('Leasing test', async function () {
 
         await broadcast(leaseTx);
         await waitForTx(leaseTx.id);
+
         const state = await stateChanges(tx.id);
         const data = deployHelper.convertDataStateToObject(state.data)
-        
-        if(data.lease_tx_hash != leaseTx.id)
-            throw("invalid leasing tx hash")
-        else if(data.leasing_amount != leaseTx.amount)
-            throw("invalid leasing amount")
+
+        if (data["lease_tx_status_" + leaseTx.id] != "new")
+            throw ("invalid status leasing tx")
+        else if (data.leasing_amount != amount)
+            throw ("invalid leasing amount")
     })
     it('Unlease', async function () {
-        const dataAccount = await accountData(address(deployResult.accounts.neutrinoContract))
+        /*const dataAccount = await accountData(address(deployResult.accounts.neutrinoContract))
+
         const height = await currentHeight()
         const dataTx = data({
             data: [
-                { key: "leasing_expire_block", value: height-1 }
+                { key: "leasing_expire_block", value: height - 1 }
             ],
             fee: 500000
         }, deployResult.accounts.neutrinoContract);
@@ -78,16 +81,17 @@ describe('Leasing test', async function () {
 
         await broadcast(cancelLeaseTx);
         await waitForTx(cancelLeaseTx.id);
-        
+
         const tx = invokeScript({
             dApp: address(deployResult.accounts.neutrinoContract),
-            call: { 
-                function: "registrationUnleaseTx", 
-                args:[
-                    {type: "string", value: "R" },
-                    {type: "string", value: cancelLeaseTx.senderPublicKey },
-                    {type: "integer", value: cancelLeaseTx.fee },
-                    {type: "integer", value: cancelLeaseTx.timestamp }
+            call: {
+                function: "registrationUnleaseTx",
+                args: [
+                    { type: "string", value: "R" },
+                    { type: "string", value: cancelLeaseTx.senderPublicKey },
+                    { type: "integer", value: cancelLeaseTx.fee },
+                    { type: "integer", value: cancelLeaseTx.timestamp },
+                    { type: "string", value: cancelLeaseTx.leaseId }
                 ]
             },
             payment: []
@@ -98,10 +102,10 @@ describe('Leasing test', async function () {
 
         const state = await stateChanges(tx.id);
         const dataState = deployHelper.convertDataStateToObject(state.data)
-        
-        if(dataState.lease_tx_hash != "")
-            throw("invalid leasing tx hash")
-        else if(dataState.leasing_amount != 0)
-            throw("invalid leasing amount")
+
+        if (dataState["lease_tx_status_" + leaseTx.id] != "new")
+            throw ("invalid status leasing tx")
+        else if (dataState.leasing_amount != leaseTx.amount)
+            throw ("invalid leasing amount")*/
     })
 })

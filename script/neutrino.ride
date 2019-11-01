@@ -371,19 +371,6 @@ func executeOrder() = {
         then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles") # see control.ride
     else if(surplusBond <= 0) 
         then throw("there is no proficit on the smart contract now")
-    else if(orderOwner == "" && surplusBond >= 10) then {
-        let newRpdSyncIndex = rpdSyncIndex + 1
-        ScriptResult(
-            WriteSet([
-                DataEntry(RPDSyncIndexKey, newRpdSyncIndex),
-                DataEntry(getRPDProfitKey(rpdSyncIndex), surplus),
-                DataEntry(getRPDSnapshotContractBalanceKey(rpdSyncIndex, neutrinoAssetId), getRPDContractBalance(neutrinoAssetId))
-            ]),
-            TransferSet([
-                ScriptTransfer(addressFromStringValue(rpdContract), surplus, neutrinoAssetId)
-            ])
-        )
-    }
     else {
         let amount = orderTotal-filledTotal;
         let status = if(surplusBond >= amount) then FILLED else NEW
@@ -447,14 +434,14 @@ func registrationLeaseTx(senderPublicKey: String, fee: Int, timestamp: Int, leas
     let txHash = toBase58String(txHashBytes)
     
     if(leaseTxHash != txHash)
-        then throw("invalid tx hash")
+        then throw("invalid tx hash(amount:" + toString(amount) + ")")
     else if(leasingTxCount >= LEASINTXCOUNT)
         then throw("the number of leasing transactions is equal to the maximum")
     else if(this != addressFromPublicKey(fromBase58String(senderPublicKey)))
         then throw("invalid pubKey")
     else if(timestamp < lastBlock.timestamp || timestamp > lastBlock.timestamp + 5400000) 
         then throw("invalid timestamp(lastBlock: " + toString(lastBlock.timestamp) + ")")
-    else if(getLeaseTxStatus(txHash) == "")
+    else if(getLeaseTxStatus(txHash) != "")
         then throw("tx is exist")
     else if(fee > 1000000 || fee < 500000)
         then throw("invalid fee")
@@ -464,7 +451,7 @@ func registrationLeaseTx(senderPublicKey: String, fee: Int, timestamp: Int, leas
         WriteSet([
             DataEntry(LeasingTxCountKey, if(getLeaseTxStatus(txHash) == "") then leasingTxCount + 1 else leasingTxCount),
             DataEntry(LeasingAmountKey, leasingAmount + amount),
-            DataEntry(LeasingExpireBlockKey, if(leasingExpireBlock > height) then height + leasingInterval else leasingExpireBlock),
+            DataEntry(LeasingExpireBlockKey, if(height > leasingExpireBlock) then height + leasingInterval else leasingExpireBlock),
             DataEntry(getLeaseTxStatusKey(txHash), NEW),
             DataEntry(getLeaseTxExpireSendBlockKey(txHash), height + SENDTXEXPIRE),
             DataEntry(getLeaseTxAmountByHashKey(txHash), amount),
@@ -479,10 +466,12 @@ func registrationLeaseTx(senderPublicKey: String, fee: Int, timestamp: Int, leas
 @Callable(i)
 func cancelStuckLeaseTx(txHash: String) = {
     if(getLeaseTxStatus(txHash) == NEW && !isDefined(transactionHeightById(fromBase58String(txHash))) && height > getLeaseTxExpireSendBlock(txHash)) then {
+        let amount = getLeaseTxAmountByHash(txHash)
         WriteSet([
             DataEntry(LeasingTxCountKey, leasingTxCount - 1),
-            DataEntry(LeasingAmountKey, leasingAmount - getLeaseTxAmountByHash(txHash)),
-            DataEntry(getLeaseTxStatusKey(txHash), CANCELED)
+            DataEntry(LeasingAmountKey, leasingAmount - amount),
+            DataEntry(getLeaseTxStatusKey(txHash), CANCELED),
+            DataEntry(IsRebalanceKey, if((reserveWithoutLeasing - amount) >= convertNeutrinoToWaves(swapNeutrinoLockedBalance)) then false else true)
         ])
     } else throw("invalid tx hash")
 }
@@ -519,9 +508,9 @@ func verify() = {
     let id = toBase58String(tx.id)
     match tx {
         case leaseTx: LeaseTransaction =>
-            height <= leasingExpireBlock && height <= getLeaseTxExpireSendBlock(id) && getLeaseTxStatusKey(id) == NEW
+            height <= leasingExpireBlock && height <= getLeaseTxExpireSendBlock(id) && getLeaseTxStatus(id) == NEW
         case unleaseTx: LeaseCancelTransaction =>
-            (leasingExpireBlock > height || isRebalance) && (unleaseTx.fee >= 500000 && unleaseTx.fee <= 1000000) && getLeaseTxStatusKey(toBase58String(unleaseTx.leaseId)) == NEW
+            (height > leasingExpireBlock || isRebalance) && (unleaseTx.fee >= 500000 && unleaseTx.fee <= 1000000) && getLeaseTxStatus(toBase58String(unleaseTx.leaseId)) == NEW
         case _ => sigVerify(tx.bodyBytes, tx.proofs[0], tx.senderPublicKey)
     }
 }
