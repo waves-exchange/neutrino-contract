@@ -91,16 +91,16 @@ This project contains several contracts:
 * [auction.ride] from [neutrino.ride] by key "addressFromStringValue(getStringByKey(NeutrinoContractKey))" - Neutrino account from config
 * [auction.ride] from [neutrino.ride] by key "addressFromStringValue(getStringByAddressAndKey(neutrinoContract, ControlContractKey))" - Control account from config
 * [auction.ride] from [control.ride] by key "getNumberByAddressAndKey(controlContract, PriceKey)" - Current price
-* [auction.ride] from [neutrino.ride] by key "getNumberByAddressAndKey(neutrinoContract, SwapLockedBalanceKey)" - заблокированный баланс для вывода в waves(поддержка старой логики вывода)
-* [auction.ride] from [neutrino.ride] by key "getNumberByAddressAndKey(neutrinoContract, SwapNeutrinoLockedBalanceKey)" - заблокированный баланс для вывода в neutrino
+* [auction.ride] from [neutrino.ride] by key "getNumberByAddressAndKey(neutrinoContract, SwapLockedBalanceKey)" - Locked waves balance from swap actions (legacy)
+* [auction.ride] from [neutrino.ride] by key "getNumberByAddressAndKey(neutrinoContract, SwapNeutrinoLockedBalanceKey)" -  - Locked waves balance from swap actions
 * [auction.ride] from [neutrino.ride] by key "fromBase58String(getStringByAddressAndKey(neutrinoContract, NeutrinoAssetIdKey)" - neutrino asset id 
 * [auction.ride] from [neutrino.ride] by key "fromBase58String(getStringByAddressAndKey(neutrinoContract, BondAssetIdKey))" - bond asset id
 
 
-* [rpd.ride] from [neutrino.ride] by key "getStringByKey(NodeAddressKey)" - адрес ноды в которую лизяться средства
-* [rpd.ride] from [neutrino.ride] by key "getStringByKey(NeutrinoContractKey)" - адрес neutrino contract 
+* [rpd.ride] from [neutrino.ride] by key "getStringByKey(NodeAddressKey)" - Leasing pool address
+* [rpd.ride] from [neutrino.ride] by key "getStringByKey(NeutrinoContractKey)" - address neutrino contract 
 * [rpd.ride] from [neutrino.ride] by key "fromBase58String(getStringByAddressAndKey(neutrinoContract, NeutrinoAssetIdKey))" - neutrino asset id 
-* [rpd.ride] from [neutrino.ride] by key "getNumberByAddressAndKey(neutrinoContract, SyncIndexKey)" - номер следующего rpd чека(который будет напечатан в будущем)
+* [rpd.ride] from [neutrino.ride] by key "getNumberByAddressAndKey(neutrinoContract, SyncIndexKey)" - the number of next staking reward payout
 * [rpd.ride] from [neutrino.ride] by key "getNumberByAddressAndKey(neutrinoContract, getSnapshotContractBalanceKey(count, assetId)" - Snapshot balance
 * [rpd.ride] from [neutrino.ride] by key "getNumberByAddressAndKey(neutrinoContract, getProfitKey(count))" - Profit amount for payout
 
