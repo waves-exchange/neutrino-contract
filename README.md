@@ -1,30 +1,111 @@
-# Neutrino: an algorithmic price-stable cryptocurrency protocol collateralized by WAVES token
+# Neutrino: an algorithmic price-stable cryptocurrency protocol collateralized by native PoS token
 This project contains several contracts:
 
-* auction.ride - the smart contract implementing the Neutrino Bond auction
-* neutrino.ride - Neutrino's main contract
+* neutrino.ride - protocols's main smart contract (actions: swaps, bonds liquidation, leasing)
+* control.ride - the smart contract for price oracles and emergency oracles actions
+* auction.ride - the smart contract describing the bond auction in ordebook
+* rpd.ride - (rewards payouts distribution) the smart contract implementing neutrino staking and staking payouts withdrawals by users
+
+
+# Actors
+* user - waves keeper users
+* price oracles - 5 predetermined anonimous accounts providing market price feed to the blockchain
+* pacemaker oracles - any account (bot) who is triggering transactions and processing complex computations and paying fees
+* node - lPoS node for neutrino dApp which accumulates and distributes block rewards
+* emergency oracles - 3 accounts who are able to stop protocol's operations and reactivate it
 
 # Description of Callable methods
-#### Auction:
-* setOrder(price : Int, position: Int) - set the order into a specified position
-* cancelOrder(orderId : String) - cancel the order
-* executeOrder() - execute the order (sell Token-NB)
 
-#### Neutrino:
-* setCurrentPrice(newPrice : Int) - to set the price (available only to oracles)
-* finalizeCurrentPrice() - finalize the price supplied by the oracles
-* adminUnlock(newPrice : Int) - unlock the platform with the specified price (it will be unlocked if 2/3 of admins voted)
-* adminLock() - lock the platform (it will be locked if 2/3 of admins voted)
-* swapWavesToNeutrino() - swap waves for neutrino
-* swapNeutrinoToWaves() - swap neutrino for waves
-* withdraw(account : String) - withdraw from the contract
-* generateBond() - generate Neutrino Bond
-* setOrder() - set an order to liquidate the Neutrino Bond
-* cancelOrder(orderId : String) - cancel the liquidation order
-* executeOrder() - execute the first Neutrino Bond liquidation order
+#### neutrino.ride:
+
+* swapWavesToNeutrino() [called by user] - Instant swap WAVES to Neutrino token for current price on SC
+
+* swapNeutrinoToWaves() [called by user] - Swap request Neutrino to WAVES. After {balanceLockInterval} blocks WAVES tokens will be available for withdraw with {withdraw(account : String)} method with price at the moment of {balanceLockInterval} has reached
+
+* withdraw(account : String, index: Int) [called by user] - Withdraw WAVES from SC after {swapNeutrinoToWaves()} request is reached {balanceLockInterval} height with price at the moment of {balanceLockInterval} has reached.
+
+* generateBond() [called by pacemaker oracles] - transfering bonds from main SC to auction.ride to fill 'buy bonds' orders. It's calling n-times untill all orders on auction.ride will be executed during deficit stage
+
+* setOrder() [called by user] - Set 'bonds liquidation order' (bond -> neutrino 1:1 exchange) to the liquidation queue
+
+* cancelOrder(orderId : String) [called by user] - Cancel 'bonds liquidation order' (bond -> neutrino 1:1 exchange) from the liquidation queue
+
+* executeOrder() [called by pacemaker oracles] - Executing bond -> neutrino 1:1 exchange from the liquidation queue if SC has reached proficit in collateral cap. It's calling n-times untill all orders from the liquidation queue will be executed during proficit stage
+
+* nodeReward() [called by node] Transfer neutrino tokens to the rpd.ride smart contact (rewards payouts distribution) generated from waves in the result of leasing profit
+
+* transfer(account: String) [called by user] - transfer tokens from one address to another through smart contact
+
+* registrationLeaseTx(senderPublicKey: String, fee: Int, timestamp: Int, leaseTxHash: String) [called by pacemaker oracles] - Start leasing tx registration of almost all amount of waves on the main smart contract to the node account. See @Verifier's LeaseTransaction of the current script
+
+* cancelStuckLeaseTx(txHash: String) [called by pacemaker oracles] - Cancel leasing tx registration record. This method can be called only if appropriate LeaseTransaction never happend during time interval after registrationLeaseTx() call
+
+* registrationUnleaseTx(chainIdString: String, senderPublicKey: String, fee: Int, timestamp: Int, leaseTxHash: String) [called by pacemaker oracles] - Registration unlease tx in the kv-storage. This method can be called only if appropriate LeaseCancelTransaction happend.
 
 
-# Neutrino contests: Instruction
+#### control.ride:
+
+* setCurrentPrice(newPrice : Int) [called by price oracles] - Gathering prices from oracles during 5 min period
+
+* finalizeCurrentPrice() [called by pacemaker oracles] - Computing avegarge price for current price feed
+
+* vote(action: String) [called by emergency oracles] - Voting for STOP/REACTIVATION in case of emergency event
+
+
+#### auction.ride:
+
+* setOrder(price : Int, position: Int) [called by user] - Set buy bonds order
+
+* cancelOrder(orderId : String) [called by user] - Cancel buy bonds order
+
+* executeOrder() [called by pacemaker oracles] - Executing buy bonds orders from the bonds orderbook if SC has reached deficit in collateral cap. It's calling n-times untill all orders from the lbonds orderbook will be executed during deficit stage
+
+
+#### rpd.ride:
+
+* lockNeutrino() [called by user] - Start neutrino staking
+
+* unlockNeutrino(unlockAmount: Int, assetIdString: String) [called by user] - Cancel neutrino staking
+
+* withdraw(profitSyncIndex: Int, historyIndex: Int) [called by user] - Withdraw neutrino rewards from staking
+
+
+# Inter-contracts dependencies
+
+## By tokens transfers
+
+* from [node] to neutrino.ride WAVES tokens & from [neutrino.ride] to [rpd.ride] Nutrino tokens by nodeReward()
+* from [auction.ride] Neutrino tokens to [neutrino.ride] by executeOrder()
+* from [neutrino.ride] Bond tokens to [auction.ride] by generateBond()
+
+## By keys
+* [neutrino.ride] from [control.ride] by key "getNumberByAddressAndKey(controlContract,PriceKey)" - Current price
+* [neutrino.ride] from [control.ride] by key "getNumberByAddressAndKey(controlContract, PriceIndexKey)" - Current price index
+* [neutrino.ride] from [control.ride] by key "getBoolByAddressAndKey(controlContract,IsBlockedKey)" - Current system status
+
+* [neutrino.ride] from [rpd.ride] by key "getNumberByAddressAndKey(rpdContract, getRPDContractBalanceKey(assetId))"  - Current token balance
+* [neutrino.ride] from [control.ride] by key "getNumberByAddressAndKey(rpdContract, getRPDContractBalanceKey(assetId))"  - Price at block
+* [neutrino.ride] from [control.ride] by key "getNumberByAddressAndKey(rpdContract, getHeightPriceByIndexKey(index))"  - Price at index
+
+
+* [auction.ride] from [neutrino.ride] by key "addressFromStringValue(getStringByKey(NeutrinoContractKey))" - Neutrino account from config
+* [auction.ride] from [neutrino.ride] by key "addressFromStringValue(getStringByAddressAndKey(neutrinoContract, ControlContractKey))" - Control account from config
+* [auction.ride] from [control.ride] by key "getNumberByAddressAndKey(controlContract, PriceKey)" - Current price
+* [auction.ride] from [neutrino.ride] by key "getNumberByAddressAndKey(neutrinoContract, SwapLockedBalanceKey)"
+* [auction.ride] from [neutrino.ride] by key "getNumberByAddressAndKey(neutrinoContract, SwapNeutrinoLockedBalanceKey)"
+* [auction.ride] from [neutrino.ride] by key "fromBase58String(getStringByAddressAndKey(neutrinoContract, NeutrinoAssetIdKey)"
+* [auction.ride] from [neutrino.ride] by key "fromBase58String(getStringByAddressAndKey(neutrinoContract, BondAssetIdKey))"
+
+
+* [rpd.ride] from [neutrino.ride] by key "getStringByKey(NodeAddressKey)"
+* [rpd.ride] from [neutrino.ride] by key "getStringByKey(NeutrinoContractKey)"
+* [rpd.ride] from [neutrino.ride] by key "fromBase58String(getStringByAddressAndKey(neutrinoContract, NeutrinoNeutrinoIdKey))"
+* [rpd.ride] from [neutrino.ride] by key "getNumberByAddressAndKey(neutrinoContract, SyncIndexKey)"
+* [rpd.ride] from [neutrino.ride] by key "getNumberByAddressAndKey(neutrinoContract, getSnapshotContractBalanceKey(count, assetId)" - Snapshot balance
+* [rpd.ride] from [neutrino.ride] by key "getNumberByAddressAndKey(neutrinoContract, getProfitKey(count))" - Profit amount for payout
+
+
+# *** Neutrino contests: Instruction ***
 This little guide is aimed to help you interact with Neutrino smart contracts to experiment for the Neutrino contest: https://beta.ventuary.space/contests/e3a5a0f1-79e5-44d7-a930-b4e18e59529d/details 
 
 ## Step 1: Deploy Neutrino smart contracts on the testnet
