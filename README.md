@@ -32,6 +32,8 @@ This project contains several contracts:
 
 * executeOrder() [called by pacemaker oracles] - Executing bond -> neutrino 1:1 exchange from the liquidation queue if SC has reached proficit in collateral cap. It's calling n-times untill all orders from the liquidation queue will be executed during proficit stage
 
+* nodeReward() [called by node] Transfer neutrino tokens to the rpd.ride smart contact (rewards payouts distribution) generated from waves in the result of leasing profit
+
 * transfer(account: String) [called by user] - transfer tokens from one address to another through smart contact
 
 * registrationLeaseTx(senderPublicKey: String, fee: Int, timestamp: Int, leaseTxHash: String) [called by pacemaker oracles] - Start leasing tx registration of almost all amount of waves on the main smart contract to the node account. See @Verifier's LeaseTransaction of the current script
@@ -67,6 +69,40 @@ This project contains several contracts:
 
 * withdraw(profitSyncIndex: Int, historyIndex: Int) [called by user] - Withdraw neutrino rewards from staking
 
+
+# Inter-contracts dependencies
+
+## By tokens transfers
+
+* from [node] to neutrino.ride WAVES tokens & from [neutrino.ride] to [rpd.ride] Nutrino tokens by nodeReward()
+* from [auction.ride] Neutrino tokens to [neutrino.ride] by executeOrder()
+* from [neutrino.ride] Bond tokens to [auction.ride] by generateBond()
+
+## By keys
+* [neutrino.ride] from [control.ride] by key "getNumberByAddressAndKey(controlContract,PriceKey)" - Current price
+* [neutrino.ride] from [control.ride] by key "getNumberByAddressAndKey(controlContract, PriceIndexKey)" - Current price index
+* [neutrino.ride] from [control.ride] by key "getBoolByAddressAndKey(controlContract,IsBlockedKey)" - Current system status
+
+* [neutrino.ride] from [rpd.ride] by key "getNumberByAddressAndKey(rpdContract, getRPDContractBalanceKey(assetId))"  - Current token balance
+* [neutrino.ride] from [control.ride] by key "getNumberByAddressAndKey(rpdContract, getRPDContractBalanceKey(assetId))"  - Price at block
+* [neutrino.ride] from [control.ride] by key "getNumberByAddressAndKey(rpdContract, getHeightPriceByIndexKey(index))"  - Price at index
+
+
+* [auction.ride] from [neutrino.ride] by key "addressFromStringValue(getStringByKey(NeutrinoContractKey))" - Neutrino account from config
+* [auction.ride] from [neutrino.ride] by key "addressFromStringValue(getStringByAddressAndKey(neutrinoContract, ControlContractKey))" - Control account from config
+* [auction.ride] from [control.ride] by key "getNumberByAddressAndKey(controlContract, PriceKey)" - Current price
+* [auction.ride] from [neutrino.ride] by key "getNumberByAddressAndKey(neutrinoContract, SwapLockedBalanceKey)"
+* [auction.ride] from [neutrino.ride] by key "getNumberByAddressAndKey(neutrinoContract, SwapNeutrinoLockedBalanceKey)"
+* [auction.ride] from [neutrino.ride] by key "fromBase58String(getStringByAddressAndKey(neutrinoContract, NeutrinoAssetIdKey)"
+* [auction.ride] from [neutrino.ride] by key "fromBase58String(getStringByAddressAndKey(neutrinoContract, BondAssetIdKey))"
+
+
+* [rpd.ride] from [neutrino.ride] by key "getStringByKey(NodeAddressKey)"
+* [rpd.ride] from [neutrino.ride] by key "getStringByKey(NeutrinoContractKey)"
+* [rpd.ride] from [neutrino.ride] by key "fromBase58String(getStringByAddressAndKey(neutrinoContract, NeutrinoNeutrinoIdKey))"
+* [rpd.ride] from [neutrino.ride] by key "getNumberByAddressAndKey(neutrinoContract, SyncIndexKey)"
+* [rpd.ride] from [neutrino.ride] by key "getNumberByAddressAndKey(neutrinoContract, getSnapshotContractBalanceKey(count, assetId)" - Snapshot balance
+* [rpd.ride] from [neutrino.ride] by key "getNumberByAddressAndKey(neutrinoContract, getProfitKey(count))" - Profit amount for payout
 
 
 # *** Neutrino contests: Instruction ***
