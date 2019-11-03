@@ -3,8 +3,8 @@ const PAULI = 10**2;
 
 const accounts = 
     {
-        oracles: [ wavesCrypto.randomSeed(), wavesCrypto.randomSeed(), wavesCrypto.randomSeed(), wavesCrypto.randomSeed(), wavesCrypto.randomSeed()] ,
-        admins: [wavesCrypto.randomSeed(), wavesCrypto.randomSeed(), wavesCrypto.randomSeed(), wavesCrypto.randomSeed(), wavesCrypto.randomSeed()],
+        oracles: Array(5).fill(null).map(() => wavesCrypto.randomSeed()),
+        admins: Array(5).fill(null).map(() => wavesCrypto.randomSeed()),
         auctionContract: wavesCrypto.randomSeed(),
         neutrinoContract: wavesCrypto.randomSeed(),
         rpdContract: wavesCrypto.randomSeed(),
