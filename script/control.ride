@@ -151,6 +151,7 @@ func filterAdminsVoteByUpdateAction(result: List[String], address: String) =
 
 #-------------------Callable----------------------
 
+# [called by price oracles]
 @Callable(i)
 func setCurrentPrice(newPrice : Int) = {
     let account = toString(i.caller)
@@ -193,8 +194,9 @@ func setCurrentPrice(newPrice : Int) = {
     }
 }
 
+# [called by price oracles]
 @Callable(i)
-func finalizeCurrentPrice() = { #fix to finalize
+func finalizeCurrentPrice() = {
     let isOracleProvideList = [
                                 isOracleProvide(oraclesList[0]), 
                                 isOracleProvide(oraclesList[1]), 
@@ -243,6 +245,7 @@ func finalizeCurrentPrice() = { #fix to finalize
     }
 }
 
+# [called by emergency oracles]
 @Callable(i)
 func vote(action: String) = {
     let account = toString(i.caller)

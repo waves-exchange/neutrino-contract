@@ -42,7 +42,7 @@ let PERCENTACCURACY = 10000
 # end consts
 
 #constructor 
-let NeutrinoNeutrinoIdKey = "neutrino_asset_id"
+let NeutrinoAssetIdKey = "neutrino_asset_id"
 let NeutrinoContractKey = "neutrino_contract"
 let NodeAddressKey = "node_address"
 #end constructor
@@ -62,21 +62,28 @@ func getIsClaimedKey(owner: String, count: Int) = IsClaimedKey + "_" + owner + "
 func getContractBalanceKey(assetId: String) = BalanceKey + "_" + assetId
 func getSnapshotContractBalanceKey(count: Int, assetId: String) = BalanceKey + "_" + assetId + "_" + toString(count)
 func getProfitKey(count: Int) = ProfitKey + "_" + toString(count)
-
 #end keys
 
 #global vars
 let nodeAddress = getStringByKey(NodeAddressKey)
 let neutrinoContract = getStringByKey(NeutrinoContractKey)
-let neutrinoAssetId = fromBase58String(getStringByAddressAndKey(neutrinoContract, NeutrinoNeutrinoIdKey))
+# Neutrino asset id
+# this value is from neutrino.ride
+let neutrinoAssetId = fromBase58String(getStringByAddressAndKey(neutrinoContract, NeutrinoAssetIdKey))
 let syncIndex = getNumberByAddressAndKey(neutrinoContract, SyncIndexKey)
 #end global vars
 
 # get func
-func getContractBalance(assetId: String) = getNumberByKey(getContractBalanceKey(assetId))
+
+# get snapshot balance by payout (check) number
+# The func is reading from neutrino.ride
 func getSnapshotContractBalance(count: Int, assetId: String) = getNumberByAddressAndKey(neutrinoContract, getSnapshotContractBalanceKey(count, assetId))
+
+# get profit amount by payout (check) number
+# The func is reading from neutrino.ride
 func getProfit(count: Int) = getNumberByAddressAndKey(neutrinoContract, getProfitKey(count))
 
+func getContractBalance(assetId: String) = getNumberByKey(getContractBalanceKey(assetId))
 func getUserBalance(owner : String, assetId: String) = getNumberByKey(getUserBalanceKey(owner, assetId))
 func getUserBalanceByCount(owner : String, count: Int, assetId: String) = getNumberByKey(getUserBalanceKeyByCount(owner, count, assetId))
 func getUserBalanceHistory(owner: String) = getStringByKey(getUserBalanceHistoryKey(owner))
@@ -90,6 +97,8 @@ func addBalanceHistory(history: String, element: String) = {
     history + element
 }
 
+# start neutrino staking 
+# [called by user]
 @Callable(i)
 func lockNeutrino() = {
     let pmt = extract(i.payment)
@@ -114,6 +123,8 @@ func lockNeutrino() = {
     }
 }
 
+# cancel neutrino staking
+# [called by user]
 @Callable(i)
 func unlockNeutrino(unlockAmount: Int, assetIdString: String) = {
     let account = toString(i.caller)
@@ -142,6 +153,8 @@ func unlockNeutrino(unlockAmount: Int, assetIdString: String) = {
     }
 }
 
+# withdraw neutrino rewards from staking 
+# [called by user]
 @Callable(i)
 func withdraw(profitSyncIndex: Int, historyIndex: Int) = {
     let account = toString(i.caller)

@@ -67,8 +67,13 @@ func getOrderHistoryKey(height: Int) = OrderHistoryKey + toString(height)
 #end keys
 
 let neutrinoContract = addressFromStringValue(getStringByKey(NeutrinoContractKey))
+
+# The value rom neutrino.ride
 let controlContract = addressFromStringValue(getStringByAddressAndKey(neutrinoContract, ControlContractKey))
+
+# The value rom control.ride
 let priceNeutrino = getNumberByAddressAndKey(controlContract, PriceKey)
+
 #convert func
 func convertNeutrinoToWaves(amount: Int) = amount*100/priceNeutrino*WAVELET/PAULI
 func convertWavesToNeutrino(amount: Int) = amount*priceNeutrino/100*PAULI/WAVELET 
@@ -78,10 +83,15 @@ func convertWavesToBond(amount: Int) = convertNeutrinoToBond(convertWavesToNeutr
 #end convert func
 
 # global vars
+# locked balance from calling swapNeutrinoToWaves
+# The value from neutrino.ride
 let swapLockedBalance = getNumberByAddressAndKey(neutrinoContract, SwapLockedBalanceKey)
 let swapNeutrinoLockedBalance = getNumberByAddressAndKey(neutrinoContract, SwapNeutrinoLockedBalanceKey)
+# Assets ids
+# The value from neutrino.ride
 let neutrinoAssetId = fromBase58String(getStringByAddressAndKey(neutrinoContract, NeutrinoAssetIdKey))
 let bondAssetId = fromBase58String(getStringByAddressAndKey(neutrinoContract, BondAssetIdKey))
+
 let orderbook = getStringByKey(OrderBookKey)
 let reserve = wavesBalance(neutrinoContract) - swapLockedBalance
 let neutrinoSupply = {
@@ -119,6 +129,8 @@ func dropOrder(orderId: String) = {
 
 #-------------------Callable----------------------
 
+# set buy bonds order
+# [called by user]
 @Callable(i)
 func setOrder(price : Int, position: Int) = {
     let pmt = extract(i.payment);
@@ -157,6 +169,8 @@ func setOrder(price : Int, position: Int) = {
     }
 }
 
+# cancel buy bonds order
+# [called by user]
 @Callable(i)
 func cancelOrder(orderId : String) = {
     let owner = getOrderOwner(orderId)
@@ -179,6 +193,10 @@ func cancelOrder(orderId : String) = {
     }
 }
 
+
+# executing buy bonds orders from the bonds orderbook if SC has reached deficit in collateral cap
+# it's calling n-times untill all orders from the lbonds orderbook will be executed during deficit stage
+# [called by pacemaker oracles]
 @Callable(i)
 func executeOrder() = {
     let bondBalance = assetBalance(this, bondAssetId)
@@ -193,6 +211,8 @@ func executeOrder() = {
             ScriptTransfer(neutrinoContract, returnAmount, bondAssetId)
         ])
     }
+    else if(orderbook == "")
+        then throw("empty orderbook")
     else {
         let orderId = orderbook.split(ORDERSPLITSYMBOL)[0]
         let filledTotal = getOrderFilledTotal(orderId)
