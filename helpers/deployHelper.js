@@ -11,7 +11,7 @@ const accounts =
         controlContract: wavesCrypto.randomSeed()
     }
 
-async function deploy(symbolNeutrino, symbolBond, descriptionNeutrino, descriptionBond, nodeAddress, leasingInterval = 10080) {
+async function deploy(symbolNeutrino, symbolBond, descriptionNeutrino, descriptionBond, nodeAddress, nodeOracleProvider = nodeAddress, leasingInterval = 10080) {
         console.log("Seeds:")
 
         for(let i = 0; i < accounts.oracles.length; i++)
@@ -127,7 +127,8 @@ async function deploy(symbolNeutrino, symbolBond, descriptionNeutrino, descripti
                 { key: 'coefficient_oracle', value: 3 },
                 { key: 'coefficient_admin', value: 3 },
                 { key: 'script_update_interval', value: 30 },
-                { key: 'price', value: 100 }
+                { key: 'price', value: 100 },
+                { key: 'oracle_node_provider', value: nodeOracleProvider}
             ],
             fee: 500000
         }, accounts.controlContract);
