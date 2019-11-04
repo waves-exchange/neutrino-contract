@@ -66,6 +66,7 @@ let BalanceLockIntervalKey = "balance_lock_interval"
 let MinWavesSwapAmountKey = "min_waves_swap_amount"
 let MinNeutrinoSwapAmountKey = "min_neutrino_swap_amount"
 let NodeAddressKey = "node_address"
+let NodeOracleProviderKey = "oracle_node_provider"
 let LeasingIntervalKey = "leasing_interval"
 #end constructor
 
@@ -97,6 +98,7 @@ let IsRebalanceKey = "is_rebalance"
 let SwapLockedBalanceKey = "swap_locked_balance"
 let SwapNeutrinoLockedBalanceKey = "swap_neutrino_locked_balance"
 let LeasingTxCountKey = "leasing_index"
+let CancelLeaseTxReserveFeeKey = "cancel_lease_tx_reserve_fee"
 
 func getRPDSnapshotContractBalanceKey(count: Int, assetId: ByteVector) = RPDBalanceKey + "_" + toBase58String(assetId) + "_" + toString(count)
 func getRPDContractBalanceKey(assetId: ByteVector) = RPDBalanceKey + "_" + toBase58String(assetId)
@@ -115,7 +117,7 @@ func getLeaseTxStatusKey(hash: String) = LeaseTxStatusKey + "_" + hash
 func getLeaseTxAmountByHashKey(hash: String) = LeasingAmountKey + "_" + hash
 func getLeaseTxBytesByHashKey(hash: String) = LeaseTxKey + "_" + hash
 func getLeaseTxExpireSendBlockKey(hash: String) = LeaseTxExpireSendBlockKey + "_" + hash
-func getIsRebalanceByAddressKey(address: String) = IsRebalanceKey + "_" + address
+func getCancelLeaseTxReserveFeeKey(hash: String) = CancelLeaseTxReserveFeeKey + "_" + hash
 #end keys
 
 let neutrinoAssetId = fromBase58String(getStringByKey(NeutrinoAssetIdKey))
@@ -152,6 +154,7 @@ let leasingAmount = getNumberByKey(LeasingAmountKey)
 let swapNeutrinoLockedBalance = getNumberByKey(SwapNeutrinoLockedBalanceKey) 
 let swapWavesLockedBalance = getNumberByKey(SwapLockedBalanceKey) # backward compatibility
 let nodeAddress = getStringByKey(NodeAddressKey)
+let nodeOracleProviderKey = getStringByKey(NodeOracleProviderKey)
 let rpdSyncIndex = getNumberByKey(RPDSyncIndexKey)
 let balanceLockInterval = getNumberByKey(BalanceLockIntervalKey)
 let minWavesSwapAmount = getNumberByKey(MinWavesSwapAmountKey)
@@ -186,6 +189,8 @@ func getPriceHistory(block: Int) = getNumberByAddressAndKey(controlContract, get
 # The func is reading from control.ride price history heights
 func getHeightPriceByIndex(index: Int) = getNumberByAddressAndKey(controlContract, getHeightPriceByIndexKey(index))
 
+
+func getCancelLeaseTxReserveFee(hash: String) = getNumberByKey(getCancelLeaseTxReserveFeeKey(hash))
 func getWavesBalance(owner : String) = getNumberByKey(getWavesBalanceKey(owner))
 func getNeutrinoBalance(owner : String) = getNumberByKey(getNeutrinoBalanceKey(owner))
 func getUnlockBalanceBlock(owner : String) = getNumberByKey(getBalanceUnlockBlockKey(owner))
@@ -426,7 +431,7 @@ func nodeReward() = {
 
 # start leasing tx registration of almost all amount of waves on the main smart contract to the node account
 # see @Verifier's LeaseTransaction of the current script
-# [called by pacemaker oracles]
+# [called by node provider oracle]
 @Callable(i)
 func registrationLeaseTx(senderPublicKey: String, fee: Int, timestamp: Int, leaseTxHash: String) = {
     let totalFreeReserve = reserve*LEASINGSHARE/100 - convertNeutrinoToWaves(swapNeutrinoLockedBalance)
@@ -434,8 +439,13 @@ func registrationLeaseTx(senderPublicKey: String, fee: Int, timestamp: Int, leas
     let txBytes = base64'CAIA' + fromBase58String(senderPublicKey) + fromBase58String(nodeAddress) + toBytes(amount) + toBytes(fee) + toBytes(timestamp)
     let txHashBytes = blake2b256(txBytes)
     let txHash = toBase58String(txHashBytes)
-    
-    if(leaseTxHash != txHash)
+    let pmt = extract(i.payment)
+
+    if(toString(i.caller) == nodeOracleProviderKey)
+        then throw("invalid caller")
+    else if(isDefined(pmt.assetId))
+        then throw("invalid paymtn asset")
+    else if(leaseTxHash != txHash)
         then throw("invalid tx hash(amount:" + toString(amount) + ")")
     else if(leasingTxCount >= LEASINTXCOUNT)
         then throw("the number of leasing transactions is equal to the maximum")
@@ -445,12 +455,15 @@ func registrationLeaseTx(senderPublicKey: String, fee: Int, timestamp: Int, leas
         then throw("invalid timestamp(lastBlock: " + toString(lastBlock.timestamp) + ")")
     else if(getLeaseTxStatus(txHash) != "")
         then throw("tx is exist")
+    else if(pmt.amount != fee*2)
+        then throw("invalid payment amount")
     else if(fee > 1000000 || fee < 500000)
         then throw("invalid fee")
     else if(totalFreeReserve-(leasingAmount + amount) > reserveWithoutLeasing)
         then throw("invalid amount(result:" + toString(totalFreeReserve-(leasingAmount + amount) > reserveWithoutLeasing) + ")")
     else {
         WriteSet([
+            DataEntry(getCancelLeaseTxReserveFeeKey(txHash), fee),
             DataEntry(LeasingTxCountKey, if(getLeaseTxStatus(txHash) == "") then leasingTxCount + 1 else leasingTxCount),
             DataEntry(LeasingAmountKey, leasingAmount + amount),
             DataEntry(LeasingExpireBlockKey, if(height > leasingExpireBlock) then height + leasingInterval else leasingExpireBlock),
@@ -512,7 +525,8 @@ func verify() = {
         case leaseTx: LeaseTransaction =>
             height <= leasingExpireBlock && height <= getLeaseTxExpireSendBlock(id) && getLeaseTxStatus(id) == NEW
         case unleaseTx: LeaseCancelTransaction =>
-            (height > leasingExpireBlock || isRebalance) && (unleaseTx.fee >= 500000 && unleaseTx.fee <= 1000000) && getLeaseTxStatus(toBase58String(unleaseTx.leaseId)) == NEW
+            let leaseId = toBase58String(unleaseTx.leaseId)
+            (height > leasingExpireBlock || isRebalance) && (unleaseTx.fee == getCancelLeaseTxReserveFee(leaseId)) && getLeaseTxStatus(leaseId) == NEW
         case _ => sigVerify(tx.bodyBytes, tx.proofs[0], tx.senderPublicKey)
     }
 }

@@ -1,6 +1,6 @@
 var deployHelper = require('../helpers/deployHelper.js');
 let deployResult = {}
-
+let leaseTx= {}
 describe('Leasing test', async function () {
     before(async function () {
         setupAccounts({
@@ -26,7 +26,7 @@ describe('Leasing test', async function () {
     it('Lease', async function () {
         const balanceWaves = await balance(address(deployResult.accounts.neutrinoContract))
         const amount = Math.floor(Math.floor(balanceWaves * 90 / 100) / 10)
-        const leaseTx = lease({
+        leaseTx = lease({
             amount: amount,
             recipient: address(accounts.testAccount),
             fee: 500000,
@@ -44,7 +44,7 @@ describe('Leasing test', async function () {
                     { type: "string", value: leaseTx.id }
                 ]
             },
-            payment: []
+            payment: [{ assetId: null, amount: leaseTx.fee * 2 }]
         }, accounts.testAccount);
 
         await broadcast(tx);
@@ -62,7 +62,7 @@ describe('Leasing test', async function () {
             throw ("invalid leasing amount")
     })
     it('Unlease', async function () {
-        /*const dataAccount = await accountData(address(deployResult.accounts.neutrinoContract))
+        const dataAccount = await accountData(address(deployResult.accounts.neutrinoContract))
 
         const height = await currentHeight()
         const dataTx = data({
@@ -75,7 +75,7 @@ describe('Leasing test', async function () {
         await waitForTx(dataTx.id);
 
         const cancelLeaseTx = cancelLease({
-            leaseId: dataAccount.lease_tx_hash.value,
+            leaseId: leaseTx.id,
             fee: 500000
         }, deployResult.accounts.neutrinoContract)
 
@@ -102,10 +102,10 @@ describe('Leasing test', async function () {
 
         const state = await stateChanges(tx.id);
         const dataState = deployHelper.convertDataStateToObject(state.data)
-
-        if (dataState["lease_tx_status_" + leaseTx.id] != "new")
+        
+        if (dataState["lease_tx_status_" + leaseTx.id] == "new")
             throw ("invalid status leasing tx")
-        else if (dataState.leasing_amount != leaseTx.amount)
-            throw ("invalid leasing amount")*/
+        else if (dataState.leasing_amount != 0)
+            throw ("invalid leasing amount")
     })
 })
