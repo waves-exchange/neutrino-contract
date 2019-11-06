@@ -75,7 +75,6 @@ let PriceKey = "price"
 let PriceIndexKey = "price_index"
 let ScriptUpdateIntervalKey = "script_update_interval"
 let NeutrinoBalanceKey = "neutrino_"
-let WavesBalanceKey = "waves_"
 let BalanceUnlockBlockKey = "balance_block_"
 let OrderbookKey = "orderbook"
 let OrderTotalKey = "order_total_" 
@@ -95,7 +94,6 @@ let LeasingAmountKey = "leasing_amount"
 let LeaseTxExpireSendBlockKey = "leasing_expire_send"
 let LeasingExpireBlockKey = "leasing_expire_block"
 let IsRebalanceKey = "is_rebalance"
-let SwapLockedBalanceKey = "swap_locked_balance"
 let SwapNeutrinoLockedBalanceKey = "swap_neutrino_locked_balance"
 let LeasingTxCountKey = "leasing_index"
 let CancelLeaseTxReserveFeeKey = "cancel_lease_tx_reserve_fee"
@@ -104,7 +102,6 @@ func getRPDSnapshotContractBalanceKey(count: Int, assetId: ByteVector) = RPDBala
 func getRPDContractBalanceKey(assetId: ByteVector) = RPDBalanceKey + "_" + toBase58String(assetId)
 func getRPDProfitKey(count: Int) = RPDProfitKey + "_" + toString(count)
 func getNeutrinoBalanceKey(owner: String) = NeutrinoBalanceKey + owner
-func getWavesBalanceKey(owner: String) = WavesBalanceKey + owner
 func getBalanceUnlockBlockKey(owner: String) = BalanceUnlockBlockKey + owner
 func getOrderTotalKey(orderId: String) = OrderTotalKey + orderId
 func getOrderOwnerKey(orderId: String) = OrderOwnerKey + orderId
@@ -152,14 +149,13 @@ let leasingInterval = getNumberByKey(LeasingIntervalKey)
 let leasingExpireBlock = getNumberByKey(LeasingExpireBlockKey)
 let leasingAmount = getNumberByKey(LeasingAmountKey)
 let swapNeutrinoLockedBalance = getNumberByKey(SwapNeutrinoLockedBalanceKey) 
-let swapWavesLockedBalance = getNumberByKey(SwapLockedBalanceKey) # backward compatibility
 let nodeAddress = getStringByKey(NodeAddressKey)
 let nodeOracleProviderKey = getStringByKey(NodeOracleProviderKey)
 let rpdSyncIndex = getNumberByKey(RPDSyncIndexKey)
 let balanceLockInterval = getNumberByKey(BalanceLockIntervalKey)
 let minWavesSwapAmount = getNumberByKey(MinWavesSwapAmountKey)
 let minNeutrinoSwapAmount = getNumberByKey(MinNeutrinoSwapAmountKey)
-let reserve = wavesBalance(this) - swapWavesLockedBalance
+let reserve = wavesBalance(this)
 let reserveWithoutLeasing = reserve - leasingAmount
 let orderbook = getStringByKey(OrderbookKey)
 let bondAssetId = fromBase58String(getStringByKey(BondAssetIdKey))
@@ -189,9 +185,7 @@ func getPriceHistory(block: Int) = getNumberByAddressAndKey(controlContract, get
 # The func is reading from control.ride price history heights
 func getHeightPriceByIndex(index: Int) = getNumberByAddressAndKey(controlContract, getHeightPriceByIndexKey(index))
 
-
 func getCancelLeaseTxReserveFee(hash: String) = getNumberByKey(getCancelLeaseTxReserveFeeKey(hash))
-func getWavesBalance(owner : String) = getNumberByKey(getWavesBalanceKey(owner))
 func getNeutrinoBalance(owner : String) = getNumberByKey(getNeutrinoBalanceKey(owner))
 func getUnlockBalanceBlock(owner : String) = getNumberByKey(getBalanceUnlockBlockKey(owner))
 func getOrderTotal(id : String) = getNumberByKey(getOrderTotalKey(id))
@@ -272,16 +266,19 @@ func swapNeutrinoToWaves() = {
 # [called by user]
 @Callable(i)
 func withdraw(account : String, index: Int) = {
-    let indexHeight = getHeightPriceByIndex(index)
-    let nextIndexHeight = getHeightPriceByIndex(index+1)
     let unlockHeight = getUnlockBalanceBlock(account)
     let neutrinoAmount = getNeutrinoBalance(account)
+
+    let indexHeight = getHeightPriceByIndex(index)
+    let nextIndexHeight = getHeightPriceByIndex(index+1)
     let indexPrice = getPriceHistory(indexHeight)
+
     let amount = convertNeutrinoToWavesByPrice(neutrinoAmount, indexPrice)
-    let totalWavesWithdraw = getWavesBalance(account) + amount
 
     if(isBlocked)
         then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles") # see control.ride
+    else if(amount <= 0)
+        then throw("balance equals zero")
     else if(unlockHeight > height)
         then throw("please wait for: " + toString(unlockHeight) + " block height to withdraw WAVES funds")
     else if(index > priceIndex || unlockHeight < indexHeight || (nextIndexHeight != 0 && unlockHeight >= nextIndexHeight))
@@ -289,12 +286,11 @@ func withdraw(account : String, index: Int) = {
     else {   
         ScriptResult(
             WriteSet([
-                DataEntry(getWavesBalanceKey(account), 0),
-                DataEntry(SwapLockedBalanceKey, swapWavesLockedBalance - getWavesBalance(account)),
+                DataEntry(getNeutrinoBalanceKey(account), getNeutrinoBalance(account) - neutrinoAmount),
                 DataEntry(SwapNeutrinoLockedBalanceKey, swapNeutrinoLockedBalance - neutrinoAmount)
             ]),
             TransferSet([
-                ScriptTransfer(addressFromStringValue(account), totalWavesWithdraw, unit) 
+                ScriptTransfer(addressFromStringValue(account), amount, unit) 
             ])
         )
     }
