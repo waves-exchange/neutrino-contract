@@ -33,12 +33,6 @@ func getStringByAddressAndKey(address: Address, key: String) = {
             case _ => ""
     }
 }
-func isInt(val: Int|Unit) = {
-     match val {
-            case a:Int => true
-            case _ => false
-    }
-}
 
 func dropElementInJsonArray(array: String, element: String) = {
     let splitedArray = array.split(element)
