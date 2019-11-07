@@ -52,9 +52,9 @@ let LISTSPLITSYMBOL = "_"
 let LISTDATASYMBOL = "+"
 let WAVELET = 100000000
 let PAULI = 100
-let CRYTICALSHARE = 20
+let CRITICALSHARE = 20
 let LEASINGSHARE = 90
-let LEASINTXCOUNT = 10
+let LEASINGTXCOUNT = 10
 let CANCELED = "canceled"
 let NEW = "new"
 let FILLED = "filled"
@@ -67,7 +67,7 @@ let BondAssetIdKey = "bond_asset_id"
 let ReserveContractKey = "reserve_contract"
 let AuctionContractKey = "auction_contract"
 let RPDContractKey = "rpd_contract"
-let ContolContractKey = "control_contract"
+let ControlContractKey = "control_contract"
 let BalanceLockIntervalKey = "balance_lock_interval"
 let MinWavesSwapAmountKey = "min_waves_swap_amount"
 let MinNeutrinoSwapAmountKey = "min_neutrino_swap_amount"
@@ -127,7 +127,7 @@ let neutrinoAssetId = fromBase58String(getStringByKey(NeutrinoAssetIdKey))
 let reserveContract = getStringByKey(ReserveContractKey)
 let auctionContract = getStringByKey(AuctionContractKey)
 let rpdContract = getStringByKey(RPDContractKey)
-let controlContract = getStringByKey(ContolContractKey)
+let controlContract = getStringByKey(ControlContractKey)
 
 # price provided by oracles to control.ride
 let price = getNumberByAddressAndKey(controlContract,PriceKey)
@@ -172,11 +172,11 @@ let neutrinoSupply = {
 let surplus = convertWavesToNeutrino(reserve) - neutrinoSupply
 let deficit = neutrinoSupply - convertWavesToNeutrino(reserve)
 
-#let scriptUpdateInterval = getNumberByAddressAndKey(ContolContractKey, ScriptUpdateIntervalKey) TODO
+#let scriptUpdateInterval = getNumberByAddressAndKey(ControlContractKey, ScriptUpdateIntervalKey) TODO
 #let scriptUpdateBlock = getNumberByAddressAndKey(controlContract,ScriptUpdateBlockKey) TODO
 #end global variables
 
-# get func
+# get functions
 
 # reads balances from rpd.ride
 func getRPDContractBalance(assetId: ByteVector) = getNumberByAddressAndKey(rpdContract, getRPDContractBalanceKey(assetId))
@@ -199,9 +199,9 @@ func getLeaseTxStatus(hash: String) = getStringByKey(getLeaseTxStatusKey(hash))
 func getLeaseTxAmountByHash(hash: String) = getNumberByKey(getLeaseTxAmountByHashKey(hash))
 func getLeaseTxBytesByHash(hash: String) = getStringByKey(getLeaseTxBytesByHashKey(hash))
 func getLeaseTxExpireSendBlock(hash: String) = getNumberByKey(getLeaseTxExpireSendBlockKey(hash))
-#end get func
+#end get functions
 
-#other functions
+# other functions
 func getOrderElementById(id : String) = id + LISTSPLITSYMBOL
 func addOrder(orderId: String) = {
     orderbook + getOrderElementById(orderId)
@@ -433,7 +433,7 @@ func nodeReward() = {
 @Callable(i)
 func registrationLeaseTx(senderPublicKey: String, fee: Int, timestamp: Int, leaseTxHash: String) = {
     let totalFreeReserve = reserve*LEASINGSHARE/100 - convertNeutrinoToWaves(swapNeutrinoLockedBalance)
-    let amount = totalFreeReserve/LEASINTXCOUNT
+    let amount = totalFreeReserve/LEASINGTXCOUNT
     let txBytes = base64'CAIA' + fromBase58String(senderPublicKey) + fromBase58String(nodeAddress) + toBytes(amount) + toBytes(fee) + toBytes(timestamp)
     let txHashBytes = blake2b256(txBytes)
     let txHash = toBase58String(txHashBytes)
@@ -445,7 +445,7 @@ func registrationLeaseTx(senderPublicKey: String, fee: Int, timestamp: Int, leas
         then throw("invalid paymtn asset")
     else if(leaseTxHash != txHash)
         then throw("invalid tx hash(amount:" + toString(amount) + ")")
-    else if(leasingTxCount >= LEASINTXCOUNT)
+    else if(leasingTxCount >= LEASINGTXCOUNT)
         then throw("the number of leasing transactions is equal to the maximum")
     else if(this != addressFromPublicKey(fromBase58String(senderPublicKey)))
         then throw("invalid pubKey")
