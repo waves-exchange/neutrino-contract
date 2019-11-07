@@ -221,11 +221,11 @@ func dropOrder(orderId: String) = {
 func swapWavesToNeutrino() = {
     let pmt = extract(i.payment)
     if (pmt.amount < minWavesSwapAmount)
-        then throw("an amount is less than min available amount: " + toString(minWavesSwapAmount) + " wavelets")
+        then throw("The specified Waves amount is less than the required minimum of " + toString(minWavesSwapAmount) + " wavelets.")
     else if (isDefined(pmt.assetId))
-        then throw("can use waves only")
+        then throw("Only Waves token is allowed for swapping.")
     else if(isBlocked)
-        then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles") # see control.ride
+        then throw("The contract is blocked by EMERGENCY SHUTDOWN. Please wait for reactivation by emergency oracles.") # see control.ride
     else{
         let amount = convertWavesToNeutrino(pmt.amount)
         TransferSet([
@@ -242,15 +242,15 @@ func swapNeutrinoToWaves() = {
     let pmt = extract(i.payment)
     let account = toString(i.caller)
     if (pmt.amount < minNeutrinoSwapAmount)
-        then throw("an amount is less than min available amount: " + toString(minNeutrinoSwapAmount) + " neutrino cents")
+        then throw("The specified Neutrino amount is less than the required minimum of " + toString(minNeutrinoSwapAmount) + " Neutrino cents.")
     else if(isBlocked)
-        then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles") # see control.ride
+        then throw("The contract is blocked by EMERGENCY SHUTDOWN. Please wait for reactivation by emergency oracles.") # see control.ride
     else if (pmt.assetId != neutrinoAssetId)
-        then throw("can use appropriate neutrino tokens only")
+        then throw("Only appropriate Neutrino tokens are allowed for swapping.")
     else if(getUnlockBalanceBlock(account) > height)
-        then throw("await " + toString(getUnlockBalanceBlock(account) - height) + " blocks")
+        then throw("Please wait for " + toString(getUnlockBalanceBlock(account) - height) + " blocks to complete.")
     else if (getNeutrinoBalance(account) != 0)
-        then throw("please withdraw locked neutrino funds first")
+        then throw("Please withdraw locked Neutrinos first.")
     else{
         let neutrinoAmount = pmt.amount
         let newSwapNeutrinoLockedBalance = swapNeutrinoLockedBalance + neutrinoAmount
@@ -278,13 +278,13 @@ func withdraw(account : String, index: Int) = {
     let amount = convertNeutrinoToWavesByPrice(neutrinoAmount, indexPrice)
 
     if(isBlocked)
-        then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles") # see control.ride
+        then throw("The contract is blocked by EMERGENCY SHUTDOWN. Please wait for reactivation by emergency oracles.") # see control.ride
     else if(amount <= 0)
-        then throw("balance equals zero")
+        then throw("No funds are available for withdrawal.")
     else if(unlockHeight > height)
-        then throw("please wait for: " + toString(unlockHeight) + " block height to withdraw WAVES funds")
+        then throw("Please wait for the " + toString(unlockHeight) + " block height to complete withdrawal.")
     else if(index > priceIndex || unlockHeight < indexHeight || (nextIndexHeight != 0 && unlockHeight >= nextIndexHeight))
-        then throw("invalid price history index")
+        then throw("Invalid price history index.")
     else {
         ScriptResult(
             WriteSet([
@@ -306,10 +306,10 @@ func generateBond() = {
     let balanceAuction = assetBalance(addressFromStringValue(auctionContract), bondAssetId)
     let amount = convertNeutrinoToBond(deficit) - balanceAuction
     if(isBlocked)
-        then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles") # see control.ride
+        then throw("The contract is blocked by EMERGENCY SHUTDOWN. Please wait for reactivation by emergency oracles.") # see control.ride
     else if(amount >= neutrinoSupply*DEFICITOFFSET/100)
         then TransferSet([ScriptTransfer(addressFromStringValue(auctionContract), amount, bondAssetId)])
-    else throw("bond were generated or do not need it")
+    else throw("Bonds were already generated or there is not enough deficit.")
 }
 
 # Adds 'bond liquidation order' (bond -> neutrino 1:1 exchange) to the liquidation queue
@@ -320,9 +320,9 @@ func setOrder() = {
     let newOrderId = toBase58String(keccak256(toBytes(pmt.amount) + i.caller.bytes + toBytes(height)))
 
     if (pmt.assetId != bondAssetId)
-        then throw("can use appropriate neutrino bonds tokens only")
+        then throw("Can use appropriate Neutrino Bond tokens only.")
     else if(getOrderOwner(newOrderId) != "")
-        then throw("an order is already exists")
+        then throw("This order already exists.")
     else {
         WriteSet([
             DataEntry(OrderbookKey, addOrder(newOrderId)),
@@ -335,16 +335,16 @@ func setOrder() = {
     }
 }
 
-# Cancels 'bonds liquidation order' (bond to neutrino 1:1 exchange) in the liquidation queue
+# Cancels 'bond liquidation order' (bond to neutrino 1:1 exchange) in the liquidation queue
 # [called by user]
 @Callable(i)
 func cancelOrder(orderId : String) = {
     let owner = getOrderOwner(orderId)
     let amount = getOrderTotal(orderId) - getOrderFilledTotal(orderId)
     if(owner != toString(i.caller))
-        then throw("only owner of bonds liquidation request is able to cancel it")
+        then throw("Only the owner of bond liquidation request can cancel it.")
     else if(getOrderStatus(orderId) != NEW)
-        then throw("invalid liquidation request status")
+        then throw("Invalid liquidation request status.")
     else {
         ScriptResult(
             WriteSet([
@@ -371,11 +371,11 @@ func executeOrder() = {
     let surplusBond = convertNeutrinoToBond(surplus)
 
     if(isBlocked)
-        then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles") # see control.ride
+        then throw("The contract is blocked by EMERGENCY SHUTDOWN. Please wait for reactivation by emergency oracles.") # see control.ride
     else if(surplusBond <= 0)
-        then throw("there is no proficit on the smart contract now")
+        then throw("There is no surplus on the smart contract at the moment.")
     else if(orderbook == "")
-        then throw("empty orderbook")
+        then throw("The orderbook is empty.")
     else {
         let amount = orderTotal-filledTotal;
         let status = if(surplusBond >= amount) then FILLED else NEW
@@ -408,9 +408,9 @@ func transfer(account: String) = {
 func nodeReward() = {
     let pmt = value(i.payment)
     if(i.caller != addressFromStringValue(nodeAddress))
-        then throw("only node account is able to transfer staking rewards from main account")
+        then throw("Only a node account is able to transfer staking rewards.")
     else if(isDefined(pmt.assetId))
-        then throw("waves tokens only allowed")
+        then throw("Only Waves tokens are allowed.")
     else {
         let amount = convertWavesToNeutrino(pmt.amount)
         let newRpdSyncIndex = rpdSyncIndex + 1
@@ -442,17 +442,17 @@ func registrationLeaseTx(senderPublicKey: String, fee: Int, timestamp: Int, leas
     if(toString(i.caller) == nodeOracleProviderKey)
         then throw("invalid caller")
     else if(isDefined(pmt.assetId))
-        then throw("invalid paymtn asset")
+        then throw("invalid payment asset")
     else if(leaseTxHash != txHash)
-        then throw("invalid tx hash(amount:" + toString(amount) + ")")
+        then throw("invalid tx hash (amount: " + toString(amount) + ")")
     else if(leasingTxCount >= LEASINGTXCOUNT)
-        then throw("the number of leasing transactions is equal to the maximum")
+        then throw("the number of leasing transactions exceeds the limit")
     else if(this != addressFromPublicKey(fromBase58String(senderPublicKey)))
-        then throw("invalid pubKey")
+        then throw("invalid public key")
     else if(timestamp < lastBlock.timestamp || timestamp > lastBlock.timestamp + 5400000)
-        then throw("invalid timestamp(lastBlock: " + toString(lastBlock.timestamp) + ")")
+        then throw("invalid timestamp (lastBlock: " + toString(lastBlock.timestamp) + ")")
     else if(getLeaseTxStatus(txHash) != "")
-        then throw("tx is exist")
+        then throw("This tx already exists.")
     else if(pmt.amount != fee*2)
         then throw("invalid payment amount")
     else if(fee > 1000000 || fee < 500000)
