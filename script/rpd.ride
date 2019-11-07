@@ -1,7 +1,11 @@
-
 {-# STDLIB_VERSION 3 #-}
 {-# CONTENT_TYPE DAPP #-}
 {-# SCRIPT_TYPE ACCOUNT #-}
+
+#
+# Smart Contract Implementing Staking and Reward Withdrawal by Users of Neutrino Protocol
+# (RPD is Reward Payouts Distribution)
+#
 
 # base function
 func getNumberByKey(key: String) = {
@@ -41,12 +45,12 @@ let LISTSPLITSYMBOL = "_"
 let PERCENTACCURACY = 10000
 # end consts
 
-#constructor 
+#constructor
 let NeutrinoAssetIdKey = "neutrino_asset_id"
 let NeutrinoContractKey = "neutrino_contract"
 let NodeAddressKey = "node_address"
 #end constructor
- 
+
 # keys
 let BalanceKey = "rpd_balance"
 let SyncIndexKey = "rpd_sync_index"
@@ -97,12 +101,12 @@ func addBalanceHistory(history: String, element: String) = {
     history + element
 }
 
-# start neutrino staking 
+# start neutrino staking
 # [called by user]
 @Callable(i)
 func lockNeutrino() = {
     let pmt = extract(i.payment)
-    if (pmt.assetId != neutrinoAssetId) 
+    if (pmt.assetId != neutrinoAssetId)
         then throw("can use neutrino")
     else {
         let account = toString(i.caller)
@@ -111,8 +115,8 @@ func lockNeutrino() = {
         let historyString = getUserBalanceHistory(account)
         let history = historyString.split(LISTSPLITSYMBOL)
         let index = size(history) - 2;
-        let newHistory = if(historyString != "" && parseIntValue(history[index]) == syncIndex) 
-                        then historyString 
+        let newHistory = if(historyString != "" && parseIntValue(history[index]) == syncIndex)
+                        then historyString
                     else (addBalanceHistory(historyString, getHistoryElement(syncIndex)))
         WriteSet([
             DataEntry(getContractBalanceKey(assetIdString), getContractBalance(assetIdString) + pmt.amount),
@@ -130,7 +134,7 @@ func unlockNeutrino(unlockAmount: Int, assetIdString: String) = {
     let account = toString(i.caller)
     let assetId = fromBase58String(assetIdString)
     let balance = getUserBalance(account, assetIdString) - unlockAmount
-    if (balance < 0) 
+    if (balance < 0)
         then throw("invalid amount")
     else if(assetId != neutrinoAssetId)
         then throw("can use neutrino")
@@ -138,8 +142,8 @@ func unlockNeutrino(unlockAmount: Int, assetIdString: String) = {
         let historyString = getUserBalanceHistory(account)
         let history = historyString.split(LISTSPLITSYMBOL)
         let index = size(history) - 2;
-        let newHistory = if(historyString != "" && parseIntValue(history[index]) == syncIndex) 
-                        then historyString 
+        let newHistory = if(historyString != "" && parseIntValue(history[index]) == syncIndex)
+                        then historyString
                      else (addBalanceHistory(historyString, getHistoryElement(syncIndex)))
         ScriptResult(
             WriteSet([
@@ -153,7 +157,7 @@ func unlockNeutrino(unlockAmount: Int, assetIdString: String) = {
     }
 }
 
-# withdraw neutrino rewards from staking 
+# withdraw neutrino rewards from staking
 # [called by user]
 @Callable(i)
 func withdraw(profitSyncIndex: Int, historyIndex: Int) = {
@@ -162,7 +166,7 @@ func withdraw(profitSyncIndex: Int, historyIndex: Int) = {
     let history = historyString.split(LISTSPLITSYMBOL)
     let lockActual = parseIntValue(history[historyIndex])
 
-    if(isClaimed(account, profitSyncIndex)) 
+    if(isClaimed(account, profitSyncIndex))
         then throw("account is claimed rpd_count:" + toString(profitSyncIndex))
     else if(profitSyncIndex < lockActual || (historyIndex + 2 < size(history) && profitSyncIndex >= parseIntValue(history[historyIndex+1]) ))
         then throw("invalid history index")
@@ -171,7 +175,7 @@ func withdraw(profitSyncIndex: Int, historyIndex: Int) = {
         let balance = getUserBalanceByCount(account, lockActual, neutrinoAssetIdString)
         let sharePercent = balance*PERCENTACCURACY/getSnapshotContractBalance(profitSyncIndex, neutrinoAssetIdString)
         let profit = sharePercent*getProfit(profitSyncIndex)/PERCENTACCURACY
-        
+
         ScriptResult(
             WriteSet([DataEntry(getIsClaimedKey(account, profitSyncIndex), true)]),
             TransferSet([ScriptTransfer(addressFromStringValue(account), profit, neutrinoAssetId)])
