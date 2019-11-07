@@ -2,6 +2,10 @@
 {-# CONTENT_TYPE DAPP #-}
 {-# SCRIPT_TYPE ACCOUNT #-}
 
+#
+# Smart Contract Implementing Bonds Auction in the Orderbook of Neutrino Protocol 
+#
+
 #base function
 func getNumberByKey(key: String) = {
     match getInteger(this, key) {
@@ -42,9 +46,9 @@ let MAXDISCOUNT = 50
 
 # keys
 let OrderBookKey = "orderbook"
-let OrderPriceKey = "order_price_" 
-let OrderTotalKey = "order_total_" 
-let OrderFilledTotalKey = "order_filled_total_" 
+let OrderPriceKey = "order_price_"
+let OrderTotalKey = "order_total_"
+let OrderFilledTotalKey = "order_filled_total_"
 let OrderOwnerKey = "order_owner_"
 let OrderHeightKey = "order_height_"
 let OrderStatusKey = "order_status_"
@@ -76,9 +80,9 @@ let priceNeutrino = getNumberByAddressAndKey(controlContract, PriceKey)
 
 #convert func
 func convertNeutrinoToWaves(amount: Int) = amount*100/priceNeutrino*WAVELET/PAULI
-func convertWavesToNeutrino(amount: Int) = amount*priceNeutrino/100*PAULI/WAVELET 
-func convertNeutrinoToBond(amount: Int) = amount/PAULI 
-func convertBondToNeutrino(amount: Int) = amount*PAULI 
+func convertWavesToNeutrino(amount: Int) = amount*priceNeutrino/100*PAULI/WAVELET
+func convertNeutrinoToBond(amount: Int) = amount/PAULI
+func convertBondToNeutrino(amount: Int) = amount*PAULI
 func convertWavesToBond(amount: Int) = convertNeutrinoToBond(convertWavesToNeutrino(amount))
 #end convert func
 
@@ -113,10 +117,10 @@ func getOrderElementById(id : String) = id + ORDERSPLITSYMBOL
 func addOrder(orderId: String, position: Int) = {
     let orders = orderbook.split(ORDERSPLITSYMBOL)
     let newOrder = getOrderElementById(orderId)
-    if(position == 0) 
-        then newOrder + orderbook 
-    else if(position >= size(orders) - 1) 
-        then orderbook + newOrder 
+    if(position == 0)
+        then newOrder + orderbook
+    else if(position >= size(orders) - 1)
+        then orderbook + newOrder
     else {
         let parts = orderbook.split(getOrderElementById(orders[position]))
         parts[0] + newOrder + getOrderElementById(orders[position]) + parts[1]
@@ -137,7 +141,7 @@ func setOrder(price : Int, position: Int) = {
     let newOrderId = toBase58String(keccak256(toBytes(price) + toBytes(pmt.amount) + i.caller.bytes + toBytes(height)))
     if(price < MAXDISCOUNT)
         then throw("max discount is 50%")
-    else if (pmt.assetId != neutrinoAssetId) 
+    else if (pmt.assetId != neutrinoAssetId)
         then throw("can use neutrino only")
     else if(price <= 0)
         then throw("price less zero")
@@ -149,11 +153,11 @@ func setOrder(price : Int, position: Int) = {
         let nextOrderId = if(position == 0) then "" else orders[position-1];
         let nextOrderPrice = getOrderPrice(nextOrderId)
         let isNextOrderError = if(nextOrderId != "" && price > nextOrderPrice) then true else false;
-        
+
         let prevOrderId = orders[position];
         let prevOrderPrice = getOrderPrice(prevOrderId)
         let isPrevOrderError = if(price <= prevOrderPrice) then true else false;
-        
+
         if (isNextOrderError || isPrevOrderError)
             then throw("invalid order isPrevOrderError:" + toString(isPrevOrderError) + " isNextOrderError:" + toString(isNextOrderError))
         else
@@ -175,7 +179,7 @@ func setOrder(price : Int, position: Int) = {
 func cancelOrder(orderId : String) = {
     let owner = getOrderOwner(orderId)
     let amount = getOrderTotal(orderId) - getOrderFilledTotal(orderId)
-    if(owner != toString(i.caller)) 
+    if(owner != toString(i.caller))
         then throw("permission denied")
     else if(getOrderStatus(orderId) != NEW)
         then throw("invalid order status")
@@ -185,7 +189,7 @@ func cancelOrder(orderId : String) = {
                 DataEntry(OrderBookKey, dropOrder(orderId)),
 
                 DataEntry(getOrderStatusKey(orderId), CANCELED)
-            ]), 
+            ]),
             TransferSet([
                 ScriptTransfer(i.caller, amount, neutrinoAssetId)
             ])
@@ -204,7 +208,7 @@ func executeOrder() = {
     let bondAmount = if(deficitPositive >= bondBalance) then bondBalance else deficitPositive
     let returnAmount = if(deficitPositive >= bondBalance) then 0 else bondBalance-deficitPositive
 
-    if(returnAmount == 0 && bondAmount == 0) 
+    if(returnAmount == 0 && bondAmount == 0)
         then throw("without deficit")
     else if(bondAmount == 0) then {
         TransferSet([
@@ -220,12 +224,12 @@ func executeOrder() = {
         let orderPrice = getOrderPrice(orderId)
         let orderOwner = getOrderOwner(orderId)
         let amount = convertNeutrinoToBond((orderTotal-filledTotal)*100/orderPrice);
-    
+
         let newOrderbook = if(bondAmount >= amount) then dropOrder(orderId) else orderbook
         let filledAmount = if(bondAmount >= amount) then amount else bondAmount
 
         let total = filledAmount*orderPrice*PAULI/100;
-        
+
         let status = if(bondAmount >= amount) then FILLED else NEW
         if(total == 0)
             then throw("total equal zero")
@@ -236,7 +240,7 @@ func executeOrder() = {
                     DataEntry(getOrderFilledTotalKey(orderId), filledTotal + total),
                     DataEntry(getOrderStatusKey(orderId), status),
                     DataEntry(getOrderHistoryKey(height), orderPrice)
-               ]), 
+               ]),
                TransferSet([
                     ScriptTransfer(addressFromStringValue(orderOwner), filledAmount, bondAssetId),
                     ScriptTransfer(neutrinoContract, total, neutrinoAssetId)

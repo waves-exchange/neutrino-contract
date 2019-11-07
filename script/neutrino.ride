@@ -2,7 +2,12 @@
 {-# CONTENT_TYPE DAPP #-}
 {-# SCRIPT_TYPE ACCOUNT #-}
 
-# base function
+#
+# Main Smart Contract of Neutrino Protocol
+# Implemented actions: Swap, Bond Liquidation, Leasing
+#
+
+# basic functions
 func getNumberByKey(key: String) = {
     match getInteger(this, key) {
             case a:Int => a
@@ -39,7 +44,7 @@ func getBoolByAddressAndKey(address: String, key: String) = {
             case _ => false
     }
 }
-#end base function
+#end basic functions
 
 # consts
 let SENDTXEXPIRE = 30
@@ -47,22 +52,22 @@ let LISTSPLITSYMBOL = "_"
 let LISTDATASYMBOL = "+"
 let WAVELET = 100000000
 let PAULI = 100
-let CRYTICALSHARE = 20
+let CRITICALSHARE = 20
 let LEASINGSHARE = 90
-let LEASINTXCOUNT = 10
+let LEASINGTXCOUNT = 10
 let CANCELED = "canceled"
 let NEW = "new"
 let FILLED = "filled"
 let DEFICITOFFSET = 10
 #end consts
 
-#constructor 
+# constructor
 let NeutrinoAssetIdKey = "neutrino_asset_id"
 let BondAssetIdKey = "bond_asset_id"
 let ReserveContractKey = "reserve_contract"
 let AuctionContractKey = "auction_contract"
 let RPDContractKey = "rpd_contract"
-let ContolContractKey = "control_contract"
+let ControlContractKey = "control_contract"
 let BalanceLockIntervalKey = "balance_lock_interval"
 let MinWavesSwapAmountKey = "min_waves_swap_amount"
 let MinNeutrinoSwapAmountKey = "min_neutrino_swap_amount"
@@ -78,7 +83,7 @@ let ScriptUpdateIntervalKey = "script_update_interval"
 let NeutrinoBalanceKey = "neutrino_"
 let BalanceUnlockBlockKey = "balance_block_"
 let OrderbookKey = "orderbook"
-let OrderTotalKey = "order_total_" 
+let OrderTotalKey = "order_total_"
 let OrderOwnerKey = "order_owner_"
 let OrderHeightKey = "order_height_"
 let OrderFilledTotalKey = "order_filled_total_"
@@ -122,34 +127,30 @@ let neutrinoAssetId = fromBase58String(getStringByKey(NeutrinoAssetIdKey))
 let reserveContract = getStringByKey(ReserveContractKey)
 let auctionContract = getStringByKey(AuctionContractKey)
 let rpdContract = getStringByKey(RPDContractKey)
-let controlContract = getStringByKey(ContolContractKey)
+let controlContract = getStringByKey(ControlContractKey)
 
-# The price that oracles are providing to control.ride
+# price provided by oracles to control.ride
 let price = getNumberByAddressAndKey(controlContract,PriceKey)
-# Last price history iterator from control.ride
+# last price history iterator from control.ride
 let priceIndex = getNumberByAddressAndKey(controlContract, PriceIndexKey)
 
-#convertation func
+# conversion functions
 func convertNeutrinoToWavesByPrice(amount: Int, convertPrice: Int) = amount*100/convertPrice*WAVELET/PAULI
 func convertNeutrinoToWaves(amount: Int) = amount*100/price*WAVELET/PAULI
-func convertWavesToNeutrino(amount: Int) = amount*price/100*PAULI/WAVELET 
-func convertNeutrinoToBond(amount: Int) = amount/PAULI 
-func convertBondToNeutrino(amount: Int) = amount*PAULI 
+func convertWavesToNeutrino(amount: Int) = amount*price/100*PAULI/WAVELET
+func convertNeutrinoToBond(amount: Int) = amount/PAULI
+func convertBondToNeutrino(amount: Int) = amount*PAULI
 func convertWavesToBond(amount: Int) = convertNeutrinoToBond(convertWavesToNeutrino(amount))
-#end convertation func
+#end conversion functions
 
-#global vars
-
-# Checks for contract locks that might happen after attacks 
-# Проверяет блокировку контракта, которая может случиться после атак
-# The var is read from control contract
-let isBlocked = getBoolByAddressAndKey(controlContract,IsBlockedKey)
+# global variables
+let isBlocked = getBoolByAddressAndKey(controlContract,IsBlockedKey) # is contract.ride blocked by emergency oracles (can happen after attacks)
 let leasingTxCount = getNumberByKey(LeasingTxCountKey)
 let isRebalance = getBoolByKey(IsRebalanceKey)
 let leasingInterval = getNumberByKey(LeasingIntervalKey)
 let leasingExpireBlock = getNumberByKey(LeasingExpireBlockKey)
 let leasingAmount = getNumberByKey(LeasingAmountKey)
-let swapNeutrinoLockedBalance = getNumberByKey(SwapNeutrinoLockedBalanceKey) 
+let swapNeutrinoLockedBalance = getNumberByKey(SwapNeutrinoLockedBalanceKey)
 let nodeAddress = getStringByKey(NodeAddressKey)
 let nodeOracleProviderKey = getStringByKey(NodeOracleProviderKey)
 let rpdSyncIndex = getNumberByKey(RPDSyncIndexKey)
@@ -171,19 +172,19 @@ let neutrinoSupply = {
 let surplus = convertWavesToNeutrino(reserve) - neutrinoSupply
 let deficit = neutrinoSupply - convertWavesToNeutrino(reserve)
 
-#let scriptUpdateInterval = getNumberByAddressAndKey(ContolContractKey, ScriptUpdateIntervalKey) TODO
+#let scriptUpdateInterval = getNumberByAddressAndKey(ControlContractKey, ScriptUpdateIntervalKey) TODO
 #let scriptUpdateBlock = getNumberByAddressAndKey(controlContract,ScriptUpdateBlockKey) TODO
-#end global vars
+#end global variables
 
-# get func
+# get functions
 
-# The func is reading balances from rpd.ride
+# reads balances from rpd.ride
 func getRPDContractBalance(assetId: ByteVector) = getNumberByAddressAndKey(rpdContract, getRPDContractBalanceKey(assetId))
 
-# The func is reading price from control.ride price history
+# reads price from control.ride price history
 func getPriceHistory(block: Int) = getNumberByAddressAndKey(controlContract, getPriceHistoryKey(block))
 
-# The func is reading from control.ride price history heights
+# reads from control.ride price history heights
 func getHeightPriceByIndex(index: Int) = getNumberByAddressAndKey(controlContract, getHeightPriceByIndexKey(index))
 
 func getCancelLeaseTxReserveFee(hash: String) = getNumberByKey(getCancelLeaseTxReserveFeeKey(hash))
@@ -194,13 +195,13 @@ func getOrderOwner(id : String) = getStringByKey(getOrderOwnerKey(id))
 func getOrderStatus(id : String) = getStringByKey(getOrderStatusKey(id))
 func getOrderFilledTotal(id : String) = getNumberByKey(getOrderFilledTotalKey(id))
 func getRPDProfit(count: Int) = getNumberByKey(getRPDProfitKey(count))
-func getLeaseTxStatus(hash: String) = getStringByKey(getLeaseTxStatusKey(hash)) 
-func getLeaseTxAmountByHash(hash: String) = getNumberByKey(getLeaseTxAmountByHashKey(hash)) 
-func getLeaseTxBytesByHash(hash: String) = getStringByKey(getLeaseTxBytesByHashKey(hash)) 
-func getLeaseTxExpireSendBlock(hash: String) = getNumberByKey(getLeaseTxExpireSendBlockKey(hash)) 
-#end get func
+func getLeaseTxStatus(hash: String) = getStringByKey(getLeaseTxStatusKey(hash))
+func getLeaseTxAmountByHash(hash: String) = getNumberByKey(getLeaseTxAmountByHashKey(hash))
+func getLeaseTxBytesByHash(hash: String) = getStringByKey(getLeaseTxBytesByHashKey(hash))
+func getLeaseTxExpireSendBlock(hash: String) = getNumberByKey(getLeaseTxExpireSendBlockKey(hash))
+#end get functions
 
-#other function
+# other functions
 func getOrderElementById(id : String) = id + LISTSPLITSYMBOL
 func addOrder(orderId: String) = {
     orderbook + getOrderElementById(orderId)
@@ -209,22 +210,22 @@ func dropOrder(orderId: String) = {
     let parts = orderbook.split(getOrderElementById(orderId))
     parts[0] + parts[1]
 }
+#end other functions
 
-#end other function
 
 #-------------------Callable----------------------
 
-# Instant swap WAVES to Neutrino token for current price on SC
+# Instant swap of WAVES to Neutrino token at the current price on the smart contract
 # [called by user]
 @Callable(i)
 func swapWavesToNeutrino() = {
     let pmt = extract(i.payment)
     if (pmt.amount < minWavesSwapAmount)
-        then throw("an amount is less than min available amount: " + toString(minWavesSwapAmount) + " wavelets")
-    else if (isDefined(pmt.assetId)) 
-        then throw("can use waves only")
+        then throw("The specified Waves amount is less than the required minimum of " + toString(minWavesSwapAmount) + " wavelets.")
+    else if (isDefined(pmt.assetId))
+        then throw("Only Waves token is allowed for swapping.")
     else if(isBlocked)
-        then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles") # see control.ride
+        then throw("The contract is blocked by EMERGENCY SHUTDOWN. Please wait for reactivation by emergency oracles.") # see control.ride
     else{
         let amount = convertWavesToNeutrino(pmt.amount)
         TransferSet([
@@ -233,23 +234,23 @@ func swapWavesToNeutrino() = {
     }
 }
 
-# Swap request Neutrino to WAVES. After {balanceLockInterval} blocks WAVES tokens will be available for withdraw with {withdraw(account : String)} method.
-# with price at the moment of {balanceLockInterval} has reached
+# Swap request of Neutrino to WAVES. After {balanceLockInterval} blocks, WAVES tokens will be available for withdrawal
+# via {withdraw(account : String)} method at the price that is current at the time when {balanceLockInterval} is reached
 # [called by user]
 @Callable(i)
 func swapNeutrinoToWaves() = {
     let pmt = extract(i.payment)
     let account = toString(i.caller)
     if (pmt.amount < minNeutrinoSwapAmount)
-        then throw("an amount is less than min available amount: " + toString(minNeutrinoSwapAmount) + " neutrino cents")
+        then throw("The specified Neutrino amount is less than the required minimum of " + toString(minNeutrinoSwapAmount) + " Neutrino cents.")
     else if(isBlocked)
-        then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles") # see control.ride
-    else if (pmt.assetId != neutrinoAssetId) 
-        then throw("can use appropriate neutrino tokens only")
+        then throw("The contract is blocked by EMERGENCY SHUTDOWN. Please wait for reactivation by emergency oracles.") # see control.ride
+    else if (pmt.assetId != neutrinoAssetId)
+        then throw("Only appropriate Neutrino tokens are allowed for swapping.")
     else if(getUnlockBalanceBlock(account) > height)
-        then throw("await " + toString(getUnlockBalanceBlock(account) - height) + " blocks")
+        then throw("Please wait for " + toString(getUnlockBalanceBlock(account) - height) + " blocks to complete.")
     else if (getNeutrinoBalance(account) != 0)
-        then throw("please withdraw locked neutrino funds first")
+        then throw("Please withdraw locked Neutrinos first.")
     else{
         let neutrinoAmount = pmt.amount
         let newSwapNeutrinoLockedBalance = swapNeutrinoLockedBalance + neutrinoAmount
@@ -262,8 +263,8 @@ func swapNeutrinoToWaves() = {
     }
 }
 
-# Withdraw WAVES from SC after {swapNeutrinoToWaves()} request is reached {balanceLockInterval} height 
-# with price at the moment of {balanceLockInterval} has reached.
+# Withdraw WAVES from smart contract after {swapNeutrinoToWaves()} request has reached {balanceLockInterval} height
+# at the price that is current at the time when {balanceLockInterval} is reached
 # [called by user]
 @Callable(i)
 func withdraw(account : String, index: Int) = {
@@ -277,51 +278,51 @@ func withdraw(account : String, index: Int) = {
     let amount = convertNeutrinoToWavesByPrice(neutrinoAmount, indexPrice)
 
     if(isBlocked)
-        then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles") # see control.ride
+        then throw("The contract is blocked by EMERGENCY SHUTDOWN. Please wait for reactivation by emergency oracles.") # see control.ride
     else if(amount <= 0)
-        then throw("balance equals zero")
+        then throw("No funds are available for withdrawal.")
     else if(unlockHeight > height)
-        then throw("please wait for: " + toString(unlockHeight) + " block height to withdraw WAVES funds")
+        then throw("Please wait for the " + toString(unlockHeight) + " block height to complete withdrawal.")
     else if(index > priceIndex || unlockHeight < indexHeight || (nextIndexHeight != 0 && unlockHeight >= nextIndexHeight))
-        then throw("invalid price history index")
-    else {   
+        then throw("Invalid price history index.")
+    else {
         ScriptResult(
             WriteSet([
                 DataEntry(getNeutrinoBalanceKey(account), getNeutrinoBalance(account) - neutrinoAmount),
                 DataEntry(SwapNeutrinoLockedBalanceKey, swapNeutrinoLockedBalance - neutrinoAmount)
             ]),
             TransferSet([
-                ScriptTransfer(addressFromStringValue(account), amount, unit) 
+                ScriptTransfer(addressFromStringValue(account), amount, unit)
             ])
         )
     }
 }
 
-# transfering bonds from main SC to auction.ride to fill 'buy bonds' orders
-# it's calling n-times untill all orders on auction.ride will be executed during deficit stage
+# Transfers bonds from neutrino.ride to auction.ride to fulfill 'buy bonds' orders
+# Is called n-times during the deficit stage until all pending orders on auction.ride are fulfilled
 # [called by pacemaker oracles]
 @Callable(i)
 func generateBond() = {
     let balanceAuction = assetBalance(addressFromStringValue(auctionContract), bondAssetId)
     let amount = convertNeutrinoToBond(deficit) - balanceAuction
     if(isBlocked)
-        then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles") # see control.ride
+        then throw("The contract is blocked by EMERGENCY SHUTDOWN. Please wait for reactivation by emergency oracles.") # see control.ride
     else if(amount >= neutrinoSupply*DEFICITOFFSET/100)
         then TransferSet([ScriptTransfer(addressFromStringValue(auctionContract), amount, bondAssetId)])
-    else throw("bond were generated or do not need it")
+    else throw("Bonds were already generated or there is not enough deficit.")
 }
 
-# set 'bonds liquidation order' (bond -> neutrino 1:1 exchange) to the liquidation queue
+# Adds 'bond liquidation order' (bond -> neutrino 1:1 exchange) to the liquidation queue
 # [called by user]
 @Callable(i)
 func setOrder() = {
     let pmt = extract(i.payment);
     let newOrderId = toBase58String(keccak256(toBytes(pmt.amount) + i.caller.bytes + toBytes(height)))
-    
-    if (pmt.assetId != bondAssetId) 
-        then throw("can use appropriate neutrino bonds tokens only")
+
+    if (pmt.assetId != bondAssetId)
+        then throw("Can use appropriate Neutrino Bond tokens only.")
     else if(getOrderOwner(newOrderId) != "")
-        then throw("an order is already exists")
+        then throw("This order already exists.")
     else {
         WriteSet([
             DataEntry(OrderbookKey, addOrder(newOrderId)),
@@ -334,22 +335,22 @@ func setOrder() = {
     }
 }
 
-# cancel 'bonds liquidation order' (bond -> neutrino 1:1 exchange) from the liquidation queue
+# Cancels 'bond liquidation order' (bond to neutrino 1:1 exchange) in the liquidation queue
 # [called by user]
 @Callable(i)
 func cancelOrder(orderId : String) = {
     let owner = getOrderOwner(orderId)
     let amount = getOrderTotal(orderId) - getOrderFilledTotal(orderId)
-    if(owner != toString(i.caller)) 
-        then throw("only owner of bonds liquidation request is able to cancel it")
+    if(owner != toString(i.caller))
+        then throw("Only the owner of bond liquidation request can cancel it.")
     else if(getOrderStatus(orderId) != NEW)
-        then throw("invalid liquidation request status")
+        then throw("Invalid liquidation request status.")
     else {
         ScriptResult(
             WriteSet([
                 DataEntry(OrderbookKey, dropOrder(orderId)),
                 DataEntry(getOrderStatusKey(orderId), CANCELED)
-            ]), 
+            ]),
             TransferSet([
                 ScriptTransfer(i.caller, amount, bondAssetId)
             ])
@@ -357,8 +358,8 @@ func cancelOrder(orderId : String) = {
     }
 }
 
-# executing bond -> neutrino 1:1 exchange from the liquidation queue if SC has reached proficit in collateral cap
-# it's calling n-times untill all orders from the liquidation queue will be executed during proficit stage
+# Performs bond -> neutrino 1:1 exchange from the liquidation queue if the smart contract has reached surplus in collateral capitalization
+# Is called n-times during the surplus stage until all pending orders on auction.ride are fulfilled
 # [called by pacemaker oracles]
 @Callable(i)
 func executeOrder() = {
@@ -368,13 +369,13 @@ func executeOrder() = {
     let filledTotal = getOrderFilledTotal(orderId)
 
     let surplusBond = convertNeutrinoToBond(surplus)
-    
+
     if(isBlocked)
-        then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles") # see control.ride
-    else if(surplusBond <= 0) 
-        then throw("there is no proficit on the smart contract now")
+        then throw("The contract is blocked by EMERGENCY SHUTDOWN. Please wait for reactivation by emergency oracles.") # see control.ride
+    else if(surplusBond <= 0)
+        then throw("There is no surplus on the smart contract at the moment.")
     else if(orderbook == "")
-        then throw("empty orderbook")
+        then throw("The orderbook is empty.")
     else {
         let amount = orderTotal-filledTotal;
         let status = if(surplusBond >= amount) then FILLED else NEW
@@ -385,7 +386,7 @@ func executeOrder() = {
                 DataEntry(OrderbookKey, if(surplusBond >= amount) then dropOrder(orderId) else orderbook),
                 DataEntry(getOrderFilledTotalKey(orderId), filledTotal + newFilledTotal),
                 DataEntry(getOrderStatusKey(orderId), status)
-            ]), 
+            ]),
             TransferSet([
                 ScriptTransfer(addressFromStringValue(orderOwner), convertBondToNeutrino(newFilledTotal), neutrinoAssetId)
             ])
@@ -393,7 +394,7 @@ func executeOrder() = {
     }
 }
 
-# transfer tokens from one address to another through smart contact
+# Transfers tokens from one address to another via smart contact
 # [called by user]
 @Callable(i)
 func transfer(account: String) = {
@@ -401,15 +402,15 @@ func transfer(account: String) = {
     TransferSet([ScriptTransfer(addressFromStringValue(account), pmt.amount, pmt.assetId)])
 }
 
-# transfer neutrino tokens to the rpd.ride smart contact (rewards payouts distribution) generated from waves in the result of leasing profit
+# Transfers a leasing profit in neutrino tokens to rpd.ride
 # [called by node]
 @Callable(i)
 func nodeReward() = {
     let pmt = value(i.payment)
     if(i.caller != addressFromStringValue(nodeAddress))
-        then throw("only node account is able to transfer staking rewards from main account")
+        then throw("Only a node account is able to transfer staking rewards.")
     else if(isDefined(pmt.assetId))
-        then throw("waves tokens only allowed")
+        then throw("Only Waves tokens are allowed.")
     else {
         let amount = convertWavesToNeutrino(pmt.amount)
         let newRpdSyncIndex = rpdSyncIndex + 1
@@ -426,13 +427,13 @@ func nodeReward() = {
     }
 }
 
-# start leasing tx registration of almost all amount of waves on the main smart contract to the node account
-# see @Verifier's LeaseTransaction of the current script
+# Registers leasing transaction of most Waves stored on the smart contract to a node account
+# (see @Verifier's LeaseTransaction of the current script)
 # [called by node provider oracle]
 @Callable(i)
 func registrationLeaseTx(senderPublicKey: String, fee: Int, timestamp: Int, leaseTxHash: String) = {
     let totalFreeReserve = reserve*LEASINGSHARE/100 - convertNeutrinoToWaves(swapNeutrinoLockedBalance)
-    let amount = totalFreeReserve/LEASINTXCOUNT
+    let amount = totalFreeReserve/LEASINGTXCOUNT
     let txBytes = base64'CAIA' + fromBase58String(senderPublicKey) + fromBase58String(nodeAddress) + toBytes(amount) + toBytes(fee) + toBytes(timestamp)
     let txHashBytes = blake2b256(txBytes)
     let txHash = toBase58String(txHashBytes)
@@ -441,17 +442,17 @@ func registrationLeaseTx(senderPublicKey: String, fee: Int, timestamp: Int, leas
     if(toString(i.caller) == nodeOracleProviderKey)
         then throw("invalid caller")
     else if(isDefined(pmt.assetId))
-        then throw("invalid paymtn asset")
+        then throw("invalid payment asset")
     else if(leaseTxHash != txHash)
-        then throw("invalid tx hash(amount:" + toString(amount) + ")")
-    else if(leasingTxCount >= LEASINTXCOUNT)
-        then throw("the number of leasing transactions is equal to the maximum")
+        then throw("invalid tx hash (amount: " + toString(amount) + ")")
+    else if(leasingTxCount >= LEASINGTXCOUNT)
+        then throw("the number of leasing transactions exceeds the limit")
     else if(this != addressFromPublicKey(fromBase58String(senderPublicKey)))
-        then throw("invalid pubKey")
-    else if(timestamp < lastBlock.timestamp || timestamp > lastBlock.timestamp + 5400000) 
-        then throw("invalid timestamp(lastBlock: " + toString(lastBlock.timestamp) + ")")
+        then throw("invalid public key")
+    else if(timestamp < lastBlock.timestamp || timestamp > lastBlock.timestamp + 5400000)
+        then throw("invalid timestamp (lastBlock: " + toString(lastBlock.timestamp) + ")")
     else if(getLeaseTxStatus(txHash) != "")
-        then throw("tx is exist")
+        then throw("This tx already exists.")
     else if(pmt.amount != fee*2)
         then throw("invalid payment amount")
     else if(fee > 1000000 || fee < 500000)
@@ -472,8 +473,8 @@ func registrationLeaseTx(senderPublicKey: String, fee: Int, timestamp: Int, leas
     }
 }
 
-# cancel leasing tx registration record
-# this method can be called only if appropriate LeaseTransaction never happend during time interval after registrationLeaseTx() call
+# Cancels leasing tx registration record
+# (this method can only be called if LeaseTransaction was never executed after registrationLeaseTx() call)
 # [called by pacemaker oracles]
 @Callable(i)
 func cancelStuckLeaseTx(txHash: String) = {
@@ -488,8 +489,8 @@ func cancelStuckLeaseTx(txHash: String) = {
     } else throw("invalid tx hash")
 }
 
-# registration unlease tx in the kv-storage
-# this method can be called only if appropriate LeaseCancelTransaction happend
+# Registers unlease transaction in the key-value storage
+# (this method can only be called if LeaseCancelTransaction was executed)
 # [called by pacemaker oracles]
 @Callable(i)
 func registrationUnleaseTx(chainIdString: String, senderPublicKey: String, fee: Int, timestamp: Int, leaseTxHash: String) = {
@@ -513,8 +514,7 @@ func registrationUnleaseTx(chainIdString: String, senderPublicKey: String, fee: 
     }
 }
 
-# LeaseCancelTransaction depends from swapNeutrinoToWaves() result i.e. waves amount is not enought for future swaps
-# or end of leasing time
+# LeaseCancelTransaction depends on swapNeutrinoToWaves() result (fails if waves amount is not enough for future swaps or if leasing time ended)
 @Verifier(tx)
 func verify() = {
     let id = toBase58String(tx.id)
