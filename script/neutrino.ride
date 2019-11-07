@@ -4,10 +4,10 @@
 
 #
 # Main Smart Contract of Neutrino Protocol
-# Implemented actions: swaps, bonds liquidation, leasing
+# Implemented actions: Swap, Bond Liquidation, Leasing
 #
 
-# base function
+# basic functions
 func getNumberByKey(key: String) = {
     match getInteger(this, key) {
             case a:Int => a
@@ -44,7 +44,7 @@ func getBoolByAddressAndKey(address: String, key: String) = {
             case _ => false
     }
 }
-#end base function
+#end basic functions
 
 # consts
 let SENDTXEXPIRE = 30
@@ -61,7 +61,7 @@ let FILLED = "filled"
 let DEFICITOFFSET = 10
 #end consts
 
-#constructor
+# constructor
 let NeutrinoAssetIdKey = "neutrino_asset_id"
 let BondAssetIdKey = "bond_asset_id"
 let ReserveContractKey = "reserve_contract"
@@ -129,26 +129,22 @@ let auctionContract = getStringByKey(AuctionContractKey)
 let rpdContract = getStringByKey(RPDContractKey)
 let controlContract = getStringByKey(ContolContractKey)
 
-# The price that oracles are providing to control.ride
+# price provided by oracles to control.ride
 let price = getNumberByAddressAndKey(controlContract,PriceKey)
-# Last price history iterator from control.ride
+# last price history iterator from control.ride
 let priceIndex = getNumberByAddressAndKey(controlContract, PriceIndexKey)
 
-#convertation func
+# conversion functions
 func convertNeutrinoToWavesByPrice(amount: Int, convertPrice: Int) = amount*100/convertPrice*WAVELET/PAULI
 func convertNeutrinoToWaves(amount: Int) = amount*100/price*WAVELET/PAULI
 func convertWavesToNeutrino(amount: Int) = amount*price/100*PAULI/WAVELET
 func convertNeutrinoToBond(amount: Int) = amount/PAULI
 func convertBondToNeutrino(amount: Int) = amount*PAULI
 func convertWavesToBond(amount: Int) = convertNeutrinoToBond(convertWavesToNeutrino(amount))
-#end convertation func
+#end conversion functions
 
-#global vars
-
-# Checks for contract locks that might happen after attacks
-# Проверяет блокировку контракта, которая может случиться после атак
-# The var is read from control contract
-let isBlocked = getBoolByAddressAndKey(controlContract,IsBlockedKey)
+# global variables
+let isBlocked = getBoolByAddressAndKey(controlContract,IsBlockedKey) # is contract.ride blocked by emergency oracles (can happen after attacks)
 let leasingTxCount = getNumberByKey(LeasingTxCountKey)
 let isRebalance = getBoolByKey(IsRebalanceKey)
 let leasingInterval = getNumberByKey(LeasingIntervalKey)
@@ -178,17 +174,17 @@ let deficit = neutrinoSupply - convertWavesToNeutrino(reserve)
 
 #let scriptUpdateInterval = getNumberByAddressAndKey(ContolContractKey, ScriptUpdateIntervalKey) TODO
 #let scriptUpdateBlock = getNumberByAddressAndKey(controlContract,ScriptUpdateBlockKey) TODO
-#end global vars
+#end global variables
 
 # get func
 
-# The func is reading balances from rpd.ride
+# reads balances from rpd.ride
 func getRPDContractBalance(assetId: ByteVector) = getNumberByAddressAndKey(rpdContract, getRPDContractBalanceKey(assetId))
 
-# The func is reading price from control.ride price history
+# reads price from control.ride price history
 func getPriceHistory(block: Int) = getNumberByAddressAndKey(controlContract, getPriceHistoryKey(block))
 
-# The func is reading from control.ride price history heights
+# reads from control.ride price history heights
 func getHeightPriceByIndex(index: Int) = getNumberByAddressAndKey(controlContract, getHeightPriceByIndexKey(index))
 
 func getCancelLeaseTxReserveFee(hash: String) = getNumberByKey(getCancelLeaseTxReserveFeeKey(hash))
@@ -205,7 +201,7 @@ func getLeaseTxBytesByHash(hash: String) = getStringByKey(getLeaseTxBytesByHashK
 func getLeaseTxExpireSendBlock(hash: String) = getNumberByKey(getLeaseTxExpireSendBlockKey(hash))
 #end get func
 
-#other function
+#other functions
 func getOrderElementById(id : String) = id + LISTSPLITSYMBOL
 func addOrder(orderId: String) = {
     orderbook + getOrderElementById(orderId)
@@ -214,12 +210,12 @@ func dropOrder(orderId: String) = {
     let parts = orderbook.split(getOrderElementById(orderId))
     parts[0] + parts[1]
 }
+#end other functions
 
-#end other function
 
 #-------------------Callable----------------------
 
-# Instant swap WAVES to Neutrino token for current price on SC
+# Instant swap of WAVES to Neutrino token at the current price on the smart contract
 # [called by user]
 @Callable(i)
 func swapWavesToNeutrino() = {
@@ -238,8 +234,8 @@ func swapWavesToNeutrino() = {
     }
 }
 
-# Swap request Neutrino to WAVES. After {balanceLockInterval} blocks WAVES tokens will be available for withdraw with {withdraw(account : String)} method.
-# with price at the moment of {balanceLockInterval} has reached
+# Swap request of Neutrino to WAVES. After {balanceLockInterval} blocks, WAVES tokens will be available for withdrawal
+# via {withdraw(account : String)} method at the price that is current at the time when {balanceLockInterval} is reached
 # [called by user]
 @Callable(i)
 func swapNeutrinoToWaves() = {
@@ -267,8 +263,8 @@ func swapNeutrinoToWaves() = {
     }
 }
 
-# Withdraw WAVES from SC after {swapNeutrinoToWaves()} request is reached {balanceLockInterval} height
-# with price at the moment of {balanceLockInterval} has reached.
+# Withdraw WAVES from smart contract after {swapNeutrinoToWaves()} request has reached {balanceLockInterval} height
+# at the price that is current at the time when {balanceLockInterval} is reached
 # [called by user]
 @Callable(i)
 func withdraw(account : String, index: Int) = {
@@ -302,8 +298,8 @@ func withdraw(account : String, index: Int) = {
     }
 }
 
-# transfering bonds from main SC to auction.ride to fill 'buy bonds' orders
-# it's calling n-times untill all orders on auction.ride will be executed during deficit stage
+# Transfers bonds from neutrino.ride to auction.ride to fulfill 'buy bonds' orders
+# Is called n-times during the deficit stage until all pending orders on auction.ride are fulfilled
 # [called by pacemaker oracles]
 @Callable(i)
 func generateBond() = {
@@ -316,7 +312,7 @@ func generateBond() = {
     else throw("bond were generated or do not need it")
 }
 
-# set 'bonds liquidation order' (bond -> neutrino 1:1 exchange) to the liquidation queue
+# Adds 'bond liquidation order' (bond -> neutrino 1:1 exchange) to the liquidation queue
 # [called by user]
 @Callable(i)
 func setOrder() = {
@@ -339,7 +335,7 @@ func setOrder() = {
     }
 }
 
-# cancel 'bonds liquidation order' (bond -> neutrino 1:1 exchange) from the liquidation queue
+# Cancels 'bonds liquidation order' (bond to neutrino 1:1 exchange) in the liquidation queue
 # [called by user]
 @Callable(i)
 func cancelOrder(orderId : String) = {
@@ -362,8 +358,8 @@ func cancelOrder(orderId : String) = {
     }
 }
 
-# executing bond -> neutrino 1:1 exchange from the liquidation queue if SC has reached proficit in collateral cap
-# it's calling n-times untill all orders from the liquidation queue will be executed during proficit stage
+# Performs bond -> neutrino 1:1 exchange from the liquidation queue if the smart contract has reached surplus in collateral capitalization
+# Is called n-times during the surplus stage until all pending orders on auction.ride are fulfilled
 # [called by pacemaker oracles]
 @Callable(i)
 func executeOrder() = {
@@ -398,7 +394,7 @@ func executeOrder() = {
     }
 }
 
-# transfer tokens from one address to another through smart contact
+# Transfers tokens from one address to another via smart contact
 # [called by user]
 @Callable(i)
 func transfer(account: String) = {
@@ -406,7 +402,7 @@ func transfer(account: String) = {
     TransferSet([ScriptTransfer(addressFromStringValue(account), pmt.amount, pmt.assetId)])
 }
 
-# transfer neutrino tokens to the rpd.ride smart contact (rewards payouts distribution) generated from waves in the result of leasing profit
+# Transfers a leasing profit in neutrino tokens to rpd.ride
 # [called by node]
 @Callable(i)
 func nodeReward() = {
@@ -431,8 +427,8 @@ func nodeReward() = {
     }
 }
 
-# start leasing tx registration of almost all amount of waves on the main smart contract to the node account
-# see @Verifier's LeaseTransaction of the current script
+# Registers leasing transaction of most Waves stored on the smart contract to a node account
+# (see @Verifier's LeaseTransaction of the current script)
 # [called by node provider oracle]
 @Callable(i)
 func registrationLeaseTx(senderPublicKey: String, fee: Int, timestamp: Int, leaseTxHash: String) = {
@@ -477,8 +473,8 @@ func registrationLeaseTx(senderPublicKey: String, fee: Int, timestamp: Int, leas
     }
 }
 
-# cancel leasing tx registration record
-# this method can be called only if appropriate LeaseTransaction never happend during time interval after registrationLeaseTx() call
+# Cancels leasing tx registration record
+# (this method can only be called if LeaseTransaction was never executed after registrationLeaseTx() call)
 # [called by pacemaker oracles]
 @Callable(i)
 func cancelStuckLeaseTx(txHash: String) = {
@@ -493,8 +489,8 @@ func cancelStuckLeaseTx(txHash: String) = {
     } else throw("invalid tx hash")
 }
 
-# registration unlease tx in the kv-storage
-# this method can be called only if appropriate LeaseCancelTransaction happend
+# Registers unlease transaction in the key-value storage
+# (this method can only be called if LeaseCancelTransaction was executed)
 # [called by pacemaker oracles]
 @Callable(i)
 func registrationUnleaseTx(chainIdString: String, senderPublicKey: String, fee: Int, timestamp: Int, leaseTxHash: String) = {
@@ -518,8 +514,7 @@ func registrationUnleaseTx(chainIdString: String, senderPublicKey: String, fee: 
     }
 }
 
-# LeaseCancelTransaction depends from swapNeutrinoToWaves() result i.e. waves amount is not enought for future swaps
-# or end of leasing time
+# LeaseCancelTransaction depends on swapNeutrinoToWaves() result (fails if waves amount is not enough for future swaps or if leasing time ended)
 @Verifier(tx)
 func verify() = {
     let id = toBase58String(tx.id)

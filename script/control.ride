@@ -4,7 +4,7 @@
 
 #
 # Smart Contract for Price Oracles and Emergency Oracles of Neutrino Protocol
-#
+#  
 
 # base function
 func getNumberByKey(key: String) = {
