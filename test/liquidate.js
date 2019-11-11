@@ -1,4 +1,5 @@
 var deployHelper = require('../helpers/deployHelper.js');
+
 let deployResult = {}
 let orderCount = 4;
 describe('Liqidate test', async function () {
