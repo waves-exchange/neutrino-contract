@@ -1,12 +1,11 @@
 var deployHelper = require('../helpers/deployHelper.js');
-var auctionHelpers = require('../helpers/AuctionHelper.js');
-
 
 let deployResult = {}
 const orderCount = 4;
 describe('Auction test', async function () {
     before(async function () {
         deployResult = await deployHelper.deploy("TST-N", "TST-NB", "test asset", "test bond asset", "")
+
         setupAccounts({
             testAccount: 100000 * deployHelper.WAVELET
         })
@@ -55,17 +54,13 @@ describe('Auction test', async function () {
         await waitForTx(priceDataTx.id);*/
     });
     it('Add orders', async function () {
+        let orderPrice = deployHelper.getRandomArbitrary(1, 100)
         for (let i = 0; i < orderCount; i++) {
-            const auctionData = await accountData(address(deployResult.accounts.auctionContract))
-            const auctionHelper = new auctionHelpers.AuctionHelper(auctionData);
-            const orderPrice = deployHelper.getRandomArbitrary(51, 99)
             const balance = await assetBalance(deployResult.assets.neutrinoAssetId, address(accounts.testAccount));
             const amount = Math.floor(balance / (deployHelper.getRandomArbitrary(2, 10)))
-            const index = auctionHelper.getIndexByPrice(orderPrice);
-            
             const tx = invokeScript({
                 dApp: address(deployResult.accounts.auctionContract),
-                call: { function: "setOrder", args: [{ type: "integer", value: orderPrice }, { type: "integer", value: index }] },
+                call: { function: "setOrder", args: [{ type: "integer", value: orderPrice }, { type: "integer", value: i }] },
                 payment: [{ assetId: deployResult.assets.neutrinoAssetId, amount: amount }]
             }, accounts.testAccount);
 
@@ -74,7 +69,7 @@ describe('Auction test', async function () {
 
             const state = await stateChanges(tx.id);
             const data = deployHelper.convertDataStateToObject(state.data)
-            const orderHash = data.orderbook.split("_")[index] //TODO hash
+            const orderHash = data.orderbook.split("_")[i] //TODO hash
 
             if (data["order_total_" + orderHash] != amount)
                 throw "invalid order total"
@@ -82,6 +77,8 @@ describe('Auction test', async function () {
                 throw "invalid order owner"
             else if (data["order_status_" + orderHash]!= "new")
                 throw "invalid order status"
+
+            orderPrice = orderPrice - Math.floor(orderPrice/2)
         }
     })
     it('Cancel order', async function () {
