@@ -8,7 +8,8 @@ const accounts =
         auctionContract: wavesCrypto.randomSeed(),
         neutrinoContract: wavesCrypto.randomSeed(),
         rpdContract: wavesCrypto.randomSeed(),
-        controlContract: wavesCrypto.randomSeed()
+        controlContract: wavesCrypto.randomSeed(),
+        liquidationContract: wavesCrypto.randomSeed()
     }
 
 async function deploy(symbolNeutrino, symbolBond, descriptionNeutrino, descriptionBond, nodeAddress, nodeOracleProvider = nodeAddress, leasingInterval = 10080) {
@@ -55,6 +56,10 @@ async function deploy(symbolNeutrino, symbolBond, descriptionNeutrino, descripti
                 {
                     amount: 1500000,
                     recipient: address(accounts.controlContract),
+                },
+                {
+                    amount: 1500000,
+                    recipient: address(accounts.liquidationContract)
                 }
             ],
             fee: 800000
@@ -106,7 +111,8 @@ async function deploy(symbolNeutrino, symbolBond, descriptionNeutrino, descripti
                 { key: "min_neutrino_swap_amount", value: 10000 },
                 { key: 'rpd_contract', value: address(accounts.rpdContract) },
                 { key: 'node_address', value: nodeAddress },
-                { key: 'leasing_interval', value: leasingInterval }
+                { key: 'leasing_interval', value: leasingInterval },
+                { key: "liquidation_contract", value: address(accounts.liquidationContract) }
             ],
             fee: 500000
         }, accounts.neutrinoContract);
@@ -117,6 +123,13 @@ async function deploy(symbolNeutrino, symbolBond, descriptionNeutrino, descripti
             ],
             fee: 500000
         }, accounts.auctionContract);
+
+        const liquidationDataTx = data({
+            data: [
+                { key: 'neutrino_contract', value: address(accounts.neutrinoContract) },
+            ],
+            fee: 500000
+        }, accounts.liquidationContract);
         
         const controlDataTx = data({
             data: [
@@ -144,6 +157,7 @@ async function deploy(symbolNeutrino, symbolBond, descriptionNeutrino, descripti
         await broadcast(issueTx);
         await broadcast(issueBondTx);
         await broadcast(auctionDataTx);
+        await broadcast(liquidationDataTx);
         await broadcast(neutrinoDataTx)
         await broadcast(controlDataTx);
         await broadcast(rpdDataTx);
@@ -152,7 +166,10 @@ async function deploy(symbolNeutrino, symbolBond, descriptionNeutrino, descripti
         const setScriptNeutrinoTx = setScript({ script: scriptNeutrino, fee: 1000000 ,}, accounts.neutrinoContract);
 
         const scriptAuction = compile(file('../script/auction.ride'));
-        const setScriptAuctionTx = setScript({ script: scriptAuction, fee: 1000000,}, accounts.auctionContract);        
+        const setScriptAuctionTx = setScript({ script: scriptAuction, fee: 1000000,}, accounts.auctionContract);  
+        
+        const scriptLiquidation = compile(file('../script/liquidation.ride'));
+        const setScriptLiquidationTx = setScript({ script: scriptLiquidation, fee: 1000000,}, accounts.liquidationContract);  
 
         const scriptControl = compile(file('../script/control.ride'));
         const setScriptControlTx = setScript({ script: scriptControl, fee: 1000000,}, accounts.controlContract);        
@@ -162,6 +179,7 @@ async function deploy(symbolNeutrino, symbolBond, descriptionNeutrino, descripti
         
         await broadcast(setScriptNeutrinoTx);
         await broadcast(setScriptAuctionTx);
+        await broadcast(setScriptLiquidationTx);
         await broadcast(setScriptControlTx);
         await broadcast(setScriptRPDTx);
 
@@ -170,12 +188,14 @@ async function deploy(symbolNeutrino, symbolBond, descriptionNeutrino, descripti
         await waitForTx(issueBondTx.id)
 
         await waitForTx(auctionDataTx.id)
+        await waitForTx(liquidationDataTx.id)
         await waitForTx(neutrinoDataTx.id);
         await waitForTx(controlDataTx.id);
         await waitForTx(rpdDataTx.id);
 
         await waitForTx(setScriptNeutrinoTx.id)
         await waitForTx(setScriptAuctionTx.id)
+        await waitForTx(setScriptLiquidationTx.id)
         await waitForTx(setScriptControlTx.id)
         await waitForTx(setScriptRPDTx.id)
 
@@ -198,6 +218,7 @@ function convertDataStateToObject(array) {
     }
     return newObject;
 }
+
 exports.PAULI = PAULI
 exports.WAVELET = WAVELET
 exports.deploy = deploy

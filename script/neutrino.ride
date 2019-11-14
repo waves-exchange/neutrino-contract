@@ -2,7 +2,7 @@
 {-# CONTENT_TYPE DAPP #-}
 {-# SCRIPT_TYPE ACCOUNT #-}
 
-# base function
+#-------------------Base functions----------------------
 func getNumberByKey(key: String) = {
     match getInteger(this, key) {
             case a:Int => a
@@ -39,9 +39,8 @@ func getBoolByAddressAndKey(address: String, key: String) = {
             case _ => false
     }
 }
-#end base function
 
-# consts
+#-------------------Constants---------------------------
 let SENDTXEXPIRE = 30
 let LISTSPLITSYMBOL = "_"
 let LISTDATASYMBOL = "+"
@@ -50,17 +49,18 @@ let PAULI = 100
 let CRYTICALSHARE = 20
 let LEASINGSHARE = 90
 let LEASINTXCOUNT = 10
+let DEFICITOFFSET = 10
+let WAVESASSETID = "waves"
+#------Leasing statuses------
 let CANCELED = "canceled"
 let NEW = "new"
-let FILLED = "filled"
-let DEFICITOFFSET = 10
-#end consts
 
-#constructor 
+#-------------------Constructor-------------------------
 let NeutrinoAssetIdKey = "neutrino_asset_id"
 let BondAssetIdKey = "bond_asset_id"
 let ReserveContractKey = "reserve_contract"
 let AuctionContractKey = "auction_contract"
+let LiquidationContractKey = "liquidation_contract"
 let RPDContractKey = "rpd_contract"
 let ContolContractKey = "control_contract"
 let BalanceLockIntervalKey = "balance_lock_interval"
@@ -69,148 +69,97 @@ let MinNeutrinoSwapAmountKey = "min_neutrino_swap_amount"
 let NodeAddressKey = "node_address"
 let NodeOracleProviderKey = "oracle_node_provider"
 let LeasingIntervalKey = "leasing_interval"
-#end constructor
 
-# keys
+#-------------------Keys---------------------------------
+#------Common----------------
+let RPDBalanceKey = "rpd_balance"
+#------RPD contract----------
+func getRPDContractBalanceKey(assetId: ByteVector) = RPDBalanceKey + "_" + toBase58String(assetId)
+#------Auction contract-------
+let TotalOrderbookKey = "total_orderbook"
+let TotalLiquidationOrderbookKey = "total_liquidation_orderbook"
+#------Control contract-------
 let PriceKey = "price"
 let PriceIndexKey = "price_index"
-let ScriptUpdateIntervalKey = "script_update_interval"
-let NeutrinoBalanceKey = "neutrino_"
-let BalanceUnlockBlockKey = "balance_block_"
-let OrderbookKey = "orderbook"
-let OrderTotalKey = "order_total_" 
-let OrderOwnerKey = "order_owner_"
-let OrderHeightKey = "order_height_"
-let OrderFilledTotalKey = "order_filled_total_"
-let OrderStatusKey = "order_status_"
-let RPDSyncIndexKey = "rpd_sync_index"
-let RPDProfitKey = "rpd_profit"
-let RPDBalanceKey = "rpd_balance"
 let IsBlockedKey = "is_blocked"
-let IsLeasingProfitTxExistKey = "is_leasing_profit"
-let ScriptUpdateBlockKey = "script_update_block"
-let LeaseTxKey = "lease_tx"
-let LeaseTxStatusKey = "lease_tx_status"
-let LeasingAmountKey = "leasing_amount"
-let LeaseTxExpireSendBlockKey = "leasing_expire_send"
 let LeasingExpireBlockKey = "leasing_expire_block"
 let IsRebalanceKey = "is_rebalance"
-let SwapNeutrinoLockedBalanceKey = "swap_neutrino_locked_balance"
 let LeasingTxCountKey = "leasing_index"
-let CancelLeaseTxReserveFeeKey = "cancel_lease_tx_reserve_fee"
-
-func getRPDSnapshotContractBalanceKey(count: Int, assetId: ByteVector) = RPDBalanceKey + "_" + toBase58String(assetId) + "_" + toString(count)
-func getRPDContractBalanceKey(assetId: ByteVector) = RPDBalanceKey + "_" + toBase58String(assetId)
-func getRPDProfitKey(count: Int) = RPDProfitKey + "_" + toString(count)
-func getNeutrinoBalanceKey(owner: String) = NeutrinoBalanceKey + owner
-func getBalanceUnlockBlockKey(owner: String) = BalanceUnlockBlockKey + owner
-func getOrderTotalKey(orderId: String) = OrderTotalKey + orderId
-func getOrderOwnerKey(orderId: String) = OrderOwnerKey + orderId
-func getOrderHeightKey(orderId: String) = OrderHeightKey + orderId
-func getOrderStatusKey(orderId: String) = OrderStatusKey + orderId
-func getOrderFilledTotalKey(orderId: String) = OrderFilledTotalKey + orderId
+let LeasingAmountKey = "leasing_amount"
 func getPriceHistoryKey(block: Int) = PriceKey + "_" + toString(block)
 func getHeightPriceByIndexKey(index: Int) = PriceIndexKey + "_" + toString(index)
-func getLeaseTxStatusKey(hash: String) = LeaseTxStatusKey + "_" + hash
+#------This contract----------
+let RPDSyncIndexKey = "rpd_sync_index"
+func getRPDSnapshotContractBalanceKey(count: Int, assetId: ByteVector) = RPDBalanceKey + "_" + toBase58String(assetId) + "_" + toString(count)
+func getCancelLeaseTxReserveFeeKey(hash: String) = "cancel_lease_tx_reserve_fee" + "_" + hash
+func getAccountLockedBalanceKey(owner: String, assetId: String) = "balance_" + assetId + "_" + owner
+func getBalanceUnlockBlockKey(owner: String) = "balance_block_" + owner
+func getRPDProfitKey(count: Int) = "rpd_profit" + "_" + toString(count)
+func getLockedBalanceKey(assetId: String) = "balance_" + assetId
+func getLeaseTxStatusKey(hash: String) = "lease_tx_status" + "_" + hash
 func getLeaseTxAmountByHashKey(hash: String) = LeasingAmountKey + "_" + hash
-func getLeaseTxBytesByHashKey(hash: String) = LeaseTxKey + "_" + hash
-func getLeaseTxExpireSendBlockKey(hash: String) = LeaseTxExpireSendBlockKey + "_" + hash
-func getCancelLeaseTxReserveFeeKey(hash: String) = CancelLeaseTxReserveFeeKey + "_" + hash
-#end keys
+func getLeaseTxBytesByHashKey(hash: String) = "lease_tx" + "_" + hash
+func getLeaseTxExpireSendBlockKey(hash: String) = "leasing_expire_send" + "_" + hash
+#-------------------Convert functions-------------------
+func convertNeutrinoToWaves(amount: Int, price: Int) = amount*100/price*WAVELET/PAULI
+func convertWavesToNeutrino(amount: Int, price: Int) = amount*price/100*PAULI/WAVELET
+func convertNeutrinoToBond(amount: Int) = amount/PAULI 
+func convertBondToNeutrino(amount: Int) = amount*PAULI 
+func convertWavesToBond(amount: Int, price: Int) = convertNeutrinoToBond(convertWavesToNeutrino(amount, price))
 
-let neutrinoAssetId = fromBase58String(getStringByKey(NeutrinoAssetIdKey))
+#-------------------Global vars-------------------------
+func getLockedBalance(assetId: String) = getNumberByKey(getLockedBalanceKey(assetId))
+
+let liquidationContract = getStringByKey(LiquidationContractKey)
+let neutrinoAssetIdString = getStringByKey(NeutrinoAssetIdKey)
+let neutrinoAssetId = fromBase58String(neutrinoAssetIdString)
 let reserveContract = getStringByKey(ReserveContractKey)
 let auctionContract = getStringByKey(AuctionContractKey)
 let rpdContract = getStringByKey(RPDContractKey)
 let controlContract = getStringByKey(ContolContractKey)
-
-# The price that oracles are providing to control.ride
-let price = getNumberByAddressAndKey(controlContract,PriceKey)
-# Last price history iterator from control.ride
-let priceIndex = getNumberByAddressAndKey(controlContract, PriceIndexKey)
-
-#convertation func
-func convertNeutrinoToWavesByPrice(amount: Int, convertPrice: Int) = amount*100/convertPrice*WAVELET/PAULI
-func convertNeutrinoToWaves(amount: Int) = amount*100/price*WAVELET/PAULI
-func convertWavesToNeutrino(amount: Int) = amount*price/100*PAULI/WAVELET 
-func convertNeutrinoToBond(amount: Int) = amount/PAULI 
-func convertBondToNeutrino(amount: Int) = amount*PAULI 
-func convertWavesToBond(amount: Int) = convertNeutrinoToBond(convertWavesToNeutrino(amount))
-#end convertation func
-
-#global vars
-
-# Checks for contract locks that might happen after attacks 
-# Проверяет блокировку контракта, которая может случиться после атак
-# The var is read from control contract
-let isBlocked = getBoolByAddressAndKey(controlContract,IsBlockedKey)
+let currentPrice = getNumberByAddressAndKey(controlContract,PriceKey) # The price that oracles are providing to control.ride
+let priceIndex = getNumberByAddressAndKey(controlContract, PriceIndexKey) # Last price history iterator from control.ride
+let isBlocked = getBoolByAddressAndKey(controlContract,IsBlockedKey) # Checks for contract locks that might happen after attacks.  The var is read from control contract
 let leasingTxCount = getNumberByKey(LeasingTxCountKey)
 let isRebalance = getBoolByKey(IsRebalanceKey)
 let leasingInterval = getNumberByKey(LeasingIntervalKey)
 let leasingExpireBlock = getNumberByKey(LeasingExpireBlockKey)
-let leasingAmount = getNumberByKey(LeasingAmountKey)
-let swapNeutrinoLockedBalance = getNumberByKey(SwapNeutrinoLockedBalanceKey) 
+let leasingAmount = getNumberByKey(LeasingAmountKey) 
 let nodeAddress = getStringByKey(NodeAddressKey)
 let nodeOracleProviderKey = getStringByKey(NodeOracleProviderKey)
 let rpdSyncIndex = getNumberByKey(RPDSyncIndexKey)
 let balanceLockInterval = getNumberByKey(BalanceLockIntervalKey)
 let minWavesSwapAmount = getNumberByKey(MinWavesSwapAmountKey)
 let minNeutrinoSwapAmount = getNumberByKey(MinNeutrinoSwapAmountKey)
-let reserve = wavesBalance(this)
+let reserve = wavesBalance(this) - getLockedBalance(WAVESASSETID)
 let reserveWithoutLeasing = reserve - leasingAmount
-let orderbook = getStringByKey(OrderbookKey)
 let bondAssetId = fromBase58String(getStringByKey(BondAssetIdKey))
-let bondSupply = {
-    let info = extract(assetInfo(bondAssetId))
-    info.quantity - assetBalance(this, bondAssetId)
-}
-let neutrinoSupply = {
-    let info = extract(assetInfo(neutrinoAssetId))
-    info.quantity - assetBalance(this, neutrinoAssetId) + swapNeutrinoLockedBalance
-}
-let surplus = convertWavesToNeutrino(reserve) - neutrinoSupply
-let deficit = neutrinoSupply - convertWavesToNeutrino(reserve)
+let bondSupply = extract(assetInfo(bondAssetId)).quantity - assetBalance(this, bondAssetId)
+let neutrinoSupply = extract(assetInfo(neutrinoAssetId)).quantity - assetBalance(this, neutrinoAssetId) + getLockedBalance(neutrinoAssetIdString)
+let surplus = convertWavesToNeutrino(reserve, currentPrice) - neutrinoSupply
+let deficit = neutrinoSupply - convertWavesToNeutrino(reserve, currentPrice)
 
-#let scriptUpdateInterval = getNumberByAddressAndKey(ContolContractKey, ScriptUpdateIntervalKey) TODO
-#let scriptUpdateBlock = getNumberByAddressAndKey(controlContract,ScriptUpdateBlockKey) TODO
-#end global vars
-
-# get func
-
+#-------------------Get functions----------------------
+#------RPD contract---------
 # The func is reading balances from rpd.ride
 func getRPDContractBalance(assetId: ByteVector) = getNumberByAddressAndKey(rpdContract, getRPDContractBalanceKey(assetId))
-
+#------Auction contract------
+let totalLiquidationOrderbook = getNumberByAddressAndKey(auctionContract, TotalLiquidationOrderbookKey)
+let totalOrderbook = getNumberByAddressAndKey(auctionContract, TotalOrderbookKey)
+#------Control contract------
 # The func is reading price from control.ride price history
 func getPriceHistory(block: Int) = getNumberByAddressAndKey(controlContract, getPriceHistoryKey(block))
-
 # The func is reading from control.ride price history heights
 func getHeightPriceByIndex(index: Int) = getNumberByAddressAndKey(controlContract, getHeightPriceByIndexKey(index))
-
+#------This contract---------
 func getCancelLeaseTxReserveFee(hash: String) = getNumberByKey(getCancelLeaseTxReserveFeeKey(hash))
-func getNeutrinoBalance(owner : String) = getNumberByKey(getNeutrinoBalanceKey(owner))
+func getAccountLockedBalance(owner : String, assetId: String) = getNumberByKey(getAccountLockedBalanceKey(owner, assetId))
 func getUnlockBalanceBlock(owner : String) = getNumberByKey(getBalanceUnlockBlockKey(owner))
-func getOrderTotal(id : String) = getNumberByKey(getOrderTotalKey(id))
-func getOrderOwner(id : String) = getStringByKey(getOrderOwnerKey(id))
-func getOrderStatus(id : String) = getStringByKey(getOrderStatusKey(id))
-func getOrderFilledTotal(id : String) = getNumberByKey(getOrderFilledTotalKey(id))
 func getRPDProfit(count: Int) = getNumberByKey(getRPDProfitKey(count))
 func getLeaseTxStatus(hash: String) = getStringByKey(getLeaseTxStatusKey(hash)) 
 func getLeaseTxAmountByHash(hash: String) = getNumberByKey(getLeaseTxAmountByHashKey(hash)) 
 func getLeaseTxBytesByHash(hash: String) = getStringByKey(getLeaseTxBytesByHashKey(hash)) 
 func getLeaseTxExpireSendBlock(hash: String) = getNumberByKey(getLeaseTxExpireSendBlockKey(hash)) 
-#end get func
-
-#other function
-func getOrderElementById(id : String) = id + LISTSPLITSYMBOL
-func addOrder(orderId: String) = {
-    orderbook + getOrderElementById(orderId)
-}
-func dropOrder(orderId: String) = {
-    let parts = orderbook.split(getOrderElementById(orderId))
-    parts[0] + parts[1]
-}
-
-#end other function
 
 #-------------------Callable----------------------
 
@@ -219,16 +168,22 @@ func dropOrder(orderId: String) = {
 @Callable(i)
 func swapWavesToNeutrino() = {
     let pmt = extract(i.payment)
+    let account = toString(i.caller)
     if (pmt.amount < minWavesSwapAmount)
         then throw("an amount is less than min available amount: " + toString(minWavesSwapAmount) + " wavelets")
     else if (isDefined(pmt.assetId)) 
         then throw("can use waves only")
     else if(isBlocked)
         then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles") # see control.ride
-    else{
-        let amount = convertWavesToNeutrino(pmt.amount)
-        TransferSet([
-            ScriptTransfer(i.caller, amount, neutrinoAssetId)
+    else if(getUnlockBalanceBlock(account) > height)
+        then throw("await " + toString(getUnlockBalanceBlock(account) - height) + " blocks")
+    else if (getAccountLockedBalance(account, WAVESASSETID) != 0)
+        then throw("please withdraw locked funds first")
+    else {
+        WriteSet([
+            DataEntry(getAccountLockedBalanceKey(account, WAVESASSETID), pmt.amount),
+            DataEntry(getBalanceUnlockBlockKey(account), height + balanceLockInterval),
+            DataEntry(getLockedBalanceKey(WAVESASSETID), getLockedBalance(WAVESASSETID) + pmt.amount)
         ])
     }
 }
@@ -248,16 +203,15 @@ func swapNeutrinoToWaves() = {
         then throw("can use appropriate neutrino tokens only")
     else if(getUnlockBalanceBlock(account) > height)
         then throw("await " + toString(getUnlockBalanceBlock(account) - height) + " blocks")
-    else if (getNeutrinoBalance(account) != 0)
-        then throw("please withdraw locked neutrino funds first")
-    else{
-        let neutrinoAmount = pmt.amount
-        let newSwapNeutrinoLockedBalance = swapNeutrinoLockedBalance + neutrinoAmount
+     else if (getAccountLockedBalance(account, neutrinoAssetIdString) != 0)
+        then throw("please withdraw locked funds first")
+    else {
+        let newLockedBalance = getLockedBalance(neutrinoAssetIdString) + pmt.amount
         WriteSet([
-            DataEntry(getNeutrinoBalanceKey(account), getNeutrinoBalance(account) + neutrinoAmount),
+            DataEntry(getAccountLockedBalanceKey(account, neutrinoAssetIdString), pmt.amount),
             DataEntry(getBalanceUnlockBlockKey(account), height + balanceLockInterval),
-            DataEntry(SwapNeutrinoLockedBalanceKey, newSwapNeutrinoLockedBalance),
-            DataEntry(IsRebalanceKey, if(reserveWithoutLeasing >= convertNeutrinoToWaves(newSwapNeutrinoLockedBalance)) then false else true)
+            DataEntry(getLockedBalanceKey(neutrinoAssetIdString), newLockedBalance),
+            DataEntry(IsRebalanceKey, if(reserveWithoutLeasing >= convertNeutrinoToWaves(newLockedBalance, currentPrice)) then false else true)
         ])
     }
 }
@@ -266,20 +220,24 @@ func swapNeutrinoToWaves() = {
 # with price at the moment of {balanceLockInterval} has reached.
 # [called by user]
 @Callable(i)
-func withdraw(account : String, index: Int) = {
+func withdraw(account : String, index: Int, lockedAssetId: String) = {
     let unlockHeight = getUnlockBalanceBlock(account)
-    let neutrinoAmount = getNeutrinoBalance(account)
+    let lockedBalance = getAccountLockedBalance(account, lockedAssetId)
 
     let indexHeight = getHeightPriceByIndex(index)
     let nextIndexHeight = getHeightPriceByIndex(index+1)
-    let indexPrice = getPriceHistory(indexHeight)
+    let priceByIndex = getPriceHistory(indexHeight)
 
-    let amount = convertNeutrinoToWavesByPrice(neutrinoAmount, indexPrice)
-
+    let amount = 
+        if(lockedAssetId == neutrinoAssetIdString) then 
+            convertNeutrinoToWaves(lockedBalance, priceByIndex) 
+        else 
+            convertWavesToNeutrino(lockedBalance, priceByIndex)
+    
     if(isBlocked)
         then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles") # see control.ride
     else if(amount <= 0)
-        then throw("balance equals zero")
+        then throw("balance equals zero (" + lockedAssetId + ")")
     else if(unlockHeight > height)
         then throw("please wait for: " + toString(unlockHeight) + " block height to withdraw WAVES funds")
     else if(index > priceIndex || unlockHeight < indexHeight || (nextIndexHeight != 0 && unlockHeight >= nextIndexHeight))
@@ -287,11 +245,11 @@ func withdraw(account : String, index: Int) = {
     else {   
         ScriptResult(
             WriteSet([
-                DataEntry(getNeutrinoBalanceKey(account), getNeutrinoBalance(account) - neutrinoAmount),
-                DataEntry(SwapNeutrinoLockedBalanceKey, swapNeutrinoLockedBalance - neutrinoAmount)
+                DataEntry(getAccountLockedBalanceKey(account, lockedAssetId), 0),
+                DataEntry(getLockedBalanceKey(lockedAssetId), getLockedBalance(lockedAssetId) - lockedBalance)
             ]),
             TransferSet([
-                ScriptTransfer(addressFromStringValue(account), amount, unit) 
+                ScriptTransfer(addressFromStringValue(account), amount, if(lockedAssetId == neutrinoAssetIdString) then unit else neutrinoAssetId)
             ])
         )
     }
@@ -301,96 +259,16 @@ func withdraw(account : String, index: Int) = {
 # it's calling n-times untill all orders on auction.ride will be executed during deficit stage
 # [called by pacemaker oracles]
 @Callable(i)
-func generateBond() = {
-    let balanceAuction = assetBalance(addressFromStringValue(auctionContract), bondAssetId)
-    let amount = convertNeutrinoToBond(deficit) - balanceAuction
+func transferToAuction() = {
+    let deficitBondAmount = convertNeutrinoToBond(deficit) - assetBalance(addressFromStringValue(auctionContract), bondAssetId) - totalLiquidationOrderbook
+    let surplusBond = convertNeutrinoToBond(surplus) - assetBalance(addressFromStringValue(auctionContract), neutrinoAssetId) - totalOrderbook
     if(isBlocked)
         then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles") # see control.ride
-    else if(amount >= neutrinoSupply*DEFICITOFFSET/100)
-        then TransferSet([ScriptTransfer(addressFromStringValue(auctionContract), amount, bondAssetId)])
+    else if(deficitBondAmount >= neutrinoSupply*DEFICITOFFSET/100)
+        then TransferSet([ScriptTransfer(addressFromStringValue(auctionContract), deficitBondAmount, bondAssetId)])
+    else if(surplusBond > 0)
+        then TransferSet([ScriptTransfer(addressFromStringValue(liquidationContract), convertBondToNeutrino(surplusBond), neutrinoAssetId)])
     else throw("bond were generated or do not need it")
-}
-
-# set 'bonds liquidation order' (bond -> neutrino 1:1 exchange) to the liquidation queue
-# [called by user]
-@Callable(i)
-func setOrder() = {
-    let pmt = extract(i.payment);
-    let newOrderId = toBase58String(keccak256(toBytes(pmt.amount) + i.caller.bytes + toBytes(height)))
-    
-    if (pmt.assetId != bondAssetId) 
-        then throw("can use appropriate neutrino bonds tokens only")
-    else if(getOrderOwner(newOrderId) != "")
-        then throw("an order is already exists")
-    else {
-        WriteSet([
-            DataEntry(OrderbookKey, addOrder(newOrderId)),
-
-            DataEntry(getOrderTotalKey(newOrderId), pmt.amount),
-            DataEntry(getOrderOwnerKey(newOrderId), toString(i.caller)),
-            DataEntry(getOrderHeightKey(newOrderId), height),
-            DataEntry(getOrderStatusKey(newOrderId), NEW)
-        ])
-    }
-}
-
-# cancel 'bonds liquidation order' (bond -> neutrino 1:1 exchange) from the liquidation queue
-# [called by user]
-@Callable(i)
-func cancelOrder(orderId : String) = {
-    let owner = getOrderOwner(orderId)
-    let amount = getOrderTotal(orderId) - getOrderFilledTotal(orderId)
-    if(owner != toString(i.caller)) 
-        then throw("only owner of bonds liquidation request is able to cancel it")
-    else if(getOrderStatus(orderId) != NEW)
-        then throw("invalid liquidation request status")
-    else {
-        ScriptResult(
-            WriteSet([
-                DataEntry(OrderbookKey, dropOrder(orderId)),
-                DataEntry(getOrderStatusKey(orderId), CANCELED)
-            ]), 
-            TransferSet([
-                ScriptTransfer(i.caller, amount, bondAssetId)
-            ])
-        )
-    }
-}
-
-# executing bond -> neutrino 1:1 exchange from the liquidation queue if SC has reached proficit in collateral cap
-# it's calling n-times untill all orders from the liquidation queue will be executed during proficit stage
-# [called by pacemaker oracles]
-@Callable(i)
-func executeOrder() = {
-    let orderId = orderbook.split(LISTSPLITSYMBOL)[0]
-    let orderTotal = getOrderTotal(orderId)
-    let orderOwner = getOrderOwner(orderId)
-    let filledTotal = getOrderFilledTotal(orderId)
-
-    let surplusBond = convertNeutrinoToBond(surplus)
-    
-    if(isBlocked)
-        then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles") # see control.ride
-    else if(surplusBond <= 0) 
-        then throw("there is no proficit on the smart contract now")
-    else if(orderbook == "")
-        then throw("empty orderbook")
-    else {
-        let amount = orderTotal-filledTotal;
-        let status = if(surplusBond >= amount) then FILLED else NEW
-        let newFilledTotal = if(surplusBond >= amount) then amount else surplusBond
-
-        ScriptResult(
-            WriteSet([
-                DataEntry(OrderbookKey, if(surplusBond >= amount) then dropOrder(orderId) else orderbook),
-                DataEntry(getOrderFilledTotalKey(orderId), filledTotal + newFilledTotal),
-                DataEntry(getOrderStatusKey(orderId), status)
-            ]), 
-            TransferSet([
-                ScriptTransfer(addressFromStringValue(orderOwner), convertBondToNeutrino(newFilledTotal), neutrinoAssetId)
-            ])
-        )
-    }
 }
 
 # transfer tokens from one address to another through smart contact
@@ -411,7 +289,7 @@ func nodeReward() = {
     else if(isDefined(pmt.assetId))
         then throw("waves tokens only allowed")
     else {
-        let amount = convertWavesToNeutrino(pmt.amount)
+        let amount = convertWavesToNeutrino(pmt.amount, currentPrice)
         let newRpdSyncIndex = rpdSyncIndex + 1
         ScriptResult(
             WriteSet([
@@ -431,7 +309,7 @@ func nodeReward() = {
 # [called by node provider oracle]
 @Callable(i)
 func registrationLeaseTx(senderPublicKey: String, fee: Int, timestamp: Int, leaseTxHash: String) = {
-    let totalFreeReserve = reserve*LEASINGSHARE/100 - convertNeutrinoToWaves(swapNeutrinoLockedBalance)
+    let totalFreeReserve = reserve*LEASINGSHARE/100 - convertNeutrinoToWaves(getLockedBalance(neutrinoAssetIdString), currentPrice)
     let amount = totalFreeReserve/LEASINTXCOUNT
     let txBytes = base64'CAIA' + fromBase58String(senderPublicKey) + fromBase58String(nodeAddress) + toBytes(amount) + toBytes(fee) + toBytes(timestamp)
     let txHashBytes = blake2b256(txBytes)
@@ -483,7 +361,7 @@ func cancelStuckLeaseTx(txHash: String) = {
             DataEntry(LeasingTxCountKey, leasingTxCount - 1),
             DataEntry(LeasingAmountKey, leasingAmount - amount),
             DataEntry(getLeaseTxStatusKey(txHash), CANCELED),
-            DataEntry(IsRebalanceKey, if((reserveWithoutLeasing - amount) >= convertNeutrinoToWaves(swapNeutrinoLockedBalance)) then false else true)
+            DataEntry(IsRebalanceKey, if((reserveWithoutLeasing - amount) >= convertNeutrinoToWaves(getLockedBalance(neutrinoAssetIdString), currentPrice)) then false else true)
         ])
     } else throw("invalid tx hash")
 }
@@ -508,7 +386,11 @@ func registrationUnleaseTx(chainIdString: String, senderPublicKey: String, fee: 
             DataEntry(LeasingTxCountKey, leasingTxCount - 1),
             DataEntry(LeasingAmountKey, leasingAmount - amount),
             DataEntry(getLeaseTxStatusKey(leaseTxHash), CANCELED),
-            DataEntry(IsRebalanceKey, if((reserveWithoutLeasing - amount) >= convertNeutrinoToWaves(swapNeutrinoLockedBalance)) then false else true)
+            DataEntry(IsRebalanceKey, 
+                if((reserveWithoutLeasing - amount) >= convertNeutrinoToWaves(getLockedBalance(neutrinoAssetIdString), currentPrice)) 
+                    then false 
+                else true
+            )
         ])
     }
 }

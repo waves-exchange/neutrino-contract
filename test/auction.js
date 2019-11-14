@@ -1,9 +1,12 @@
 var deployHelper = require('../helpers/deployHelper.js');
 var auctionHelpers = require('../helpers/AuctionHelper.js');
+const neutrinoHelper = require('../api/NeutrinoApi.js');
+const contractHelper = require('../api/ContractHelper.js');
 
 
 let deployResult = {}
 const orderCount = 4;
+let neutrinoApi = null;
 describe('Auction test', async function () {
     before(async function () {
         deployResult = await deployHelper.deploy("TST-N", "TST-NB", "test asset", "test bond asset", "")
@@ -42,46 +45,23 @@ describe('Auction test', async function () {
         await waitForTx(massNeutrinoTx.id);
 
         price = deployHelper.getRandomArbitrary(1, 9999)
-         
-       /* const priceDataTx = data({
-             data: [
-                 { key: "price", value: price }
-             ],
-             fee: 500000
-        }, deployResult.accounts.controlContract);
- 
-        await broadcast(priceDataTx);
- 
-        await waitForTx(priceDataTx.id);*/
+        neutrinoApi = await neutrinoHelper.NeutrinoApi.create(env.API_BASE, env.CHAIN_ID, address(deployResult.accounts.neutrinoContract));
     });
     it('Add orders', async function () {
         for (let i = 0; i < orderCount; i++) {
-            const auctionData = await accountData(address(deployResult.accounts.auctionContract))
-            const auctionHelper = new auctionHelpers.AuctionHelper(auctionData);
             const orderPrice = deployHelper.getRandomArbitrary(51, 99)
             const balance = await assetBalance(deployResult.assets.neutrinoAssetId, address(accounts.testAccount));
             const amount = Math.floor(balance / (deployHelper.getRandomArbitrary(2, 10)))
-            const index = auctionHelper.getIndexByPrice(orderPrice);
-            
-            const tx = invokeScript({
-                dApp: address(deployResult.accounts.auctionContract),
-                call: { function: "setOrder", args: [{ type: "integer", value: orderPrice }, { type: "integer", value: index }] },
-                payment: [{ assetId: deployResult.assets.neutrinoAssetId, amount: amount }]
-            }, accounts.testAccount);
-
-            await broadcast(tx);
-            await waitForTx(tx.id);
-
-            const state = await stateChanges(tx.id);
+            let id = await neutrinoApi.addBuyBondOrder(amount, orderPrice, accounts.testAccount)
+            const state = await stateChanges(id);
             const data = deployHelper.convertDataStateToObject(state.data)
-            const orderHash = data.orderbook.split("_")[index] //TODO hash
-
+          /*  const orderHash = data.orderbook.split("_")[index] //TODO hash
             if (data["order_total_" + orderHash] != amount)
                 throw "invalid order total"
             else if (data["order_owner_" + orderHash] != address(accounts.testAccount))
                 throw "invalid order owner"
             else if (data["order_status_" + orderHash]!= "new")
-                throw "invalid order status"
+                throw "invalid order status"*/
         }
     })
     it('Cancel order', async function () {
@@ -89,15 +69,9 @@ describe('Auction test', async function () {
         const data = await accountData(address(deployResult.accounts.auctionContract))
         const orders = data.orderbook.value.split("_")
         
-        const tx = invokeScript({
-            dApp: address(deployResult.accounts.auctionContract),
-            call: { function: "cancelOrder", args: [{ type: "string", value: orders[index] }] }
-        }, accounts.testAccount);
+        let id = await neutrinoApi.cancelBuyBondOrder(orders[index], accounts.testAccount)
 
-        await broadcast(tx);
-        await waitForTx(tx.id);
-
-        const state = await stateChanges(tx.id);
+        const state = await stateChanges(id);
         const dataState = deployHelper.convertDataStateToObject(state.data)
 
         const newOrderbookItems = data.orderbook.value.split(orders[index] + "_")
@@ -134,7 +108,7 @@ describe('Auction test', async function () {
 
         const tx = invokeScript({
             dApp: address(deployResult.accounts.auctionContract),
-            call: { function: "executeOrder" }
+            call: { function: "sellBond" }
         }, accounts.testAccount);
 
         await broadcast(tx);
@@ -183,7 +157,7 @@ describe('Auction test', async function () {
 
         const tx = invokeScript({
             dApp: address(deployResult.accounts.auctionContract),
-            call: { function: "executeOrder" }
+            call: { function: "sellBond" }
         }, accounts.testAccount);
 
         await broadcast(tx);
