@@ -1,8 +1,6 @@
 var deployHelper = require('../helpers/deployHelper.js');
-var auctionHelpers = require('../helpers/AuctionHelper.js');
 const neutrinoHelper = require('../api/NeutrinoApi.js');
-const contractHelper = require('../api/ContractHelper.js');
-
+const oracleHelper = require('../api/OracleApi.js');
 
 let deployResult = {}
 const orderCount = 4;
@@ -25,7 +23,7 @@ describe('Auction test', async function () {
                     recipient: address(deployResult.accounts.controlContract)
                 }
             ],
-            fee: 500000
+            fee: 600000
         }, env.SEED)
         await broadcast(massTx);
         await waitForTx(massTx.id);
@@ -33,7 +31,7 @@ describe('Auction test', async function () {
         var massNeutrinoTx = massTransfer({
             transfers: [
                 {
-                    amount: deployHelper.getRandomArbitrary(1, 9999) * deployHelper.PAULI,
+                    amount: deployHelper.getRandomArbitrary(1,9999) * deployHelper.PAULI,
                     recipient: address(accounts.testAccount)
                 }
             ],
@@ -46,16 +44,19 @@ describe('Auction test', async function () {
 
         price = deployHelper.getRandomArbitrary(1, 9999)
         neutrinoApi = await neutrinoHelper.NeutrinoApi.create(env.API_BASE, env.CHAIN_ID, address(deployResult.accounts.neutrinoContract));
+        oracleApi = await oracleHelper.OracleApi.create(env.API_BASE, env.CHAIN_ID, address(deployResult.accounts.neutrinoContract));
+        await oracleApi.forceSetCurrentPrice(100, deployResult.accounts.controlContract)
     });
     it('Add orders', async function () {
         for (let i = 0; i < orderCount; i++) {
-            const orderPrice = deployHelper.getRandomArbitrary(51, 99)
+            const orderPrice = deployHelper.getRandomArbitrary(51, 99)/100
             const balance = await assetBalance(deployResult.assets.neutrinoAssetId, address(accounts.testAccount));
             const amount = Math.floor(balance / (deployHelper.getRandomArbitrary(2, 10)))
+
             let id = await neutrinoApi.addBuyBondOrder(amount, orderPrice, accounts.testAccount)
-            const state = await stateChanges(id);
+           /*  const state = await stateChanges(id);
             const data = deployHelper.convertDataStateToObject(state.data)
-          /*  const orderHash = data.orderbook.split("_")[index] //TODO hash
+           const orderHash = data.orderbook.split("_")[index] //TODO hash
             if (data["order_total_" + orderHash] != amount)
                 throw "invalid order total"
             else if (data["order_owner_" + orderHash] != address(accounts.testAccount))
@@ -106,15 +107,8 @@ describe('Auction test', async function () {
         await broadcast(transferTx);
         await waitForTx(transferTx.id);
 
-        const tx = invokeScript({
-            dApp: address(deployResult.accounts.auctionContract),
-            call: { function: "sellBond" }
-        }, accounts.testAccount);
-
-        await broadcast(tx);
-        await waitForTx(tx.id);
-
-        const state = await stateChanges(tx.id);
+        let id = await oracleApi.executeBuyBondOrder(accounts.testAccount);
+        const state = await stateChanges(id);
         const dataState = deployHelper.convertDataStateToObject(state.data)
 
         const transferToNeutrinoContract = state.transfers.find(x=>x.address == address(deployResult.accounts.neutrinoContract))
@@ -155,15 +149,8 @@ describe('Auction test', async function () {
         await broadcast(transferTx);
         await waitForTx(transferTx.id);
 
-        const tx = invokeScript({
-            dApp: address(deployResult.accounts.auctionContract),
-            call: { function: "sellBond" }
-        }, accounts.testAccount);
-
-        await broadcast(tx);
-        await waitForTx(tx.id);
-
-        const state = await stateChanges(tx.id);
+        let id = await oracleApi.executeBuyBondOrder(accounts.testAccount);
+        const state = await stateChanges(id);
         const dataState = deployHelper.convertDataStateToObject(state.data)
         
         const transferToNeutrinoContract = state.transfers.find(x=>x.address == address(deployResult.accounts.neutrinoContract))

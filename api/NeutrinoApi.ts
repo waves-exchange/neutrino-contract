@@ -110,6 +110,8 @@ export class NeutrinoApi {
         return tx.id;
     }
     public async addBuyBondOrder(amount: number, price: number, seed: string): Promise<string> {
+        price = Math.floor(price * 100);
+        console.log(price)
         const auctionData = await accountData(this.auctionContractAddress, this.nodeUrl);
         let position = 0;
         if(auctionData[OrderKeys.OrderbookKey] !== undefined) {

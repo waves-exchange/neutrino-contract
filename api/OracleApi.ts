@@ -1,9 +1,6 @@
-import {invokeScript, nodeInteraction, broadcast, waitForTx } from "@waves/waves-transactions"
+import { invokeScript, data, nodeInteraction, broadcast, waitForTx } from "@waves/waves-transactions"
 import { NeutrinoContractKeys } from "./contractKeys/NeutrinoContractKeys";
 import { ControlContractKeys } from "./contractKeys/ControlContractKeys";
-import { Seed } from "@waves/waves-transactions/dist/seedUtils";
-import { accountData, accountDataByKey } from "@waves/waves-transactions/dist/nodeInteraction";
-import { OrderKeys } from "./contractKeys/OrderKeys";
 
 export class OracleApi {
     static readonly WAVELET: number = (10 ** 8);
@@ -42,25 +39,60 @@ export class OracleApi {
         return <number>(await nodeInteraction.accountDataByKey(ControlContractKeys.PriceKey, this.controlContractAddress, this.nodeUrl)).value/100;
     }
 
-    /*public async setCurrentPrice(): Promise<string> {
+    public async forceSetCurrentPrice(price: number, controlContractSeed: string): Promise<string> {
+        price = Math.floor(price*100)
+        const height = await nodeInteraction.currentHeight(this.nodeUrl);
+        const newIndexData = await nodeInteraction.accountDataByKey(ControlContractKeys.PriceIndexKey, this.controlContractAddress, this.nodeUrl);
+        let newIndex = 1;
+        if(newIndexData !== null)
+            newIndex = <number>newIndexData.value + 1;
+        const dataTx = data({
+            data: [
+                { key: "price", value: price },
+                { key: 'price_' + height, value: price },
+                { key: 'is_pending_price', value: false },
+                { key: 'price_index', value: newIndex },
+                { key: 'price_index_' + newIndex, value: height }
+            ],
+            fee: 500000
+        }, controlContractSeed)
 
+        await broadcast(dataTx, this.nodeUrl)
+        await waitForTx(dataTx.id, { apiBase: this.nodeUrl })
+        return dataTx.id;
     }
-    public async isPricePending(): Promise<string> {
-        
+    public async executeBuyBondOrder(seed: string): Promise<string> {
+        const tx = invokeScript({
+            dApp: this.auctionContractAddress,
+            call: { function: "sellBond" },
+            chainId: this.chainId
+        }, seed);
+
+        await broadcast(tx, this.nodeUrl);
+        await waitForTx(tx.id, {apiBase: this.nodeUrl });
+        return tx.id;
     }
+    public async executeLiquidationOrder(seed: string): Promise<string> {
+        const tx = invokeScript({
+            dApp: this.liquidationContract,
+            call: { function: "liquidateBond" },
+            chainId: this.chainId
+        }, seed);
 
-    public async isFinilizeCurrentPrice(): Promise<string> {
-        
+        await broadcast(tx, this.nodeUrl);
+        await waitForTx(tx.id, {apiBase: this.nodeUrl });
+        return tx.id;
     }
+    public async transferToAuction(seed: string): Promise<string> {
+        const tx = invokeScript({
+            dApp: this.neutrinoContractAddress,
+            call: { function: "transferToAuction" },
+            chainId: this.chainId
+        }, seed);
 
-    public async finilizeCurrentPrice(): Promise<string> {
-        
+        await broadcast(tx, this.nodeUrl);
+        await waitForTx(tx.id, {apiBase: this.nodeUrl });
+        return tx.id;
     }
-
-    public async sell(): Promise<string> {
-        
-    }*/
-    
-
     
 }

@@ -214,7 +214,10 @@ var NeutrinoApi = /** @class */ (function () {
             var auctionData, position, orders, i, tx;
             return __generator(this, function (_a) {
                 switch (_a.label) {
-                    case 0: return [4 /*yield*/, nodeInteraction_1.accountData(this.auctionContractAddress, this.nodeUrl)];
+                    case 0:
+                        price = Math.floor(price * 100);
+                        console.log(price);
+                        return [4 /*yield*/, nodeInteraction_1.accountData(this.auctionContractAddress, this.nodeUrl)];
                     case 1:
                         auctionData = _a.sent();
                         position = 0;

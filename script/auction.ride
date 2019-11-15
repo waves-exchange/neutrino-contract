@@ -75,7 +75,7 @@ let swapWavesLockedBalance = getNumberByAddressAndKey(neutrinoContract, SwapWave
 let neutrinoAssetId = fromBase58String(getStringByAddressAndKey(neutrinoContract, NeutrinoAssetIdKey)) # Assets ids. The value from neutrino.ride
 let bondAssetId = fromBase58String(getStringByAddressAndKey(neutrinoContract, BondAssetIdKey))
 let reserve = wavesBalance(neutrinoContract) - swapWavesLockedBalance
-let neutrinoSupply = extract(assetInfo(neutrinoAssetId)).quantity - assetBalance(this, neutrinoAssetId) + swapNeutrinoLockedBalance
+let neutrinoSupply = extract(assetInfo(neutrinoAssetId)).quantity - assetBalance(neutrinoContract, neutrinoAssetId) + swapNeutrinoLockedBalance
 let deficit = neutrinoSupply - convertWavesToNeutrino(reserve, currentPrice)
 let surplus = convertWavesToNeutrino(reserve, currentPrice) - neutrinoSupply
 

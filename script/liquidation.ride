@@ -73,8 +73,8 @@ let swapWavesLockedBalance = getNumberByAddressAndKey(neutrinoContract, SwapWave
 let neutrinoAssetId = fromBase58String(getStringByAddressAndKey(neutrinoContract, NeutrinoAssetIdKey)) # Assets ids. The value from neutrino.ride
 let bondAssetId = fromBase58String(getStringByAddressAndKey(neutrinoContract, BondAssetIdKey))
 let reserve = wavesBalance(neutrinoContract) - swapWavesLockedBalance
-let neutrinoSupply = extract(assetInfo(neutrinoAssetId)).quantity - assetBalance(this, neutrinoAssetId) + swapNeutrinoLockedBalance
-let surplus = convertWavesToNeutrino(reserve, currentPrice) - neutrinoSupply
+let neutrinoSupply = extract(assetInfo(neutrinoAssetId)).quantity - assetBalance(neutrinoContract, neutrinoAssetId) + swapNeutrinoLockedBalance
+let surplus = convertWavesToNeutrino(reserve, currentPrice) - neutrinoSupply + assetBalance(this, neutrinoAssetId)
 
 
 #-------------------Get functions------------------------
@@ -163,7 +163,7 @@ func liquidateBond() = {
     let orderOwner = getOrderOwner(orderId)
     let filledTotal = getOrderFilledTotal(orderId)
 
-    let surplusBond = convertNeutrinoToBond(surplus) + assetBalance(this, neutrinoAssetId)
+    let surplusBond = convertNeutrinoToBond(surplus)
     if(surplusBond <= 0) 
         then throw("there is no proficit on the smart contract now")
     else if(orderbook == "")

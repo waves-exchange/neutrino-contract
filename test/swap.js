@@ -1,6 +1,5 @@
 const deployHelper = require('../helpers/deployHelper.js');
 const neutrinoHelper = require('../api/NeutrinoApi.js');
-const contractHelper = require('../api/ContractHelper.js');
 
 let price = 0;
 let deployResult = {}

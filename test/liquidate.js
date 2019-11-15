@@ -1,10 +1,12 @@
 var deployHelper = require('../helpers/deployHelper.js');
 const neutrinoHelper = require('../api/NeutrinoApi.js');
-const contractHelper = require('../api/ContractHelper.js');
+const oracleHelper = require('../api/OracleApi.js');
+
 
 let deployResult = {}
 let orderCount = 4;
 let neutrinoApi = null;
+let oracleApi = null;
 describe('Liqidate test', async function () {
     before(async function () {
         deployResult = await deployHelper.deploy("TST-N", "TST-NB", "test asset", "test bond asset", "")
@@ -39,6 +41,7 @@ describe('Liqidate test', async function () {
 
         await waitForTx(massNeutrinoTx.id);
         neutrinoApi = await neutrinoHelper.NeutrinoApi.create(env.API_BASE, env.CHAIN_ID, address(deployResult.accounts.neutrinoContract));
+        oracleApi = await oracleHelper.OracleApi.create(env.API_BASE, env.CHAIN_ID, address(deployResult.accounts.neutrinoContract));
     });
     it('Add orders', async function () {
         for (let i = 0; i < orderCount; i++) {
@@ -95,25 +98,10 @@ describe('Liqidate test', async function () {
         await broadcast(transferTx);
         await waitForTx(transferTx.id);
 
-        var transferNeutrinoTx = transfer({
-            amount: totalOrder,
-            recipient: address(deployResult.accounts.liquidationContract),
-            fee: 600000,
-            assetId: deployResult.assets.neutrinoAssetId
-        }, deployResult.accounts.neutrinoContract);
+        await oracleApi.transferToAuction(accounts.testAccount);
+        let id = await oracleApi.executeLiquidationOrder(accounts.testAccount);
 
-        await broadcast(transferNeutrinoTx);
-        await waitForTx(transferNeutrinoTx.id);
-
-        const tx = invokeScript({
-            dApp: address(deployResult.accounts.liquidationContract),
-            call: { function: "liquidateBond" }
-        }, env.SEED);
-
-        await broadcast(tx);
-        await waitForTx(tx.id);
-
-        const state = await stateChanges(tx.id);
+        const state = await stateChanges(id);
         const dataState = deployHelper.convertDataStateToObject(state.data)
 
         const transferToOrderOwner = state.transfers.find(x => x.address == address(accounts.testAccount))
@@ -143,15 +131,9 @@ describe('Liqidate test', async function () {
         await broadcast(transferTx);
         await waitForTx(transferTx.id);
 
-        const tx = invokeScript({
-            dApp: address(deployResult.accounts.liquidationContract),
-            call: { function: "liquidateBond" }
-        }, env.SEED);
-
-        await broadcast(tx);
-        await waitForTx(tx.id);
-
-        const state = await stateChanges(tx.id);
+        await oracleApi.transferToAuction(accounts.testAccount);
+        let id = await oracleApi.executeLiquidationOrder(accounts.testAccount);
+        const state = await stateChanges(id);
         const dataState = deployHelper.convertDataStateToObject(state.data)
 
         const transferToOrderOwner = state.transfers.find(x => x.address == address(accounts.testAccount))

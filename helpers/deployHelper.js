@@ -25,6 +25,7 @@ async function deploy(symbolNeutrino, symbolBond, descriptionNeutrino, descripti
         console.log("Neutrino contract: " + accounts.neutrinoContract)
         console.log("RPD contract: " + accounts.rpdContract)
         console.log("Control contract: " + accounts.controlContract)
+        console.log("Liquidation contract: " + accounts.liquidationContract)
         
         console.log("Addresses:")
       
@@ -38,6 +39,7 @@ async function deploy(symbolNeutrino, symbolBond, descriptionNeutrino, descripti
         console.log("Neutrino contract: " + address(accounts.neutrinoContract))
         console.log("RPD contract: " + address(accounts.rpdContract))
         console.log("Control contract: " + address(accounts.controlContract))
+        console.log("Liquidation contract: " + address(accounts.liquidationContract))
 
         var massTx = massTransfer({
             transfers: [
