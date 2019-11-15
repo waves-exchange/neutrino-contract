@@ -82,6 +82,7 @@ func getOrderTotal(id : String) = getNumberByKey(getOrderTotalKey(id))
 func getOrderOwner(id : String) = getStringByKey(getOrderOwnerKey(id))
 func getOrderStatus(id : String) = getStringByKey(getOrderStatusKey(id))
 func getOrderFilledTotal(id : String) = getNumberByKey(getOrderFilledTotalKey(id))
+
 #-------------------Any functions----------------------
 func getOrderElementById(id : String) = id + ORDERSPLITSYMBOL
 func addOrder(orderId: String, position: Int) = {

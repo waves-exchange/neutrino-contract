@@ -1,9 +1,10 @@
 import { broadcast, data, seedUtils, massTransfer, waitForTx, issue, setScript} from "@waves/waves-transactions"
 import { NeutrinoContractAccounts } from "./models/NeutrinoContractAccounts";
-import fs from 'fs';
+import { readFileSync } from 'fs'
+import { compile, ICompilationResult } from '@waves/ride-js'
 
 export class ContractHelper{
-    static readonly neutrinoContractsPath = "neutrinoContracts/"
+    static readonly neutrinoContractsPath = "../script/"
     static async deploy(distributorSeed, nodeUrl, chainId, symbolNeutrino, symbolBond, descriptionNeutrino, descriptionBond, nodeAddress, nodeOracleProvider = nodeAddress, leasingInterval = 10080): Promise<NeutrinoContractAccounts>{
         let accounts: NeutrinoContractAccounts = 
         {
@@ -15,7 +16,7 @@ export class ContractHelper{
             controlContract: new seedUtils.Seed(seedUtils.generateNewSeed(), chainId),
             liquidationContract: new seedUtils.Seed(seedUtils.generateNewSeed(), chainId)
         }
-
+     
         var massTx = massTransfer({
             transfers: [
                 {
@@ -44,7 +45,7 @@ export class ContractHelper{
         }, distributorSeed)
 
         await broadcast(massTx, nodeUrl)
-        await waitForTx(massTx.id, nodeUrl)
+        await waitForTx(massTx.id, {apiBase: nodeUrl })
 
         let oraclesAddress = ""
         for(let i = 0; i < accounts.oracles.length; i++){
@@ -142,15 +143,16 @@ export class ContractHelper{
         await broadcast(controlDataTx, nodeUrl);
         await broadcast(rpdDataTx, nodeUrl);
 
-        const scriptNeutrinoContract = fs.readFileSync(this.neutrinoContractsPath + "neutrino.data",'utf8');
+
+        const scriptNeutrinoContract = (<ICompilationResult>await compile(readFileSync(this.neutrinoContractsPath + "neutrino.ride",'utf8'))).result.base64 ;
         const setScriptNeutrinoTx = setScript({ script: scriptNeutrinoContract, fee: 1000000, chainId: chainId }, accounts.neutrinoContract.phrase);
-        const scriptLiquidationContract = fs.readFileSync(this.neutrinoContractsPath + "liquidation.data",'utf8');
+        const scriptLiquidationContract =  (<ICompilationResult>await compile(readFileSync(this.neutrinoContractsPath + "liquidation.ride",'utf8'))).result.base64 ;
         const setScriptLiquidationTx = setScript({ script: scriptLiquidationContract, fee: 1000000, chainId: chainId }, accounts.liquidationContract.phrase);    
-        const scriptAuctionContract = fs.readFileSync(this.neutrinoContractsPath + "auction.data",'utf8');
+        const scriptAuctionContract = (<ICompilationResult>await compile(readFileSync(this.neutrinoContractsPath + "auction.ride",'utf8'))).result.base64 ;
         const setScriptAuctionTx = setScript({ script: scriptAuctionContract, fee: 1000000, chainId: chainId }, accounts.auctionContract.phrase);
-        const scriptControlContract = fs.readFileSync(this.neutrinoContractsPath + "control.data",'utf8');
+        const scriptControlContract =  (<ICompilationResult>await compile(readFileSync(this.neutrinoContractsPath + "control.ride",'utf8'))).result.base64 ;
         const setScriptControlTx = setScript({ script: scriptControlContract, fee: 1000000, chainId: chainId }, accounts.controlContract.phrase);       
-        const scriptRPDContract = fs.readFileSync(this.neutrinoContractsPath + "rpd.data",'utf8');
+        const scriptRPDContract =  (<ICompilationResult>await compile(readFileSync(this.neutrinoContractsPath + "rpd.ride",'utf8'))).result.base64 ;
         const setScriptRPDTx = setScript({ script: scriptRPDContract, fee: 1000000, chainId: chainId }, accounts.rpdContract.phrase);        
         
         await broadcast(setScriptNeutrinoTx, nodeUrl);
@@ -159,20 +161,21 @@ export class ContractHelper{
         await broadcast(setScriptControlTx, nodeUrl);
         await broadcast(setScriptRPDTx, nodeUrl);
 
-        
-        await waitForTx(issueTx.id, nodeUrl)
-        await waitForTx(issueBondTx.id, nodeUrl)
 
-        await waitForTx(auctionDataTx.id, nodeUrl)
-        await waitForTx(neutrinoDataTx.id, nodeUrl);
-        await waitForTx(controlDataTx.id, nodeUrl);
-        await waitForTx(rpdDataTx.id, nodeUrl);
+        await waitForTx(issueTx.id, {apiBase: nodeUrl })
+        await waitForTx(issueBondTx.id, {apiBase: nodeUrl })
 
-        await waitForTx(setScriptNeutrinoTx.id, nodeUrl)
-        await waitForTx(setScriptAuctionTx.id, nodeUrl)
-        await waitForTx(setScriptLiquidationTx.id, nodeUrl)
-        await waitForTx(setScriptControlTx.id, nodeUrl)
-        await waitForTx(setScriptRPDTx.id, nodeUrl)
+        await waitForTx(auctionDataTx.id, {apiBase: nodeUrl })
+        await waitForTx(liquidationDataTx.id, {apiBase: nodeUrl })
+        await waitForTx(neutrinoDataTx.id, {apiBase: nodeUrl });
+        await waitForTx(controlDataTx.id, {apiBase: nodeUrl });
+        await waitForTx(rpdDataTx.id, {apiBase: nodeUrl });
+
+        await waitForTx(setScriptNeutrinoTx.id, {apiBase: nodeUrl })
+        await waitForTx(setScriptAuctionTx.id, {apiBase: nodeUrl })
+        await waitForTx(setScriptLiquidationTx.id, {apiBase: nodeUrl })
+        await waitForTx(setScriptControlTx.id, {apiBase: nodeUrl })
+        await waitForTx(setScriptRPDTx.id, {apiBase: nodeUrl })
 
         return accounts;
     }
