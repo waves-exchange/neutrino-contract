@@ -73,17 +73,19 @@ export class NeutrinoApi {
     }
     public async withdraw(seed: string, assetId: string = null): Promise<string> {
         const userAddress = (new Seed(seed, this.chainId)).address;
-        const contractData = await accountData({ address: this.controlContractAddress, match: NeutrinoContractKeys.PrefixPriceIndexKey + "([0-9]{1,7})" }, this.nodeUrl);
+        const contractData = await accountData(this.controlContractAddress, this.nodeUrl);
         const unblockHeight = (await accountDataByKey(NeutrinoContractKeys.PrefixBalanceUnlockBlock + userAddress, this.neutrinoContractAddress, this.nodeUrl)).value;
-       
         let wihdrawIndex = 0;
         let heightByindex = 0;
         for(var key in contractData) {
+            if(!key.startsWith(NeutrinoContractKeys.PrefixPriceIndexKey))
+                continue;
             if(contractData[key].value >= heightByindex && contractData[key].value < unblockHeight){
                 wihdrawIndex = <number><unknown>key.replace(NeutrinoContractKeys.PrefixPriceIndexKey, "")
                 heightByindex = <number>contractData[key].value;
             }
         }
+        console.log(wihdrawIndex)
         const tx = invokeScript({
             dApp: this.neutrinoContractAddress,
             call: { function: "withdraw", args: [

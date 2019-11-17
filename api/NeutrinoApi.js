@@ -152,7 +152,7 @@ var NeutrinoApi = /** @class */ (function () {
                 switch (_a.label) {
                     case 0:
                         userAddress = (new seedUtils_1.Seed(seed, this.chainId)).address;
-                        return [4 /*yield*/, nodeInteraction_1.accountData({ address: this.controlContractAddress, match: NeutrinoContractKeys_1.NeutrinoContractKeys.PrefixPriceIndexKey + "([0-9]{1,7})" }, this.nodeUrl)];
+                        return [4 /*yield*/, nodeInteraction_1.accountData(this.controlContractAddress, this.nodeUrl)];
                     case 1:
                         contractData = _a.sent();
                         return [4 /*yield*/, nodeInteraction_1.accountDataByKey(NeutrinoContractKeys_1.NeutrinoContractKeys.PrefixBalanceUnlockBlock + userAddress, this.neutrinoContractAddress, this.nodeUrl)];
@@ -161,11 +161,14 @@ var NeutrinoApi = /** @class */ (function () {
                         wihdrawIndex = 0;
                         heightByindex = 0;
                         for (key in contractData) {
+                            if (!key.startsWith(NeutrinoContractKeys_1.NeutrinoContractKeys.PrefixPriceIndexKey))
+                                continue;
                             if (contractData[key].value >= heightByindex && contractData[key].value < unblockHeight) {
                                 wihdrawIndex = key.replace(NeutrinoContractKeys_1.NeutrinoContractKeys.PrefixPriceIndexKey, "");
                                 heightByindex = contractData[key].value;
                             }
                         }
+                        console.log(wihdrawIndex);
                         tx = waves_transactions_1.invokeScript({
                             dApp: this.neutrinoContractAddress,
                             call: { "function": "withdraw", args: [

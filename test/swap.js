@@ -1,9 +1,11 @@
 const deployHelper = require('../helpers/deployHelper.js');
 const neutrinoHelper = require('../api/NeutrinoApi.js');
+const oracleHelper = require('../api/OracleApi.js');
 
 let price = 0;
 let deployResult = {}
 let neutrinoApi = null;
+let oracleApi = null;
 describe('Swap test', async function () {
     before(async function () {
         deployResult = await deployHelper.deploy("TST-N", "TST-NB", "test asset", "test bond asset", "")
@@ -24,19 +26,9 @@ describe('Swap test', async function () {
 
         price = deployHelper.getRandomArbitrary(1, 9999)
         
-        const priceDataTx = data({
-            data: [
-                { key: "price", value: price },
-                { key: "price_index_0", value: 1 },
-                { key: "price_1", value: price }
-            ],
-            fee: 500000
-        }, deployResult.accounts.controlContract);
-
-        await broadcast(priceDataTx);
-
-        await waitForTx(priceDataTx.id);
         neutrinoApi = await neutrinoHelper.NeutrinoApi.create(env.API_BASE, env.CHAIN_ID, address(deployResult.accounts.neutrinoContract));
+        oracleApi = await oracleHelper.OracleApi.create(env.API_BASE, env.CHAIN_ID, address(deployResult.accounts.neutrinoContract));
+        await oracleApi.forceSetCurrentPrice(100, deployResult.accounts.controlContract)
     });
     
     it('Swap Waves to Neutrino', async function () {
@@ -53,7 +45,7 @@ describe('Swap test', async function () {
     it('Withdraw neutrino', async function () {
         const priceDataTx = data({
             data: [
-                { key: "balance_block_" + address(accounts.testAccount), value: (await currentHeight()) - 1 }
+                { key: "balance_block_" + address(accounts.testAccount), value: (await currentHeight()) }
             ],
             fee: 500000
         }, deployResult.accounts.neutrinoContract);
