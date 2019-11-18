@@ -75,9 +75,6 @@ let LeasingIntervalKey = "leasing_interval"
 let RPDBalanceKey = "rpd_balance"
 #------RPD contract----------
 func getRPDContractBalanceKey(assetId: ByteVector) = RPDBalanceKey + "_" + toBase58String(assetId)
-#------Auction contract-------
-let TotalOrderbookKey = "total_orderbook"
-let TotalLiquidationOrderbookKey = "total_liquidation_orderbook"
 #------Control contract-------
 let PriceKey = "price"
 let PriceIndexKey = "price_index"
@@ -143,9 +140,6 @@ let deficit = neutrinoSupply - convertWavesToNeutrino(reserve, currentPrice)
 #------RPD contract---------
 # The func is reading balances from rpd.ride
 func getRPDContractBalance(assetId: ByteVector) = getNumberByAddressAndKey(rpdContract, getRPDContractBalanceKey(assetId))
-#------Auction contract------
-let totalLiquidationOrderbook = getNumberByAddressAndKey(auctionContract, TotalLiquidationOrderbookKey)
-let totalOrderbook = getNumberByAddressAndKey(auctionContract, TotalOrderbookKey)
 #------Control contract------
 # The func is reading price from control.ride price history
 func getPriceHistory(block: Int) = getNumberByAddressAndKey(controlContract, getPriceHistoryKey(block))
@@ -260,11 +254,11 @@ func withdraw(account : String, index: Int, lockedAssetId: String) = {
 # [called by pacemaker oracles]
 @Callable(i)
 func transferToAuction() = {
-    let deficitBondAmount = convertNeutrinoToBond(deficit) - assetBalance(addressFromStringValue(auctionContract), bondAssetId) - totalLiquidationOrderbook
-    let surplusBond = convertNeutrinoToBond(surplus) - assetBalance(addressFromStringValue(auctionContract), neutrinoAssetId) - totalOrderbook
+    let deficitBondAmount = convertNeutrinoToBond(deficit) - assetBalance(addressFromStringValue(auctionContract), bondAssetId)
+        let surplusBond = convertNeutrinoToBond(surplus) - assetBalance(addressFromStringValue(auctionContract), neutrinoAssetId)
     if(isBlocked)
         then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles") # see control.ride
-    else if(deficitBondAmount >= neutrinoSupply*DEFICITOFFSET/100)
+    else if(deficitBondAmount >= convertNeutrinoToBond(neutrinoSupply)*DEFICITOFFSET/100)
         then TransferSet([ScriptTransfer(addressFromStringValue(auctionContract), deficitBondAmount, bondAssetId)])
     else if(surplusBond > 0)
         then TransferSet([ScriptTransfer(addressFromStringValue(liquidationContract), convertBondToNeutrino(surplusBond), neutrinoAssetId)])

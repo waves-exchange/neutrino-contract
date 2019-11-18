@@ -76,7 +76,6 @@ let reserve = wavesBalance(neutrinoContract) - swapWavesLockedBalance
 let neutrinoSupply = extract(assetInfo(neutrinoAssetId)).quantity - assetBalance(neutrinoContract, neutrinoAssetId) + swapNeutrinoLockedBalance
 let surplus = convertWavesToNeutrino(reserve, currentPrice) - neutrinoSupply + assetBalance(this, neutrinoAssetId)
 
-
 #-------------------Get functions------------------------
 func getOrderTotal(id : String) = getNumberByKey(getOrderTotalKey(id))
 func getOrderOwner(id : String) = getStringByKey(getOrderOwnerKey(id))
@@ -164,24 +163,41 @@ func liquidateBond() = {
     let filledTotal = getOrderFilledTotal(orderId)
 
     let surplusBond = convertNeutrinoToBond(surplus)
-    if(surplusBond <= 0) 
-        then throw("there is no proficit on the smart contract now")
+
+    let neutrinoBalance = assetBalance(this, neutrinoAssetId)
+    let surplusPositive = if(surplus <= 0) then 0 else surplus
+    let bondAmount = if(surplusPositive >= neutrinoBalance) then neutrinoBalance else surplusPositive
+    let returnAmount = if(surplusPositive >= neutrinoBalance) then 0 else neutrinoBalance-surplusPositive
+  
+    if(returnAmount == 0 && neutrinoBalance == 0)
+        then throw("without surplus")
+    else if(neutrinoBalance == 0) then {
+        TransferSet([
+            ScriptTransfer(neutrinoContract, returnAmount, neutrinoAssetId)
+        ])
+    }
     else if(orderbook == "")
         then throw("empty orderbook")
     else {
-        let amount = orderTotal-filledTotal;
-        let status = if(surplusBond >= amount) then FILLED else NEW
-        let newFilledTotal = if(surplusBond >= amount) then amount else surplusBond
+        if(surplusBond <= 0) 
+            then throw("there is no proficit on the smart contract now")
+        else if(orderbook == "")
+            then throw("empty orderbook")
+        else {
+            let amount = orderTotal-filledTotal;
+            let status = if(surplusBond >= amount) then FILLED else NEW
+            let newFilledTotal = if(surplusBond >= amount) then amount else surplusBond
 
-        ScriptResult(
-            WriteSet([
-                DataEntry(OrderbookKey, if(surplusBond >= amount) then dropOrder(orderId) else orderbook),
-                DataEntry(getOrderFilledTotalKey(orderId), filledTotal + newFilledTotal),
-                DataEntry(getOrderStatusKey(orderId), status)
-            ]), 
-            TransferSet([
-                ScriptTransfer(addressFromStringValue(orderOwner), convertBondToNeutrino(newFilledTotal), neutrinoAssetId)
-            ])
-        )
+            ScriptResult(
+                WriteSet([
+                    DataEntry(OrderbookKey, if(surplusBond >= amount) then dropOrder(orderId) else orderbook),
+                    DataEntry(getOrderFilledTotalKey(orderId), filledTotal + newFilledTotal),
+                    DataEntry(getOrderStatusKey(orderId), status)
+                ]), 
+                TransferSet([
+                    ScriptTransfer(addressFromStringValue(orderOwner), convertBondToNeutrino(newFilledTotal), neutrinoAssetId)
+                ])
+            )
+        }
     }
 }
