@@ -220,6 +220,7 @@ func dropOrder(orderId: String) = {
 @Callable(i)
 func swapWavesToNeutrino() = {
     let pmt = extract(i.payment)
+    let wavesAmount = pmt.amount*98/100;
     if (pmt.amount < minWavesSwapAmount)
         then throw("The specified Waves amount is less than the required minimum of " + toString(minWavesSwapAmount) + " wavelets.")
     else if (isDefined(pmt.assetId))
@@ -227,7 +228,7 @@ func swapWavesToNeutrino() = {
     else if(isBlocked)
         then throw("The contract is blocked by EMERGENCY SHUTDOWN. Please wait for reactivation by emergency oracles.") # see control.ride
     else{
-        let amount = convertWavesToNeutrino(pmt.amount)
+        let amount = convertWavesToNeutrino(wavesAmount)
         TransferSet([
             ScriptTransfer(i.caller, amount, neutrinoAssetId)
         ])
