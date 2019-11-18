@@ -139,7 +139,7 @@ var NeutrinoApi = /** @class */ (function () {
                         return [4 /*yield*/, waves_transactions_1.nodeInteraction.currentHeight(this.nodeUrl)];
                     case 2:
                         currentHeight = _a.sent();
-                        return [2 /*return*/, unblockHeight > currentHeight];
+                        return [2 /*return*/, currentHeight >= unblockHeight];
                 }
             });
         });
@@ -163,7 +163,7 @@ var NeutrinoApi = /** @class */ (function () {
                         for (key in contractData) {
                             if (!key.startsWith(NeutrinoContractKeys_1.NeutrinoContractKeys.PrefixPriceIndexKey))
                                 continue;
-                            if (contractData[key].value >= heightByindex && contractData[key].value < unblockHeight) {
+                            if (contractData[key].value >= heightByindex && contractData[key].value <= unblockHeight) {
                                 wihdrawIndex = key.replace(NeutrinoContractKeys_1.NeutrinoContractKeys.PrefixPriceIndexKey, "");
                                 heightByindex = contractData[key].value;
                             }
