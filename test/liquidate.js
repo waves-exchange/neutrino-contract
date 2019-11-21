@@ -1,7 +1,12 @@
-var deployHelper = require('../helpers/deployHelper.js');
+const deployHelper = require('../api/ContractHelper.js');
+const neutrinoHelper = require('../api/NeutrinoApi.js');
+const oracleHelper = require('../api/OracleApi.js');
+
 
 let deployResult = {}
 let orderCount = 4;
+let neutrinoApi = null;
+let oracleApi = null;
 describe('Liqidate test', async function () {
     before(async function () {
         deployResult = await deployHelper.deploy("TST-N", "TST-NB", "test asset", "test bond asset", "")
@@ -35,21 +40,16 @@ describe('Liqidate test', async function () {
         await broadcast(massNeutrinoTx);
 
         await waitForTx(massNeutrinoTx.id);
+        neutrinoApi = await neutrinoHelper.NeutrinoApi.create(env.API_BASE, env.CHAIN_ID, address(deployResult.accounts.neutrinoContract));
+        oracleApi = await oracleHelper.OracleApi.create(env.API_BASE, env.CHAIN_ID, address(deployResult.accounts.neutrinoContract));
     });
     it('Add orders', async function () {
         for (let i = 0; i < orderCount; i++) {
-            const amount = Math.floor(deployHelper.getRandomArbitrary(11, 50))
+            const amount = Math.floor(deployHelper.getRandomArbitrary(11, 1000))
 
-            const tx = invokeScript({
-                dApp: address(deployResult.accounts.neutrinoContract),
-                call: { function: "setOrder" },
-                payment: [{ assetId: deployResult.assets.bondAssetId, amount: amount }]
-            }, accounts.testAccount);
-
-            await broadcast(tx);
-            await waitForTx(tx.id);
-
-            const state = await stateChanges(tx.id);
+            const id = await neutrinoApi.addLiquidationOrder(amount, accounts.testAccount)
+        
+           /* const state = await stateChanges(id);
             const data = deployHelper.convertDataStateToObject(state.data)
             const orderHash = data.orderbook.split("_")[i] //TODO hash
 
@@ -58,26 +58,19 @@ describe('Liqidate test', async function () {
             else if (data["order_owner_" + orderHash] != address(accounts.testAccount))
                 throw "invalid order owner"
             else if (data["order_status_" + orderHash] != "new")
-                throw "invalid order status"
+                throw "invalid order status"*/
         }
     })
     it('Cancel order', async function () {
-        const index = deployHelper.getRandomArbitrary(0, orderCount - 1)
-        const data = await accountData(address(deployResult.accounts.neutrinoContract))
-        const orders = data.orderbook.value.split("_")
+        const index = deployHelper.getRandomArbitrary(0, orderCount - 2)
+        const data = await accountData(address(deployResult.accounts.liquidationContract))
+        const orders = data["orderbook"].value.split("_")
+        const id = await neutrinoApi.cancelLiquidationOrder(orders[index], accounts.testAccount)
 
-        const tx = invokeScript({
-            dApp: address(deployResult.accounts.neutrinoContract),
-            call: { function: "cancelOrder", args: [{ type: "string", value: orders[index] }] }
-        }, accounts.testAccount);
-
-        await broadcast(tx);
-        await waitForTx(tx.id);
-
-        const state = await stateChanges(tx.id);
+        const state = await stateChanges(id);
         const dataState = deployHelper.convertDataStateToObject(state.data)
 
-        const newOrderbookItems = data.orderbook.value.split(orders[index] + "_")
+        const newOrderbookItems = data["orderbook"].value.split(orders[index] + "_")
         const newOrderbook = newOrderbookItems[0] + newOrderbookItems[1]
 
         const amount = data["order_total_" + orders[index]].value
@@ -93,7 +86,7 @@ describe('Liqidate test', async function () {
             throw "invalid asset"
     })
     it('Partially filled order', async function () {
-        const data = await accountData(address(deployResult.accounts.neutrinoContract))
+        const data = await accountData(address(deployResult.accounts.liquidationContract))
         const orderHash = data.orderbook.value.split("_")[0]
         const totalOrder = Math.floor(data["order_total_" + orderHash].value / 2)
 
@@ -105,15 +98,10 @@ describe('Liqidate test', async function () {
         await broadcast(transferTx);
         await waitForTx(transferTx.id);
 
-        const tx = invokeScript({
-            dApp: address(deployResult.accounts.neutrinoContract),
-            call: { function: "executeOrder" }
-        }, env.SEED);
+        await oracleApi.transferToAuction(accounts.testAccount);
+        let id = await oracleApi.executeLiquidationOrder(accounts.testAccount);
 
-        await broadcast(tx);
-        await waitForTx(tx.id);
-
-        const state = await stateChanges(tx.id);
+        const state = await stateChanges(id);
         const dataState = deployHelper.convertDataStateToObject(state.data)
 
         const transferToOrderOwner = state.transfers.find(x => x.address == address(accounts.testAccount))
@@ -131,7 +119,7 @@ describe('Liqidate test', async function () {
 
     })
     it('Fully filled order', async function () {
-        const data = await accountData(address(deployResult.accounts.neutrinoContract))
+        const data = await accountData(address(deployResult.accounts.liquidationContract))
         const orderHash = data.orderbook.value.split("_")[0]
         const totalOrder = data["order_total_" + orderHash].value
 
@@ -143,15 +131,9 @@ describe('Liqidate test', async function () {
         await broadcast(transferTx);
         await waitForTx(transferTx.id);
 
-        const tx = invokeScript({
-            dApp: address(deployResult.accounts.neutrinoContract),
-            call: { function: "executeOrder" }
-        }, env.SEED);
-
-        await broadcast(tx);
-        await waitForTx(tx.id);
-
-        const state = await stateChanges(tx.id);
+        await oracleApi.transferToAuction(accounts.testAccount);
+        let id = await oracleApi.executeLiquidationOrder(accounts.testAccount);
+        const state = await stateChanges(id);
         const dataState = deployHelper.convertDataStateToObject(state.data)
 
         const transferToOrderOwner = state.transfers.find(x => x.address == address(accounts.testAccount))

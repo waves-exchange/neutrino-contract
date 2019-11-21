@@ -1,20 +1,27 @@
-var deployHelper = require('../helpers/deployHelper.js');
+const deployHelper = require('../api/ContractHelper.js').ContractHelper;
+const NeutrinoApi = require('../api/NeutrinoApi.js').NeutrinoApi;
+const oracleHelper = require('../api/OracleApi.js');
+const testHelper = require('../helpers/testHelper.js');
 
-let price = 0;
 let deployResult = {}
+let neutrinoApi = null;
+let oracleApi = null;
 
 describe('Swap test', async function () {
     before(async function () {
-        deployResult = await deployHelper.deploy("TST-N", "TST-NB", "test asset", "test bond asset", "")
-        
+        deployResult = await deployHelper.deploy(env.SEED, env.API_BASE, env.CHAIN_ID, "./script/", "TST-N", "TST-NB", "test asset", "test bond asset", "") 
+  
+        neutrinoApi = await NeutrinoApi.create(env.API_BASE, env.CHAIN_ID, deployResult.accounts.neutrinoContract.address);
+        oracleApi = await oracleHelper.OracleApi.create(env.API_BASE, env.CHAIN_ID, deployResult.accounts.neutrinoContract.address);
+
         setupAccounts({
-            testAccount: 100000 * deployHelper.WAVELET
+            testAccount: 100000 * NeutrinoApi.WAVELET
         })
         var massTx = massTransfer({
             transfers: [
                 {
-                    amount: 500000,
-                    recipient: address(deployResult.accounts.controlContract)
+                    amount: 1000000,
+                    recipient: deployResult.accounts.controlContract.address
                 }
             ],
             fee: 800000
@@ -22,59 +29,53 @@ describe('Swap test', async function () {
         await broadcast(massTx);
         await waitForTx(massTx.id);
 
-        price = deployHelper.getRandomArbitrary(1, 9999)
-        
-        const priceDataTx = data({
-            data: [
-                { key: "price", value: price }
-            ],
-            fee: 500000
-        }, deployResult.accounts.controlContract);
-
-        await broadcast(priceDataTx);
-
-        await waitForTx(priceDataTx.id);
+        price = testHelper.getRandomArbitary(1, 9999)
+       
+        await oracleApi.forceSetCurrentPrice(100, deployResult.accounts.controlContract.phrase)
     });
     
     it('Swap Waves to Neutrino', async function () {
-        let amount = deployHelper.getRandomArbitrary(1, 9999)
-        const tx = invokeScript({
-            dApp: address(deployResult.accounts.neutrinoContract),
-            call: {function: "swapWavesToNeutrino"},
-            payment: [{assetId: null, amount: amount * deployHelper.WAVELET }]
-        }, accounts.testAccount);
+        let amount = testHelper.getRandomArbitary(1, 9999) * NeutrinoApi.WAVELET
+        let id = await neutrinoApi.issueNeutrino(amount, accounts.testAccount);
+        const state = await stateChanges(id);
+        console.log(state)
+        const dataState = testHelper.convertDataStateToObject(state.data)
+        console.log(dataState["balance_lock_waves_" + address(accounts.testAccount)])
+        console.log(amount)
+        if(dataState["balance_lock_waves_" + address(accounts.testAccount)] != amount)
+            throw "invalid user balance"
+        if(dataState["balance_lock_waves"] != amount)
+            throw "invalid total locked balance"
+    })    
 
-        await broadcast(tx);
-        await waitForTx(tx.id);
-
-        let expectedNeutrinoAmount = amount * price * deployHelper.PAULI/100
-
-        let state = await stateChanges(tx.id);
-        if(state.transfers[0].address != address(accounts.testAccount))
-            throw "transfer address not equals sender address"
-        if(state.transfers[0].asset != deployResult.assets.neutrinoAssetId)
-            throw "transfer asset error"
+    it('Withdraw neutrino', async function () {
+        await oracleApi.forceSetCurrentPrice(100, deployResult.accounts.controlContract.phrase)
+        const priceDataTx = data({
+            data: [
+                { key: "balance_block_" + address(accounts.testAccount), value: (await currentHeight()) }
+            ],
+            fee: 500000
+        }, deployResult.accounts.neutrinoContract.phrase);
         
-        if(expectedNeutrinoAmount != state.transfers[0].amount)
-            throw "expected neutrino amount not equals real neutrino amount" 
+        await broadcast(priceDataTx);
+        await waitForTx(priceDataTx.id);
+
+        let id = await neutrinoApi.withdraw(accounts.testAccount)
+        const dataState = testHelper.convertDataStateToObject((await stateChanges(id)).data)
+        if(dataState["balance_lock_waves_" + address(accounts.testAccount)] != 0)
+            throw "invalid user balance"
+        if(dataState["balance_lock_waves"] != 0)
+            throw "invalid total locked balance"
     })    
     
     it('Swap Neutrino to Waves', async function () {
-        let amount = await assetBalance(deployResult.assets.neutrinoAssetId, address(accounts.testAccount));
-
-        const tx = invokeScript({
-            dApp: address(deployResult.accounts.neutrinoContract),
-            call: {function: "swapNeutrinoToWaves"},
-            payment: [{assetId: deployResult.assets.neutrinoAssetId , amount: amount}]
-        }, accounts.testAccount);
-
-        await broadcast(tx);
-        await waitForTx(tx.id);
-
-        let expectedWavesAmount = amount*100/price*deployHelper.WAVELET/deployHelper.PAULI
-        
-        let state = await stateChanges(tx.id);
-        if(expectedWavesAmount != state.data.find(obj => obj.key === "waves_"+address(accounts.testAccount) ).value)
-            throw "expected waves amount not equals real waves amount" 
+        let amount = testHelper.getRandomArbitary(1, 9999) * NeutrinoApi.PAULI
+        let id = await neutrinoApi.redeemWaves(amount, accounts.testAccount);
+        const state = await stateChanges(id);
+        const dataState = testHelper.convertDataStateToObject(state.data)
+        if(dataState["balance_lock_neutrino_" + deployResult.assets.neutrinoAssetId + "_" + address(accounts.testAccount)] != amount)
+            throw "invalid user balance"
+        if(dataState["balance_lock_neutrino" + deployResult.assets.neutrinoAssetId] != amount)
+            throw "invalid total locked balance"
     })
 })
