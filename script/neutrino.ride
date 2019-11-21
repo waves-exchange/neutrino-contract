@@ -1,6 +1,10 @@
 {-# STDLIB_VERSION 3 #-}
 {-# CONTENT_TYPE DAPP #-}
 {-# SCRIPT_TYPE ACCOUNT #-}
+#
+# Main Smart Contract of Neutrino Protocol
+# Implemented actions: Swap, Bond Liquidation, Leasing
+#
 
 #-------------------Base functions----------------------
 func getNumberByKey(key: String) = {
@@ -135,7 +139,7 @@ func getUnlockBalanceBlock(owner : String) = getNumberByKey(getBalanceUnlockBloc
 func getRPDProfit(count: Int) = getNumberByKey(getRPDProfitKey(count))
 #-------------------Callable----------------------
 
-# Instant swap WAVES to Neutrino token for current price on SC
+# Instant swap of WAVES to Neutrino token at the current price on the smart contract
 # [called by user]
 @Callable(i)
 func swapWavesToNeutrino() = {
@@ -143,9 +147,9 @@ func swapWavesToNeutrino() = {
     let account = toString(i.caller)
     
     if (pmt.amount < minWavesSwapAmount)
-        then throw("an amount is less than min available amount: " + toString(minWavesSwapAmount) + " wavelets")
-    else if (isDefined(pmt.assetId)) 
-        then throw("can use waves only")
+        then throw("The specified Waves amount is less than the required minimum of " + toString(minWavesSwapAmount) + " wavelets.")
+    else if (isDefined(pmt.assetId))
+        then throw("Only Waves token is allowed for swapping.")
     else if(isBlocked)
         then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles") # see control.ride
     else if(getUnlockBalanceBlock(account) > height)
@@ -161,19 +165,19 @@ func swapWavesToNeutrino() = {
     }
 }
 
-# Swap request Neutrino to WAVES. After {balanceLockInterval} blocks WAVES tokens will be available for withdraw with {withdraw(account : String)} method.
-# with price at the moment of {balanceLockInterval} has reached
+# Swap request of Neutrino to WAVES. After {balanceLockInterval} blocks, WAVES tokens will be available for withdrawal
+# via {withdraw(account : String)} method at the price that is current at the time when {balanceLockInterval} is reached
 # [called by user]
 @Callable(i)
 func swapNeutrinoToWaves() = {
     let pmt = extract(i.payment)
     let account = toString(i.caller)
     if (pmt.amount < minNeutrinoSwapAmount)
-        then throw("an amount is less than min available amount: " + toString(minNeutrinoSwapAmount) + " neutrino cents")
+        then throw("The specified Neutrino amount is less than the required minimum of " + toString(minNeutrinoSwapAmount) + " Neutrino cents.")
     else if(isBlocked)
-        then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles") # see control.ride
-    else if (pmt.assetId != neutrinoAssetId) 
-        then throw("can use appropriate neutrino tokens only")
+        then throw("The contract is blocked by EMERGENCY SHUTDOWN. Please wait for reactivation by emergency oracles.") # see control.ride
+    else if (pmt.assetId != neutrinoAssetId)
+        then throw("Only appropriate Neutrino tokens are allowed for swapping.")
     else if(getUnlockBalanceBlock(account) > height)
         then throw("await " + toString(getUnlockBalanceBlock(account) - height) + " blocks")
     else if (getNeutrinoLockedBalance(account) != 0 || getWavesLockedBalance(account) != 0)
@@ -187,8 +191,8 @@ func swapNeutrinoToWaves() = {
     }
 }
 
-# Withdraw WAVES from SC after {swapNeutrinoToWaves()} request is reached {balanceLockInterval} height 
-# with price at the moment of {balanceLockInterval} has reached.
+# Withdraw WAVES from smart contract after {swapNeutrinoToWaves()} request has reached {balanceLockInterval} height
+# at the price that is current at the time when {balanceLockInterval} is reached
 # [called by user]
 @Callable(i)
 func withdraw(account : String, index: Int) = {
@@ -228,8 +232,8 @@ func withdraw(account : String, index: Int) = {
     }
 }
 
-# transfering bonds from main SC to auction.ride to fill 'buy bonds' orders
-# it's calling n-times untill all orders on auction.ride will be executed during deficit stage
+# Transfers bonds from neutrino.ride to auction.ride to fulfill 'buy bonds' orders
+# Is called n-times during the deficit stage until all pending orders on auction.ride are fulfilled
 # [called by pacemaker oracles]
 @Callable(i)
 func transferToAuction() = {
@@ -244,7 +248,7 @@ func transferToAuction() = {
     else throw("bond were generated or do not need it. Deficit:" + toString(deficitBondAmount) + "|" + toString(neutrinoSupply*DEFICITOFFSET/100) + ". Surplus:" + toString(surplusBond))
 }
 
-# transfer tokens from one address to another through smart contact
+# Transfers tokens from one address to another via smart contact
 # [called by user]
 @Callable(i)
 func transfer(account: String) = {
