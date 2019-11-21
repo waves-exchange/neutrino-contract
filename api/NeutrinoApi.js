@@ -144,8 +144,7 @@ var NeutrinoApi = /** @class */ (function () {
             });
         });
     };
-    NeutrinoApi.prototype.withdraw = function (seed, assetId) {
-        if (assetId === void 0) { assetId = null; }
+    NeutrinoApi.prototype.withdraw = function (seed) {
         return __awaiter(this, void 0, void 0, function () {
             var userAddress, contractData, unblockHeight, wihdrawIndex, heightByindex, key, tx;
             return __generator(this, function (_a) {
@@ -173,8 +172,7 @@ var NeutrinoApi = /** @class */ (function () {
                             dApp: this.neutrinoContractAddress,
                             call: { "function": "withdraw", args: [
                                     { type: "string", value: userAddress },
-                                    { type: "integer", value: wihdrawIndex },
-                                    { type: "string", value: assetId == null ? "waves" : assetId }
+                                    { type: "integer", value: wihdrawIndex }
                                 ] },
                             chainId: this.chainId
                         }, seed);

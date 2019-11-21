@@ -1,4 +1,4 @@
-var deployHelper = require('../helpers/deployHelper.js');
+const deployHelper = require('../api/ContractHelper.js');
 let deployResult = {}
 
 describe('Oracle test', async function () {

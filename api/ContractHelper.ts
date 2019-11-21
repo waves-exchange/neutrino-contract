@@ -1,43 +1,48 @@
 import { broadcast, data, seedUtils, massTransfer, waitForTx, issue, setScript} from "@waves/waves-transactions"
-import { NeutrinoContractAccounts } from "./models/NeutrinoContractAccounts";
+import { DeployInfo } from "./models/NeutrinoContractAccounts";
 import { readFileSync } from 'fs'
 import { compile, ICompilationResult } from '@waves/ride-js'
 
 export class ContractHelper{
-    static readonly neutrinoContractsPath = "../script/"
-    static async deploy(distributorSeed, nodeUrl, chainId, symbolNeutrino, symbolBond, descriptionNeutrino, descriptionBond, nodeAddress, nodeOracleProvider = nodeAddress, leasingInterval = 10080): Promise<NeutrinoContractAccounts>{
-        let accounts: NeutrinoContractAccounts = 
+    static async deploy(distributorSeed, nodeUrl, chainId, dirScriptsPath, symbolNeutrino, symbolBond, descriptionNeutrino, descriptionBond, nodeAddress, nodeOracleProvider = nodeAddress, leasingInterval = 10080): Promise<DeployInfo>{
+        let deployInfo: DeployInfo = 
         {
-            oracles: Array(5).fill(null).map(() => new seedUtils.Seed(seedUtils.generateNewSeed(), chainId)),
-            admins: Array(5).fill(null).map(() => new seedUtils.Seed(seedUtils.generateNewSeed(),chainId)),
-            auctionContract: new seedUtils.Seed(seedUtils.generateNewSeed(), chainId),
-            neutrinoContract: new seedUtils.Seed(seedUtils.generateNewSeed(), chainId),
-            rpdContract: new seedUtils.Seed(seedUtils.generateNewSeed(), chainId),
-            controlContract: new seedUtils.Seed(seedUtils.generateNewSeed(), chainId),
-            liquidationContract: new seedUtils.Seed(seedUtils.generateNewSeed(), chainId)
+            accounts: {
+                oracles: Array(5).fill(null).map(() => new seedUtils.Seed(seedUtils.generateNewSeed(), chainId)),
+                admins: Array(5).fill(null).map(() => new seedUtils.Seed(seedUtils.generateNewSeed(),chainId)),
+                auctionContract: new seedUtils.Seed(seedUtils.generateNewSeed(), chainId),
+                neutrinoContract: new seedUtils.Seed(seedUtils.generateNewSeed(), chainId),
+                rpdContract: new seedUtils.Seed(seedUtils.generateNewSeed(), chainId),
+                controlContract: new seedUtils.Seed(seedUtils.generateNewSeed(), chainId),
+                liquidationContract: new seedUtils.Seed(seedUtils.generateNewSeed(), chainId)
+            },
+            assets: {
+                neutrinoAssetId: null,
+                bondAssetId: null
+            }
         }
      
         var massTx = massTransfer({
             transfers: [
                 {
                     amount: 1500000,
-                    recipient: accounts.auctionContract.address,
+                    recipient: deployInfo.accounts.auctionContract.address,
                 },
                 {
                     amount: 201500000,
-                    recipient: accounts.neutrinoContract.address,
+                    recipient: deployInfo.accounts.neutrinoContract.address,
                 },
                 {
                     amount: 1500000,
-                    recipient: accounts.rpdContract.address,
+                    recipient: deployInfo.accounts.rpdContract.address,
                 },
                 {
                     amount: 1500000,
-                    recipient:  accounts.controlContract.address,
+                    recipient:  deployInfo.accounts.controlContract.address,
                 },
                 {
                     amount: 1500000,
-                    recipient: accounts.liquidationContract.address
+                    recipient: deployInfo.accounts.liquidationContract.address
                 }
                
             ],
@@ -48,16 +53,16 @@ export class ContractHelper{
         await waitForTx(massTx.id, {apiBase: nodeUrl })
 
         let oraclesAddress = ""
-        for(let i = 0; i < accounts.oracles.length; i++){
+        for(let i = 0; i < deployInfo.accounts.oracles.length; i++){
             if(oraclesAddress != "")
                 oraclesAddress += ","
-            oraclesAddress += accounts.oracles[i].address
+            oraclesAddress += deployInfo.accounts.oracles[i].address
         }
         let adminsAddress = ""
-        for(let i = 0; i < accounts.admins.length; i++){
+        for(let i = 0; i < deployInfo.accounts.admins.length; i++){
             if(adminsAddress != "")
                 adminsAddress += ","
-            adminsAddress += accounts.admins[i].address
+            adminsAddress += deployInfo.accounts.admins[i].address
         }
 
         const issueTx = issue({
@@ -66,9 +71,9 @@ export class ContractHelper{
             quantity: "100000000000000",
             decimals: 2,
             chainId: chainId
-        }, accounts.neutrinoContract.phrase)
+        }, deployInfo.accounts.neutrinoContract.phrase)
 
-        const neutrinoAssetId = issueTx.id;
+        deployInfo.assets.neutrinoAssetId = issueTx.id;
 
         const issueBondTx = issue({
             name: symbolBond,
@@ -76,42 +81,41 @@ export class ContractHelper{
             quantity: "1000000000000",
             decimals: 0,
             chainId: chainId
-        }, accounts.neutrinoContract.phrase);
+        }, deployInfo.accounts.neutrinoContract.phrase);
 
-        const bondAssetId = issueBondTx.id;
+        deployInfo.assets.bondAssetId = issueBondTx.id;
+        
         
         const neutrinoDataTx = data({
             data: [
-                { key: "control_contract", value: accounts.controlContract.address },
-                { key: 'neutrino_asset_id', value: neutrinoAssetId },
-                { key: 'bond_asset_id', value: bondAssetId },
-                { key: 'auction_contract', value: accounts.auctionContract.address },
-                { key: "balance_lock_interval", value: 30 },
-                { key: "vote_interval", value: 10 },
+                { key: "control_contract", value: deployInfo.accounts.controlContract.address },
+                { key: 'neutrino_asset_id', value: deployInfo.assets.neutrinoAssetId },
+                { key: 'bond_asset_id', value: deployInfo.assets.bondAssetId },
+                { key: 'auction_contract', value: deployInfo.accounts.auctionContract.address },
                 { key: "min_waves_swap_amount", value: 100000000 },
                 { key: "min_neutrino_swap_amount", value: 10000 },
-                { key: 'rpd_contract', value: accounts.rpdContract.address },
-                { key: 'node_address', value: nodeAddress },
-                { key: 'leasing_interval', value: leasingInterval },
-                { key: "liquidation_contract", value: accounts.liquidationContract.address },
-                { key: 'oracle_node_provider', value: nodeOracleProvider}
+                { key: "balance_waves_lock_interval", value: 1 },
+                { key: "balance_neutrino_lock_interval", value: 5 },
+                { key: 'rpd_contract', value: deployInfo.accounts.rpdContract.address },
+                { key: "liquidation_contract", value: deployInfo.accounts.liquidationContract.address },
+                { key: 'node_oracle_provider', value: nodeOracleProvider}
             ],
             fee: 500000
-        }, accounts.neutrinoContract.phrase);
+        }, deployInfo.accounts.neutrinoContract.phrase);
 
         const auctionDataTx = data({
             data: [
-                { key: 'neutrino_contract', value: accounts.neutrinoContract.address },
+                { key: 'neutrino_contract', value: deployInfo.accounts.neutrinoContract.address },
             ],
             fee: 500000
-        }, accounts.auctionContract.phrase);
+        }, deployInfo.accounts.auctionContract.phrase);
         
         const liquidationDataTx = data({
             data: [
-                { key: 'neutrino_contract', value: accounts.neutrinoContract.address },
+                { key: 'neutrino_contract', value: deployInfo.accounts.neutrinoContract.address },
             ],
             fee: 500000
-        }, accounts.liquidationContract.phrase);
+        }, deployInfo.accounts.liquidationContract.phrase);
 
         const controlDataTx = data({
             data: [
@@ -125,14 +129,14 @@ export class ContractHelper{
                 { key: 'price', value: 100 }
             ],
             fee: 500000
-        }, accounts.controlContract.phrase);
+        }, deployInfo.accounts.controlContract.phrase);
 
         const rpdDataTx = data({
             data: [
-                { key: 'neutrino_contract', value: accounts.neutrinoContract.address },
+                { key: 'neutrino_contract', value: deployInfo.accounts.neutrinoContract.address },
             ],
             fee: 500000
-        }, accounts.rpdContract.phrase);
+        }, deployInfo.accounts.rpdContract.phrase);
 
     
         await broadcast(issueTx, nodeUrl);
@@ -143,22 +147,24 @@ export class ContractHelper{
         await broadcast(controlDataTx, nodeUrl);
         await broadcast(rpdDataTx, nodeUrl);
 
-
-        const scriptNeutrinoContract = (<ICompilationResult>await compile(readFileSync(this.neutrinoContractsPath + "neutrino.ride",'utf8'))).result.base64 ;
-        const setScriptNeutrinoTx = setScript({ script: scriptNeutrinoContract, fee: 1000000, chainId: chainId }, accounts.neutrinoContract.phrase);
-        const scriptLiquidationContract =  (<ICompilationResult>await compile(readFileSync(this.neutrinoContractsPath + "liquidation.ride",'utf8'))).result.base64 ;
-        const setScriptLiquidationTx = setScript({ script: scriptLiquidationContract, fee: 1000000, chainId: chainId }, accounts.liquidationContract.phrase);    
-        const scriptAuctionContract = (<ICompilationResult>await compile(readFileSync(this.neutrinoContractsPath + "auction.ride",'utf8'))).result.base64 ;
-        const setScriptAuctionTx = setScript({ script: scriptAuctionContract, fee: 1000000, chainId: chainId }, accounts.auctionContract.phrase);
-        const scriptControlContract =  (<ICompilationResult>await compile(readFileSync(this.neutrinoContractsPath + "control.ride",'utf8'))).result.base64 ;
-        const setScriptControlTx = setScript({ script: scriptControlContract, fee: 1000000, chainId: chainId }, accounts.controlContract.phrase);       
-        const scriptRPDContract =  (<ICompilationResult>await compile(readFileSync(this.neutrinoContractsPath + "rpd.ride",'utf8'))).result.base64 ;
-        const setScriptRPDTx = setScript({ script: scriptRPDContract, fee: 1000000, chainId: chainId }, accounts.rpdContract.phrase);        
-        
+        const scriptNeutrinoContract = (<ICompilationResult>await compile(readFileSync(dirScriptsPath + "neutrino.ride",'utf8'))).result.base64 ;
+        const setScriptNeutrinoTx = setScript({ script: scriptNeutrinoContract, fee: 1000000, chainId: chainId }, deployInfo.accounts.neutrinoContract.phrase);
         await broadcast(setScriptNeutrinoTx, nodeUrl);
-        await broadcast(setScriptAuctionTx, nodeUrl);
+
+        const scriptLiquidationContract =  (<ICompilationResult>await compile(readFileSync(dirScriptsPath + "liquidation.ride",'utf8'))).result.base64 ;
+        const setScriptLiquidationTx = setScript({ script: scriptLiquidationContract, fee: 1000000, chainId: chainId }, deployInfo.accounts.liquidationContract.phrase);    
         await broadcast(setScriptLiquidationTx, nodeUrl);
+
+        const scriptAuctionContract = (<ICompilationResult>await compile(readFileSync(dirScriptsPath + "auction.ride",'utf8'))).result.base64 ;
+        const setScriptAuctionTx = setScript({ script: scriptAuctionContract, fee: 1000000, chainId: chainId }, deployInfo.accounts.auctionContract.phrase);
+        await broadcast(setScriptAuctionTx, nodeUrl);
+        
+        const scriptControlContract =  (<ICompilationResult>await compile(readFileSync(dirScriptsPath + "control.ride",'utf8'))).result.base64;
+        const setScriptControlTx = setScript({ script: scriptControlContract, fee: 1000000, chainId: chainId }, deployInfo.accounts.controlContract.phrase);       
         await broadcast(setScriptControlTx, nodeUrl);
+
+        const scriptRPDContract =  (<ICompilationResult>await compile(readFileSync(dirScriptsPath + "rpd.ride",'utf8'))).result.base64;
+        const setScriptRPDTx = setScript({ script: scriptRPDContract, fee: 1000000, chainId: chainId }, deployInfo.accounts.rpdContract.phrase);        
         await broadcast(setScriptRPDTx, nodeUrl);
 
 
@@ -177,6 +183,6 @@ export class ContractHelper{
         await waitForTx(setScriptControlTx.id, {apiBase: nodeUrl })
         await waitForTx(setScriptRPDTx.id, {apiBase: nodeUrl })
 
-        return accounts;
+        return deployInfo;
     }
 }

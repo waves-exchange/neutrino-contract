@@ -1,4 +1,4 @@
-var deployHelper = require('../helpers/deployHelper.js');
+const deployHelper = require('../api/ContractHelper.js');
 const neutrinoHelper = require('../api/NeutrinoApi.js');
 const oracleHelper = require('../api/OracleApi.js');
 
