@@ -1,4 +1,4 @@
-var deployHelper = require('../helpers/deployHelper.js');
+var deployHelper = require('../api/ContractHelper.js');
 
 const wvs = 10 ** 8;
 

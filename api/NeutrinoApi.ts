@@ -71,7 +71,7 @@ export class NeutrinoApi {
         const currentHeight = await nodeInteraction.currentHeight(this.nodeUrl);
         return currentHeight >= unblockHeight
     }
-    public async withdraw(seed: string, assetId: string = null): Promise<string> {
+    public async withdraw(seed: string): Promise<string> {
         const userAddress = (new Seed(seed, this.chainId)).address;
         const contractData = await accountData(this.controlContractAddress, this.nodeUrl);
         const unblockHeight = (await accountDataByKey(NeutrinoContractKeys.PrefixBalanceUnlockBlock + userAddress, this.neutrinoContractAddress, this.nodeUrl)).value;
@@ -90,8 +90,7 @@ export class NeutrinoApi {
             dApp: this.neutrinoContractAddress,
             call: { function: "withdraw", args: [
                 { type: "string", value: userAddress }, 
-                { type: "integer", value: wihdrawIndex },
-                { type: "string", value: assetId == null ? "waves" : assetId }
+                { type: "integer", value: wihdrawIndex }
             ] },
             chainId: this.chainId
         }, seed);

@@ -39,12 +39,14 @@ let CANCELED = "canceled"
 let NEW = "new"
 let FILLED = "filled"
 
+#-------------------Constructor-------------------------
+let NeutrinoContractKey = "neutrino_contract"
+
 #-------------------Keys--------------------------------
 let OrderbookKey = "orderbook"
 let PriceKey = "price"
 let BondAssetIdKey = "bond_asset_id"
 let NeutrinoAssetIdKey = "neutrino_asset_id"
-let NeutrinoContractKey = "neutrino_contract"
 let ControlContractKey = "control_contract"
 let SwapLockedBalanceKey = "swap_locked_balance"
 let SwapNeutrinoLockedBalanceKey = "swap_neutrino_locked_balance"
@@ -78,7 +80,6 @@ let reserve = wavesBalance(neutrinoContract) - swapWavesLockedBalance
 let neutrinoSupply = extract(assetInfo(neutrinoAssetId)).quantity - assetBalance(neutrinoContract, neutrinoAssetId) + swapNeutrinoLockedBalance
 let deficit = neutrinoSupply - convertWavesToNeutrino(reserve, currentPrice)
 let surplus = convertWavesToNeutrino(reserve, currentPrice) - neutrinoSupply
-
 
 #-------------------Get functions----------------------
 func getOrderPrice(id : String) = getNumberByKey(getOrderPriceKey(id))

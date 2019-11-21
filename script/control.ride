@@ -2,7 +2,7 @@
 {-# CONTENT_TYPE DAPP #-}
 {-# SCRIPT_TYPE ACCOUNT #-}
 
-# base function
+#-------------------Base functions----------------------
 func getNumberByKey(key: String) = {
     match getInteger(this, key) {
             case a:Int => a
@@ -41,94 +41,68 @@ func dropElementInJsonArray(array: String, element: String) = {
     else 
         splitedArray[0].dropRight(1) + splitedArray[1]
 }
-
 func convertJsonArrayToList(jsonArray: String) = {
    jsonArray.split(",") #jsonArray.take(size(jsonArray)-1).drop(1).split(",")
 }
-#end base function
 
-#consts 
+#-------------------Constants--------------------------- 
 let BLOCK = "block"
 let UNBLOCK = "unblock"
 let UPDATE = "update"
-#end consts
 
-#constructor 
+#-------------------Constructor-------------------------
 let OraclesKey = "oracles"
 let AdminsKey = "admins"
 let VoteIntervalKey = "vote_interval"
 let CoefficientOracleKey = "coefficient_oracle"
 let CoefficientAdminKey = "coefficient_admin"
 let ScriptUpdateIntervalKey = "script_update_interval"
-let ProvidingIntervalKey = "providing_interval"
-#end constructor
-
-
-# keys
-let PriceKey = "price"
 let PriceOffsetKey = "price_offset"
-let IsPricePendingKey = "is_pending_price"
+
+#-------------------Keys---------------------------------
+#------This contract----------
+let PriceKey = "price"
 let IsBlockedKey = "is_blocked"
-let OracleIsProvideKey = "oracle_is_provide_"
-let OracleProvidePriceKey = "oracle_price_provide_"
-let AdminVoteKey = "admin_vote_"
-let ActionKey = "action"
-let BlockExpireProvidingKey = "providing_expire_block"
-let BlackSwarmPriceKey = "black_swarm_price"
 let BlockExpireVoteKey = "vote_expire_block"
 let ScriptUpdateBlockKey = "script_update_block"
 let PriceIndexKey = "price_index"
 
-
-func getOracleIsProvideKey(owner: String) = OracleIsProvideKey + owner
-func getOracleProvidePriceKey(owner: String) = OracleProvidePriceKey + owner
-func getAdminVoteKey(owner: String) = AdminVoteKey + owner
-func getAdminVoteActionKey(owner: String) = getAdminVoteKey(owner) + "_" + ActionKey
-func getBlackSwarmPriceKey(block: Int) = BlackSwarmPriceKey + "_" + toString(block)
+func getAdminVoteKey(owner: String) = "admin_vote_" + owner
+func getAdminVoteActionKey(owner: String) = getAdminVoteKey(owner) + "_" + "action"
+func getBlackSwarmPriceKey(block: Int) = "black_swarm_price" + "_" + toString(block)
 func getPriceHistoryKey(block: Int) = PriceKey + "_" + toString(block)
 func getHeightPriceByIndexKey(index: Int) = PriceIndexKey + "_" + toString(index)
-#end keys
+func getOracleProvidePriceKey(height: Int) = "price_" + toString(height)
 
-#global vars
+#-------------------Global vars-------------------------
 let price = getNumberByKey(PriceKey)
 let priceIndex = getNumberByKey(PriceIndexKey)
-let providingInterval = getNumberByKey(ProvidingIntervalKey)
-let blockExpireProviding = getNumberByKey(BlockExpireProvidingKey)
 let blockExpireVote = getNumberByKey(BlockExpireVoteKey)
 let scriptUpdateBlock = getNumberByKey(ScriptUpdateBlockKey)
 let scriptUpdateInterval = getNumberByKey(ScriptUpdateIntervalKey)
-let isPricePending = getBoolByKey(IsPricePendingKey)
 let isBlocked = getBoolByKey(IsBlockedKey)
 let bftCoefficientOracle = getNumberByKey(CoefficientOracleKey)
 let bftCoefficientAdmin = getNumberByKey(CoefficientAdminKey)
 let percentPriceOffset = getNumberByKey(PriceOffsetKey)
 let voteInterval = getNumberByKey(VoteIntervalKey)
-let oracles = getStringByKey(OraclesKey) # json array
-let admins = getStringByKey(AdminsKey) # json array
-let oraclesList = convertJsonArrayToList(oracles) # json array
-let adminsList = convertJsonArrayToList(admins) # json array
-#end global vars
+let oracles = getStringByKey(OraclesKey)
+let admins = getStringByKey(AdminsKey)
+let oraclesList = convertJsonArrayToList(oracles) 
+let adminsList = convertJsonArrayToList(admins) 
 
-# get func
+#-------------------Get func----------------------------
 func getAdminVoteAction(owner: String) = getStringByKey(getAdminVoteActionKey(owner))
-func isOracleProvide(owner: String) = getBoolByKey(getOracleIsProvideKey(owner))
-func isOracleProvideInt(owner: String) = if(isOracleProvide(owner)) then 1 else 0
-func getOracleProvidePrice(owner: String) = getNumberByKey(getOracleProvidePriceKey(owner))
-# end get func
+func getOracleProvideHeight(owner: String, height: Int) = getNumberByAddressAndKey(addressFromStringValue(owner), getOracleProvidePriceKey(height))
 
-#other func 
+#-------------------Other func--------------------------
 func isOracle(address: String) = {
     isDefined(indexOf(oracles, address))
 }
 func isAdmin(address: String) = {
     isDefined(indexOf(admins, address))
 }
-#end other func
 
-# FOLD func
-func sumOraclePrice(base: Int, address: String) = 
-   base + getOracleProvidePrice(address)*isOracleProvideInt(address)
-
+#-------------------Fold func--------------------------
 func filterAdminsVoteByAction(result: List[String], address: String, action: String) = 
    address :: result
 
@@ -141,84 +115,31 @@ func filterAdminsVoteByUnblockAction(result: List[String], address: String) =
 func filterAdminsVoteByUpdateAction(result: List[String], address: String) = 
    filterAdminsVoteByAction(result, address, UPDATE)
 
-#end FOLD func
-
 #-------------------Callable----------------------
 
 # [called by price oracles]
 @Callable(i)
-func setCurrentPrice(newPrice : Int) = {
-    let account = toString(i.caller)
-    let isOracleProvideList = [
-                                isOracleProvide(oraclesList[0]), 
-                                isOracleProvide(oraclesList[1]), 
-                                isOracleProvide(oraclesList[2]), 
-                                isOracleProvide(oraclesList[3]), 
-                                isOracleProvide(oraclesList[4])
-                            ]
+func finalizeCurrentPrice() = {        
+    let prices = [
+        getOracleProvideHeight(oraclesList[0], height),
+        getOracleProvideHeight(oraclesList[1], height),
+        getOracleProvideHeight(oraclesList[2], height),
+        getOracleProvideHeight(oraclesList[3], height),
+        getOracleProvideHeight(oraclesList[4], height)
+    ]                  
 
     let priceProvidingCount = 
-        (if (isOracleProvideList[0]) then 1 else 0) +
-        (if (isOracleProvideList[1]) then 1 else 0) +
-        (if (isOracleProvideList[2]) then 1 else 0) +
-        (if (isOracleProvideList[3]) then 1 else 0) +
-        (if (isOracleProvideList[4]) then 1 else 0) + 1
-    
-    if(isBlocked)
-        then throw("contract is blocked")
-    else if(!isOracle(account))
-        then throw("permission denied")
-    else if(height <= blockExpireProviding && isOracleProvide(account))
-        then throw("price is already provided")
-    else if(height > blockExpireProviding && isPricePending)
-        then throw("use finalizeCurrentPrice")
-    else {
-        WriteSet([
-            DataEntry(getOracleIsProvideKey(oraclesList[0]), if(height > blockExpireProviding) then false else isOracleProvideList[0]),
-            DataEntry(getOracleIsProvideKey(oraclesList[1]), if(height > blockExpireProviding) then false else isOracleProvideList[1]),
-            DataEntry(getOracleIsProvideKey(oraclesList[2]), if(height > blockExpireProviding) then false else isOracleProvideList[2]),
-            DataEntry(getOracleIsProvideKey(oraclesList[3]), if(height > blockExpireProviding) then false else isOracleProvideList[3]),
-            DataEntry(getOracleIsProvideKey(oraclesList[4]), if(height > blockExpireProviding) then false else isOracleProvideList[4]),
-            DataEntry(getOracleIsProvideKey(account), true),
+        if(prices[0] != 0) then 1 else 0 +
+        if(prices[1] != 0) then 1 else 0 + 
+        if(prices[2] != 0) then 1 else 0 +
+        if(prices[3] != 0) then 1 else 0 +
+        if(prices[4] != 0) then 1 else 0
 
-            DataEntry(getOracleProvidePriceKey(account), newPrice),
-            DataEntry(BlockExpireProvidingKey, if(height > blockExpireProviding) then height + providingInterval else blockExpireProviding),
-            DataEntry(IsPricePendingKey, if(height <= blockExpireProviding && priceProvidingCount >= bftCoefficientOracle) then true else isPricePending)
-        ])
-    }
-}
-
-# [called by price oracles]
-@Callable(i)
-func finalizeCurrentPrice() = {
-    let isOracleProvideList = [
-                                isOracleProvide(oraclesList[0]), 
-                                isOracleProvide(oraclesList[1]), 
-                                isOracleProvide(oraclesList[2]), 
-                                isOracleProvide(oraclesList[3]), 
-                                isOracleProvide(oraclesList[4])
-                            ]
-
-    let priceProvidingCount = 
-        (if (isOracleProvideList[0]) then 1 else 0) +
-        (if (isOracleProvideList[1]) then 1 else 0) +
-        (if (isOracleProvideList[2]) then 1 else 0) +
-        (if (isOracleProvideList[3]) then 1 else 0) +
-        (if (isOracleProvideList[4]) then 1 else 0)
-
-    let priceSum = 
-        (getOracleProvidePrice(oraclesList[0])*(if (isOracleProvideList[0]) then 1 else 0)) + 
-        (getOracleProvidePrice(oraclesList[1])*(if (isOracleProvideList[1]) then 1 else 0)) +
-        (getOracleProvidePrice(oraclesList[2])*(if (isOracleProvideList[2]) then 1 else 0)) + 
-        (getOracleProvidePrice(oraclesList[3])*(if (isOracleProvideList[3]) then 1 else 0)) +
-        (getOracleProvidePrice(oraclesList[4])*(if (isOracleProvideList[4]) then 1 else 0))
-
+    let priceSum = prices[0] + prices[1] + prices[2] + prices[3] + prices[4]
     let newPrice = priceSum/priceProvidingCount
     
     if(isBlocked)
         then throw("contract is blocked")
-    else if(!isPricePending || height <= blockExpireProviding)
-        then throw("wait for the end of the price providing")
     else if(priceProvidingCount < bftCoefficientOracle)
         then throw("3/5 oracles need to set a price")
     else if(newPrice >= (price + price*percentPriceOffset/100) || newPrice <= (price - price*percentPriceOffset/100)) then {
@@ -232,7 +153,6 @@ func finalizeCurrentPrice() = {
         WriteSet([
             DataEntry(PriceKey, newPrice),
             DataEntry(getPriceHistoryKey(height), newPrice),
-            DataEntry(IsPricePendingKey, false),
             DataEntry(PriceIndexKey, newPriceIndex),
             DataEntry(getHeightPriceByIndexKey(newPriceIndex), height)
         ])
@@ -256,7 +176,6 @@ func vote(action: String) = {
 
     let resetResult = [
         DataEntry(BlockExpireVoteKey, 0),
-        DataEntry(BlockExpireProvidingKey, 0),
         DataEntry(getAdminVoteActionKey(adminsListWithoutAccount[0]), ""),
         DataEntry(getAdminVoteActionKey(adminsListWithoutAccount[1]), ""),
         DataEntry(getAdminVoteActionKey(adminsListWithoutAccount[2]), ""),
@@ -264,10 +183,7 @@ func vote(action: String) = {
     ]
     if(blockVoteCount >= bftCoefficientAdmin || unblockVoteCount >= bftCoefficientAdmin) then {
         WriteSet(
-            cons(
-                DataEntry(IsPricePendingKey, false), 
-                cons(DataEntry(IsBlockedKey, if(blockVoteCount >= bftCoefficientAdmin) then true else false), resetResult)
-            )
+            cons(DataEntry(IsBlockedKey, if(blockVoteCount >= bftCoefficientAdmin) then true else false), resetResult)
         )
     }
     else if(updateVotesCount > bftCoefficientAdmin) then {
