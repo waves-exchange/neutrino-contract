@@ -48,58 +48,27 @@ let PERCENTACCURACY = 10000
 #constructor
 let NeutrinoAssetIdKey = "neutrino_asset_id"
 let NeutrinoContractKey = "neutrino_contract"
-let NodeAddressKey = "node_address"
 #end constructor
 
 # keys
 let BalanceKey = "rpd_balance"
-let SyncIndexKey = "rpd_sync_index"
-let ProfitKey = "rpd_profit"
-let BalanceHistoryKey = "balance_history"
-let IsClaimedKey = "is_claimed"
 
-func getUserBalanceHistoryKey(owner: String) = BalanceHistoryKey + "_" + owner
 func getUserBalanceKey(owner: String, assetId: String) = BalanceKey + "_" + assetId + "_" + owner
-func getUserBalanceKeyByCount(owner: String, count: Int, assetId: String) = getUserBalanceKey(owner, assetId) + "_" + toString(count)
-func getIsClaimedKey(owner: String, count: Int) = IsClaimedKey + "_" + owner + "_" + toString(count)
-
 func getContractBalanceKey(assetId: String) = BalanceKey + "_" + assetId
-func getSnapshotContractBalanceKey(count: Int, assetId: String) = BalanceKey + "_" + assetId + "_" + toString(count)
-func getProfitKey(count: Int) = ProfitKey + "_" + toString(count)
 #end keys
 
 #global vars
-let nodeAddress = getStringByKey(NodeAddressKey)
 let neutrinoContract = getStringByKey(NeutrinoContractKey)
 # Neutrino asset id
 # this value is from neutrino.ride
 let neutrinoAssetId = fromBase58String(getStringByAddressAndKey(neutrinoContract, NeutrinoAssetIdKey))
-let syncIndex = getNumberByAddressAndKey(neutrinoContract, SyncIndexKey)
 #end global vars
 
 # get func
 
-# get snapshot balance by payout (check) number
-# The func is reading from neutrino.ride
-func getSnapshotContractBalance(count: Int, assetId: String) = getNumberByAddressAndKey(neutrinoContract, getSnapshotContractBalanceKey(count, assetId))
-
-# get profit amount by payout (check) number
-# The func is reading from neutrino.ride
-func getProfit(count: Int) = getNumberByAddressAndKey(neutrinoContract, getProfitKey(count))
-
 func getContractBalance(assetId: String) = getNumberByKey(getContractBalanceKey(assetId))
 func getUserBalance(owner : String, assetId: String) = getNumberByKey(getUserBalanceKey(owner, assetId))
-func getUserBalanceByCount(owner : String, count: Int, assetId: String) = getNumberByKey(getUserBalanceKeyByCount(owner, count, assetId))
-func getUserBalanceHistory(owner: String) = getStringByKey(getUserBalanceHistoryKey(owner))
-func isClaimed(owner: String, count: Int) = getBoolByKey(getIsClaimedKey(owner, count))
 #end get func
-
-func getHistoryElement(count: Int) = {
-     toString(count) + LISTSPLITSYMBOL
-}
-func addBalanceHistory(history: String, element: String) = {
-    history + element
-}
 
 # start neutrino staking
 # [called by user]
@@ -111,18 +80,10 @@ func lockNeutrino() = {
     else {
         let account = toString(i.caller)
         let assetIdString = toBase58String(value(pmt.assetId))
-        let balance = getUserBalance(account, assetIdString) + pmt.amount
-        let historyString = getUserBalanceHistory(account)
-        let history = historyString.split(LISTSPLITSYMBOL)
-        let index = size(history) - 2;
-        let newHistory = if(historyString != "" && parseIntValue(history[index]) == syncIndex)
-                        then historyString
-                    else (addBalanceHistory(historyString, getHistoryElement(syncIndex)))
+
         WriteSet([
             DataEntry(getContractBalanceKey(assetIdString), getContractBalance(assetIdString) + pmt.amount),
-            DataEntry(getUserBalanceKey(account, assetIdString), balance),
-            DataEntry(getUserBalanceKeyByCount(account, syncIndex, assetIdString), balance),
-            DataEntry(getUserBalanceHistoryKey(account), newHistory)
+            DataEntry(getUserBalanceKey(account, assetIdString), getUserBalance(account, assetIdString) + pmt.amount)
         ])
     }
 }
@@ -139,46 +100,12 @@ func unlockNeutrino(unlockAmount: Int, assetIdString: String) = {
     else if(assetId != neutrinoAssetId)
         then throw("can use neutrino")
     else {
-        let historyString = getUserBalanceHistory(account)
-        let history = historyString.split(LISTSPLITSYMBOL)
-        let index = size(history) - 2;
-        let newHistory = if(historyString != "" && parseIntValue(history[index]) == syncIndex)
-                        then historyString
-                     else (addBalanceHistory(historyString, getHistoryElement(syncIndex)))
         ScriptResult(
             WriteSet([
                 DataEntry(getContractBalanceKey(assetIdString), getContractBalance(assetIdString) - unlockAmount),
-                DataEntry(getUserBalanceKey(account, assetIdString), balance),
-                DataEntry(getUserBalanceKeyByCount(account, syncIndex, assetIdString), balance),
-                DataEntry(getUserBalanceHistoryKey(account), newHistory)
+                DataEntry(getUserBalanceKey(account, assetIdString), balance)
             ]),
             TransferSet([ScriptTransfer(addressFromStringValue(account), unlockAmount, neutrinoAssetId)])
-        )
-    }
-}
-
-# withdraw neutrino rewards from staking
-# [called by user]
-@Callable(i)
-func withdraw(profitSyncIndex: Int, historyIndex: Int) = {
-    let account = toString(i.caller)
-    let historyString = getUserBalanceHistory(account)
-    let history = historyString.split(LISTSPLITSYMBOL)
-    let lockActual = parseIntValue(history[historyIndex])
-
-    if(isClaimed(account, profitSyncIndex))
-        then throw("account is claimed rpd_count:" + toString(profitSyncIndex))
-    else if(profitSyncIndex < lockActual || (historyIndex + 2 < size(history) && profitSyncIndex >= parseIntValue(history[historyIndex+1]) ))
-        then throw("invalid history index")
-    else {
-        let neutrinoAssetIdString = toBase58String(neutrinoAssetId)
-        let balance = getUserBalanceByCount(account, lockActual, neutrinoAssetIdString)
-        let sharePercent = balance*PERCENTACCURACY/getSnapshotContractBalance(profitSyncIndex, neutrinoAssetIdString)
-        let profit = sharePercent*getProfit(profitSyncIndex)/PERCENTACCURACY
-
-        ScriptResult(
-            WriteSet([DataEntry(getIsClaimedKey(account, profitSyncIndex), true)]),
-            TransferSet([ScriptTransfer(addressFromStringValue(account), profit, neutrinoAssetId)])
         )
     }
 }

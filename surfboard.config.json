@@ -22,12 +22,12 @@
         },
         "stagenet": {
             "API_BASE": "https://nodes-stagenet.wavesnodes.com",
-            "CHAIN_ID": "T",
+            "CHAIN_ID": "S",
             "timeout": 60000,
             "SEED": "X"
         }
     },
-    "defaultEnv": "custom",
+    "defaultEnv": "stagenet",
     "mocha": {
         "timeout": 60000
     }
