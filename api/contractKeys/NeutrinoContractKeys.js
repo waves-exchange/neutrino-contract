@@ -7,7 +7,7 @@ var NeutrinoContractKeys = /** @class */ (function () {
     NeutrinoContractKeys.NeutrinoAssetIdKey = "neutrino_asset_id";
     NeutrinoContractKeys.ControlContractAddressKey = "control_contract";
     NeutrinoContractKeys.BondAssetIdKey = "bond_asset_id";
-    NeutrinoContractKeys.PrefixBalanceUnlockBlock = "balance_block_";
+    NeutrinoContractKeys.PrefixBalanceUnlockBlock = "balance_unlock_block_";
     NeutrinoContractKeys.PrefixPriceIndexKey = "price_index_";
     NeutrinoContractKeys.LiquidationContractAddressKey = "liquidation_contract";
     return NeutrinoContractKeys;

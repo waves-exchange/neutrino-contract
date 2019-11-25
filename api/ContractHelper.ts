@@ -68,8 +68,8 @@ export class ContractHelper{
         const issueTx = issue({
             name: symbolNeutrino,
             description: descriptionNeutrino,
-            quantity: "100000000000000",
-            decimals: 2,
+            quantity: "1000000000000000000",
+            decimals: 6,
             chainId: chainId
         }, deployInfo.accounts.neutrinoContract.phrase)
 
@@ -93,7 +93,7 @@ export class ContractHelper{
                 { key: 'bond_asset_id', value: deployInfo.assets.bondAssetId },
                 { key: 'auction_contract', value: deployInfo.accounts.auctionContract.address },
                 { key: "min_waves_swap_amount", value: 100000000 },
-                { key: "min_neutrino_swap_amount", value: 10000 },
+                { key: "min_neutrino_swap_amount", value: 1000000 },
                 { key: "balance_waves_lock_interval", value: 1 },
                 { key: "balance_neutrino_lock_interval", value: 5 },
                 { key: 'rpd_contract', value: deployInfo.accounts.rpdContract.address },

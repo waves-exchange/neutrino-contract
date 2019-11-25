@@ -34,7 +34,7 @@ func getNumberByAddressAndKey(address: Address, key: String) = {
 #-------------------Constants---------------------------
 let WAVELET = 100000000
 let ORDERSPLITSYMBOL = "_"
-let PAULI = 100
+let PAULI = 1000000
 let PERCENTACCURACY = 1000
 let MAXDISCOUNT = 50
 #------Order statuses------

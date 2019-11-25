@@ -1,4 +1,4 @@
-var deployHelper = require('../api/ContractHelper.js');
+const deployHelper = require('../../api/ContractHelper.js').ContractHelper;
 
 const wvs = 10 ** 8;
 
@@ -10,6 +10,7 @@ const nodeAddress = ""
 
 describe('Deploy', async function () {
     it('Deploy', async function () {
-        await deployHelper.deploy(symbolNeutrino, symbolBond, descriptionNeutrino, descriptionBond, nodeAddress)
+        const result = await deployHelper.deploy(env.SEED, env.API_BASE, env.CHAIN_ID, "./script/", "TST-N", "TST-NB", "test asset", "test bond asset", "") 
+        console.log(JSON.stringify(result))
     });
 })

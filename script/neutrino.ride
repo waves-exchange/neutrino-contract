@@ -49,7 +49,7 @@ let SENDTXEXPIRE = 30
 let LISTSPLITSYMBOL = "_"
 let LISTDATASYMBOL = "+"
 let WAVELET = 100000000
-let PAULI = 100
+let PAULI = 1000000
 let DEFICITOFFSET = 10
 
 #-------------------Constructor-------------------------
@@ -181,7 +181,7 @@ func swapNeutrinoToWaves() = {
     else {
         WriteSet([
             DataEntry(getNeutrinoLockedBalanceKey(account), pmt.amount),
-            DataEntry(getWavesLockedBalanceKey(account), height + balanceNeutrinoLockInterval),
+            DataEntry(getBalanceUnlockBlockKey(account), height + balanceNeutrinoLockInterval),
             DataEntry(NeutrinoLockedBalanceKey, neutrinoLockedBalance + pmt.amount)
         ])
     }
@@ -207,7 +207,7 @@ func withdraw(account : String, index: Int) = {
         then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles") # see control.ride
     else if(unlockHeight > height)
         then throw("please wait for: " + toString(unlockHeight) + " block height to withdraw WAVES funds")
-    else if(index > priceIndex  || unlockHeight < indexHeight || (prevIndexHeight != 0 && unlockHeight <= prevIndexHeight))
+    else if(index > priceIndex  || indexHeight < unlockHeight || (prevIndexHeight != 0 && unlockHeight <= prevIndexHeight))
         then throw("invalid price history index")
     else if(neutrinoAmount <= 0 && wavesAmount <= 0)
         then throw("balance equals zero")
@@ -237,7 +237,7 @@ func transferToAuction() = {
     let surplusBond = convertNeutrinoToBond(surplus) - assetBalance(addressFromStringValue(auctionContract), neutrinoAssetId)
     if(isBlocked)
         then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles") # see control.ride
-    else if(deficitBondAmount >= convertNeutrinoToBond(neutrinoSupply)*DEFICITOFFSET/100)
+    else if(deficitBondAmount >= convertNeutrinoToBond(neutrinoSupply)*DEFICITOFFSET/100 && deficitBondAmount > 0)
         then TransferSet([ScriptTransfer(addressFromStringValue(auctionContract), deficitBondAmount, bondAssetId)])
     else if(surplusBond > 0)
         then TransferSet([ScriptTransfer(addressFromStringValue(liquidationContract), convertBondToNeutrino(surplusBond), neutrinoAssetId)])

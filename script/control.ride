@@ -96,7 +96,7 @@ let adminsList = convertJsonArrayToList(admins)
 #-------------------Get func----------------------------
 func getAdminVoteAction(owner: String) = getStringByKey(getAdminVoteActionKey(owner))
 func getOracleProvideHeight(owner: String, height: Int) = getNumberByAddressAndKey(addressFromStringValue(owner), getOracleProvidePriceKey(height))
-
+func getPriceHistory(height: Int) = getNumberByKey(getPriceHistoryKey(height))
 #-------------------Other func--------------------------
 func isOracle(address: String) = {
     isDefined(indexOf(oracles, address))
@@ -132,19 +132,21 @@ func finalizeCurrentPrice() = {
     ]                  
 
     let priceProvidingCount = 
-        if(prices[0] != 0) then 1 else 0 +
-        if(prices[1] != 0) then 1 else 0 + 
-        if(prices[2] != 0) then 1 else 0 +
-        if(prices[3] != 0) then 1 else 0 +
-        if(prices[4] != 0) then 1 else 0
+        (if(prices[0] != 0) then 1 else 0) +
+        (if(prices[1] != 0) then 1 else 0) + 
+        (if(prices[2] != 0) then 1 else 0) +
+        (if(prices[3] != 0) then 1 else 0) +
+        (if(prices[4] != 0) then 1 else 0)
 
     let priceSum = prices[0] + prices[1] + prices[2] + prices[3] + prices[4]
     let newPrice = priceSum/priceProvidingCount
 
     if(isBlocked)
         then throw("contract is blocked")
+    else if(getPriceHistory(height) != 0)
+        then throw("wait next block")
     else if(priceProvidingCount < bftCoefficientOracle)
-        then throw("3/5 oracles need to set a price")
+        then throw(toString(bftCoefficientOracle) + "/5 oracles need to set a price (" + toString(priceProvidingCount) + ")")
     else if(newPrice >= (price + price*percentPriceOffset/100) || newPrice <= (price - price*percentPriceOffset/100)) then {
         WriteSet([
             DataEntry(IsBlockedKey, true),

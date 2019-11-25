@@ -52,7 +52,7 @@ describe('Swap test', async function () {
         await oracleApi.forceSetCurrentPrice(100, deployResult.accounts.controlContract.phrase)
         const priceDataTx = data({
             data: [
-                { key: "balance_block_" + address(accounts.testAccount), value: (await currentHeight()) }
+                { key: "balance_unlock_block_" + address(accounts.testAccount), value: (await currentHeight()) }
             ],
             fee: 500000
         }, deployResult.accounts.neutrinoContract.phrase);
