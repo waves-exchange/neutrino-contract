@@ -63,7 +63,7 @@ let BalanceWavesLockIntervalKey = "balance_waves_lock_interval"
 let BalanceNeutrinoLockIntervalKey = "balance_neutrino_lock_interval"
 let MinWavesSwapAmountKey = "min_waves_swap_amount"
 let MinNeutrinoSwapAmountKey = "min_neutrino_swap_amount"
-let NodeOracleProviderKey = "node_oracle_provider"
+let NodeOracleProviderPubKeyKey = "node_oracle_provider"
 
 #-------------------Keys---------------------------------
 #------Common----------------
@@ -106,7 +106,7 @@ let controlContract = getStringByKey(ContolContractKey)
 let currentPrice = getNumberByAddressAndKey(controlContract,PriceKey) # The price that oracles are providing to control.ride
 let priceIndex = getNumberByAddressAndKey(controlContract, PriceIndexKey) # Last price history iterator from control.ride
 let isBlocked = getBoolByAddressAndKey(controlContract,IsBlockedKey) # Checks for contract locks that might happen after attacks.  The var is read from control contract
-let nodeOracleProvider = getStringByKey(NodeOracleProviderKey)
+let nodeOracleProviderPubKey = fromBase58String(getStringByKey(NodeOracleProviderPubKeyKey))
 let balanceWavesLockInterval = getNumberByKey(BalanceWavesLockIntervalKey)
 let balanceNeutrinoLockInterval = getNumberByKey(BalanceNeutrinoLockIntervalKey)
 let minWavesSwapAmount = getNumberByKey(MinWavesSwapAmountKey)
@@ -259,7 +259,7 @@ func verify() = {
     let id = toBase58String(tx.id)
     match tx {
         case leasingTx: LeaseTransaction | LeaseCancelTransaction =>
-            sigVerify(tx.bodyBytes, tx.proofs[0], tx.senderPublicKey) && addressFromString(nodeOracleProvider) == addressFromPublicKey(tx.senderPublicKey)
+            sigVerify(tx.bodyBytes, tx.proofs[0], nodeOracleProviderPubKey)
         case _ => sigVerify(tx.bodyBytes, tx.proofs[0], tx.senderPublicKey)
     }
 }
