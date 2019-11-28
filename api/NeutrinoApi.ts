@@ -76,16 +76,16 @@ export class NeutrinoApi {
         const contractData = await accountData(this.controlContractAddress, this.nodeUrl);
         const unblockHeight = (await accountDataByKey(NeutrinoContractKeys.PrefixBalanceUnlockBlock + userAddress, this.neutrinoContractAddress, this.nodeUrl)).value;
         let wihdrawIndex = 0;
-        let heightByindex = 0;
+        let heightByindex = -1;
         for(var key in contractData) {
             if(!key.startsWith(NeutrinoContractKeys.PrefixPriceIndexKey))
                 continue;
-            if(contractData[key].value >= heightByindex && contractData[key].value <= unblockHeight){
+
+            if(contractData[key].value >= unblockHeight && (contractData[key].value < heightByindex || heightByindex == -1)){
                 wihdrawIndex = <number><unknown>key.replace(NeutrinoContractKeys.PrefixPriceIndexKey, "")
                 heightByindex = <number>contractData[key].value;
             }
         }
-        console.log(wihdrawIndex)
         const tx = invokeScript({
             dApp: this.neutrinoContractAddress,
             call: { function: "withdraw", args: [

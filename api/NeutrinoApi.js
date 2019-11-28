@@ -158,16 +158,15 @@ var NeutrinoApi = /** @class */ (function () {
                     case 2:
                         unblockHeight = (_a.sent()).value;
                         wihdrawIndex = 0;
-                        heightByindex = 0;
+                        heightByindex = -1;
                         for (key in contractData) {
                             if (!key.startsWith(NeutrinoContractKeys_1.NeutrinoContractKeys.PrefixPriceIndexKey))
                                 continue;
-                            if (contractData[key].value >= heightByindex && contractData[key].value <= unblockHeight) {
+                            if (contractData[key].value >= unblockHeight && (contractData[key].value < heightByindex || heightByindex == -1)) {
                                 wihdrawIndex = key.replace(NeutrinoContractKeys_1.NeutrinoContractKeys.PrefixPriceIndexKey, "");
                                 heightByindex = contractData[key].value;
                             }
                         }
-                        console.log(wihdrawIndex);
                         tx = waves_transactions_1.invokeScript({
                             dApp: this.neutrinoContractAddress,
                             call: { "function": "withdraw", args: [
