@@ -27,7 +27,7 @@
             "SEED": "X"
         }
     },
-    "defaultEnv": "stagenet",
+    "defaultEnv": "custom",
     "mocha": {
         "timeout": 60000
     }
