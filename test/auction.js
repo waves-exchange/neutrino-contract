@@ -1,26 +1,28 @@
-const deployHelper = require('../api/ContractHelper.js');
+const deployHelper = require('../api/ContractHelper.js').ContractHelper;
+const NeutrinoApi = require('../api/NeutrinoApi.js').NeutrinoApi;
 const neutrinoHelper = require('../api/NeutrinoApi.js');
 const oracleHelper = require('../api/OracleApi.js');
+const testHelper = require('../helpers/testHelper.js');
 
 let deployResult = {}
-const orderCount = 4;
+const orderCount = 1;
 let neutrinoApi = null;
 describe('Auction test', async function () {
     before(async function () {
-        deployResult = await deployHelper.deploy("TST-N", "TST-NB", "test asset", "test bond asset", "")
+        deployResult = await deployHelper.deploy(env.SEED, env.API_BASE, env.CHAIN_ID, "./script/", "TST-N", "TST-NB", "test asset", "test bond asset", "") 
         setupAccounts({
-            testAccount: 100000 * deployHelper.WAVELET
+            testAccount: 100000 * NeutrinoApi.WAVELET
         })
 
         var massTx = massTransfer({
             transfers: [
                 {
                     amount: 1800000,
-                    recipient: address(deployResult.accounts.neutrinoContract)
+                    recipient: deployResult.accounts.neutrinoContract.address
                 },
                 {
                     amount: 500000,
-                    recipient: address(deployResult.accounts.controlContract)
+                    recipient: deployResult.accounts.controlContract.address
                 }
             ],
             fee: 600000
@@ -31,29 +33,29 @@ describe('Auction test', async function () {
         var massNeutrinoTx = massTransfer({
             transfers: [
                 {
-                    amount: deployHelper.getRandomArbitrary(1,9999) * deployHelper.PAULI,
+                    amount: testHelper.getRandomArbitary(1, 9999) * NeutrinoApi.WAVELET * NeutrinoApi.PAULI,
                     recipient: address(accounts.testAccount)
                 }
             ],
             fee: 600000,
             assetId: deployResult.assets.neutrinoAssetId
-        }, deployResult.accounts.neutrinoContract)
+        }, deployResult.accounts.neutrinoContract.phrase)
         await broadcast(massNeutrinoTx);
 
         await waitForTx(massNeutrinoTx.id);
 
-        price = deployHelper.getRandomArbitrary(1, 9999)
-        neutrinoApi = await neutrinoHelper.NeutrinoApi.create(env.API_BASE, env.CHAIN_ID, address(deployResult.accounts.neutrinoContract));
-        oracleApi = await oracleHelper.OracleApi.create(env.API_BASE, env.CHAIN_ID, address(deployResult.accounts.neutrinoContract));
-        await oracleApi.forceSetCurrentPrice(100, deployResult.accounts.controlContract)
+        price = testHelper.getRandomArbitary(1, 9999) * NeutrinoApi.WAVELET
+        neutrinoApi = await neutrinoHelper.NeutrinoApi.create(env.API_BASE, env.CHAIN_ID, deployResult.accounts.neutrinoContract.address);
+        oracleApi = await oracleHelper.OracleApi.create(env.API_BASE, env.CHAIN_ID, deployResult.accounts.neutrinoContract.address);
+        await oracleApi.forceSetCurrentPrice(100, deployResult.accounts.controlContract.phrase)
     });
     it('Add orders', async function () {
         for (let i = 0; i < orderCount; i++) {
-            const orderPrice = deployHelper.getRandomArbitrary(51, 99)/100
+            const orderPrice = testHelper.getRandomArbitary(51, 99)/100
             const balance = await assetBalance(deployResult.assets.neutrinoAssetId, address(accounts.testAccount));
-            const amount = Math.floor(balance / (deployHelper.getRandomArbitrary(2, 10)))
+            const amount = Math.floor(balance / (testHelper.getRandomArbitary(2, 10)))
 
-            let id = await neutrinoApi.addBuyBondOrder(amount, orderPrice, accounts.testAccount)
+            let id = await neutrinoApi.addBuyBondOrder(50, 0.6, accounts.testAccount)
            /*  const state = await stateChanges(id);
             const data = deployHelper.convertDataStateToObject(state.data)
            const orderHash = data.orderbook.split("_")[index] //TODO hash
@@ -66,14 +68,14 @@ describe('Auction test', async function () {
         }
     })
     it('Cancel order', async function () {
-        const index = deployHelper.getRandomArbitrary(0, orderCount-1)
-        const data = await accountData(address(deployResult.accounts.auctionContract))
+        const index = testHelper.getRandomArbitary(0, orderCount-1)
+        const data = await accountData(deployResult.accounts.auctionContract.address)
         const orders = data.orderbook.value.split("_")
         
         let id = await neutrinoApi.cancelBuyBondOrder(orders[index], accounts.testAccount)
 
         const state = await stateChanges(id);
-        const dataState = deployHelper.convertDataStateToObject(state.data)
+        const dataState = testHelper.convertDataStateToObject(state.data)
 
         const newOrderbookItems = data.orderbook.value.split(orders[index] + "_")
         const newOrderbook  = newOrderbookItems[0] + newOrderbookItems[1]
@@ -91,27 +93,29 @@ describe('Auction test', async function () {
             throw "invalid asset"
     })
     it('Partially filled order', async function () {
-        const data = await accountData(address(deployResult.accounts.auctionContract))
+        const data = await accountData(deployResult.accounts.auctionContract.address)
+        console.log(data)
         const orderHash = data.orderbook.value.split("_")[0]
+        console.log(orderHash)
         const price = data["order_price_" + orderHash].value
         const totalOrder = Math.floor(data["order_total_" + orderHash].value/2)
-        const amount = Math.floor(totalOrder*100/price/deployHelper.PAULI)
-        const realTotal = Math.floor(amount*price*deployHelper.PAULI/100)
+        const amount = Math.floor(totalOrder*100/price/NeutrinoApi.PAULI)
+        const realTotal = Math.floor(amount*price*NeutrinoApi.PAULI/100)
         
         var transferTx = transfer({
             amount: amount,
-            recipient: address(deployResult.accounts.auctionContract),
+            recipient: deployResult.accounts.auctionContract.address,
             fee: 600000,
             assetId: deployResult.assets.bondAssetId
-        }, deployResult.accounts.neutrinoContract)
+        }, deployResult.accounts.neutrinoContract.phrase)
         await broadcast(transferTx);
         await waitForTx(transferTx.id);
 
         let id = await oracleApi.executeBuyBondOrder(accounts.testAccount);
         const state = await stateChanges(id);
-        const dataState = deployHelper.convertDataStateToObject(state.data)
+        const dataState = testHelper.convertDataStateToObject(state.data)
 
-        const transferToNeutrinoContract = state.transfers.find(x=>x.address == address(deployResult.accounts.neutrinoContract))
+        const transferToNeutrinoContract = state.transfers.find(x=>x.address == deployResult.accounts.neutrinoContract.address)
         const transferToOrderOwner = state.transfers.find(x=>x.address == address(accounts.testAccount))
         
         if (dataState.orderbook != data.orderbook.value)
@@ -133,27 +137,27 @@ describe('Auction test', async function () {
         
     })
     it('Fully filled order', async function () {
-        const data = await accountData(address(deployResult.accounts.auctionContract))
+        const data = await accountData(deployResult.accounts.auctionContract.address)
         const orderHash = data.orderbook.value.split("_")[0]
         const price = data["order_price_" + orderHash].value
         const totalOrder = data["order_total_" + orderHash].value - data["order_filled_total_" + orderHash].value
-        const amount = Math.floor(totalOrder*100/price/deployHelper.PAULI)
-        const realTotal = Math.floor(amount*price*deployHelper.PAULI/100)
+        const amount = Math.floor(totalOrder*100/price/NeutrinoApi.PAULI)
+        const realTotal = Math.floor(amount*price*NeutrinoApi.PAULI/100)
 
         var transferTx = transfer({
             amount: amount,
-            recipient: address(deployResult.accounts.auctionContract),
+            recipient: deployResult.accounts.auctionContract.address,
             fee: 600000,
             assetId: deployResult.assets.bondAssetId
-        }, deployResult.accounts.neutrinoContract)
+        }, deployResult.accounts.neutrinoContract.phrase)
         await broadcast(transferTx);
         await waitForTx(transferTx.id);
 
         let id = await oracleApi.executeBuyBondOrder(accounts.testAccount);
         const state = await stateChanges(id);
-        const dataState = deployHelper.convertDataStateToObject(state.data)
+        const dataState = testHelper.convertDataStateToObject(state.data)
         
-        const transferToNeutrinoContract = state.transfers.find(x=>x.address == address(deployResult.accounts.neutrinoContract))
+        const transferToNeutrinoContract = state.transfers.find(x=>x.address == deployResult.accounts.neutrinoContract.address)
         const transferToOrderOwner = state.transfers.find(x=>x.address == address(accounts.testAccount))
 
         const orderbookElements = data.orderbook.value.split(orderHash + "_")
