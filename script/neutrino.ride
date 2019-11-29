@@ -77,9 +77,9 @@ let IsBlockedKey = "is_blocked"
 func getPriceHistoryKey(block: Int) = PriceKey + "_" + toString(block)
 func getHeightPriceByIndexKey(index: Int) = PriceIndexKey + "_" + toString(index)
 #------This contract----------
-let BalanceLocedkKey = "balance_lock_"
-let WavesLockedBalanceKey = BalanceLocedkKey + "waves"
-let NeutrinoLockedBalanceKey = BalanceLocedkKey + "neutrino"
+let BalanceLockedkKey = "balance_lock_"
+let WavesLockedBalanceKey = BalanceLockedkKey + "waves"
+let NeutrinoLockedBalanceKey = BalanceLockedkKey + "neutrino"
 
 func getRPDSnapshotContractBalanceKey(count: Int, assetId: ByteVector) = RPDBalanceKey + "_" + toBase58String(assetId) + "_" + toString(count)
 func getCancelLeaseTxReserveFeeKey(hash: String) = "cancel_lease_tx_reserve_fee" + "_" + hash
@@ -234,7 +234,7 @@ func withdraw(account : String, index: Int) = {
 @Callable(i)
 func transferToAuction() = {
     let deficitBondAmount = convertNeutrinoToBond(deficit) - assetBalance(addressFromStringValue(auctionContract), bondAssetId)
-    let surplusBond = convertNeutrinoToBond(surplus - assetBalance(addressFromStringValue(liquidationContract), neutrinoAssetId))
+    let surplusBond = convertNeutrinoToBond(surplus)
     let minDeficit = convertNeutrinoToBond(neutrinoSupply)*DEFICITOFFSET/100
     if(isBlocked)
         then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles") # see control.ride
