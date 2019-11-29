@@ -48,9 +48,9 @@ let PriceKey = "price"
 let BondAssetIdKey = "bond_asset_id"
 let NeutrinoAssetIdKey = "neutrino_asset_id"
 let ControlContractKey = "control_contract"
-let SwapLockedBalanceKey = "swap_locked_balance"
-let SwapNeutrinoLockedBalanceKey = "swap_neutrino_locked_balance"
-let SwapWavesLockedBalanceKey = "swap_waves_locked_balance"
+let BalanceLocedkKey = "balance_lock_"
+let WavesLockedBalanceKey = BalanceLocedkKey + "waves"
+let NeutrinoLockedBalanceKey = BalanceLocedkKey + "neutrino"
 
 func getOrderTotalKey(orderId: String) = "order_total_" + orderId
 func getOrderOwnerKey(orderId: String) = "order_owner_" + orderId
@@ -70,14 +70,13 @@ let orderbook = getStringByKey(OrderbookKey)
 let neutrinoContract = addressFromStringValue(getStringByKey(NeutrinoContractKey))
 let controlContract = addressFromStringValue(getStringByAddressAndKey(neutrinoContract, ControlContractKey)) ## The value from neutrino.ride
 let currentPrice = getNumberByAddressAndKey(controlContract, PriceKey) # The value from control.ride
-let swapLockedBalance = getNumberByAddressAndKey(neutrinoContract, SwapLockedBalanceKey) # locked balance from calling swapNeutrinoToWaves. The value from neutrino.ride
-let swapNeutrinoLockedBalance = getNumberByAddressAndKey(neutrinoContract, SwapNeutrinoLockedBalanceKey)
-let swapWavesLockedBalance = getNumberByAddressAndKey(neutrinoContract, SwapWavesLockedBalanceKey) 
+let neutrinoLockedBalance = getNumberByKey(NeutrinoLockedBalanceKey)
+let wavesLockedBalance = getNumberByKey(WavesLockedBalanceKey)
 let neutrinoAssetId = fromBase58String(getStringByAddressAndKey(neutrinoContract, NeutrinoAssetIdKey)) # Assets ids. The value from neutrino.ride
 let bondAssetId = fromBase58String(getStringByAddressAndKey(neutrinoContract, BondAssetIdKey))
-let reserve = wavesBalance(neutrinoContract) - swapWavesLockedBalance
-let neutrinoSupply = extract(assetInfo(neutrinoAssetId)).quantity - assetBalance(neutrinoContract, neutrinoAssetId) + swapNeutrinoLockedBalance
-let surplus = convertWavesToNeutrino(reserve, currentPrice) - neutrinoSupply + assetBalance(this, neutrinoAssetId)
+let reserve = wavesBalance(neutrinoContract) - wavesLockedBalance
+let neutrinoSupply = extract(assetInfo(neutrinoAssetId)).quantity - assetBalance(neutrinoContract, neutrinoAssetId) + neutrinoLockedBalance - assetBalance(this, neutrinoAssetId)
+let surplus = convertWavesToNeutrino(reserve, currentPrice) - neutrinoSupply
 
 #-------------------Get functions------------------------
 func getOrderTotal(id : String) = getNumberByKey(getOrderTotalKey(id))
