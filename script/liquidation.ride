@@ -48,9 +48,9 @@ let PriceKey = "price"
 let BondAssetIdKey = "bond_asset_id"
 let NeutrinoAssetIdKey = "neutrino_asset_id"
 let ControlContractKey = "control_contract"
-let BalanceLocedkKey = "balance_lock_"
-let WavesLockedBalanceKey = BalanceLocedkKey + "waves"
-let NeutrinoLockedBalanceKey = BalanceLocedkKey + "neutrino"
+let BalanceLockedkKey = "balance_lock_"
+let WavesLockedBalanceKey = BalanceLockedkKey + "waves"
+let NeutrinoLockedBalanceKey = BalanceLockedkKey + "neutrino"
 
 func getOrderTotalKey(orderId: String) = "order_total_" + orderId
 func getOrderOwnerKey(orderId: String) = "order_owner_" + orderId
@@ -70,8 +70,8 @@ let orderbook = getStringByKey(OrderbookKey)
 let neutrinoContract = addressFromStringValue(getStringByKey(NeutrinoContractKey))
 let controlContract = addressFromStringValue(getStringByAddressAndKey(neutrinoContract, ControlContractKey)) ## The value from neutrino.ride
 let currentPrice = getNumberByAddressAndKey(controlContract, PriceKey) # The value from control.ride
-let neutrinoLockedBalance = getNumberByKey(NeutrinoLockedBalanceKey)
-let wavesLockedBalance = getNumberByKey(WavesLockedBalanceKey)
+let neutrinoLockedBalance = getNumberByAddressAndKey(neutrinoContract, NeutrinoLockedBalanceKey)
+let wavesLockedBalance = getNumberByAddressAndKey(neutrinoContract, WavesLockedBalanceKey)
 let neutrinoAssetId = fromBase58String(getStringByAddressAndKey(neutrinoContract, NeutrinoAssetIdKey)) # Assets ids. The value from neutrino.ride
 let bondAssetId = fromBase58String(getStringByAddressAndKey(neutrinoContract, BondAssetIdKey))
 let reserve = wavesBalance(neutrinoContract) - wavesLockedBalance
@@ -159,47 +159,44 @@ func cancelOrder(orderId : String) = {
 # [called by pacemaker oracles]
 @Callable(i)
 func liquidateBond() = {
-    let orderId = getOrdersInOrderbook(orderbook)[0]
-    let orderTotal = getOrderTotal(orderId)
-    let orderOwner = getOrderOwner(orderId)
-    let filledTotal = getOrderFilledTotal(orderId)
-
     let surplusBond = convertNeutrinoToBond(surplus)
-
     let neutrinoBalance = assetBalance(this, neutrinoAssetId)
+
     let surplusPositive = if(surplus <= 0) then 0 else surplus
     let bondAmount = if(surplusPositive >= neutrinoBalance) then neutrinoBalance else surplusPositive
     let returnAmount = if(surplusPositive >= neutrinoBalance) then 0 else neutrinoBalance-surplusPositive
   
     if(returnAmount == 0 && neutrinoBalance == 0)
         then throw("without surplus")
-    else if(neutrinoBalance == 0) then {
+    else if(surplusBond <= 0 && returnAmount > 0) then {
         TransferSet([
             ScriptTransfer(neutrinoContract, returnAmount, neutrinoAssetId)
         ])
     }
+    else if(surplusBond <= 0)
+        then throw("there is no proficit on the smart contract now")
     else if(orderbook == "")
         then throw("empty orderbook")
     else {
-        if(surplusBond <= 0) 
-            then throw("there is no proficit on the smart contract now")
-        else if(orderbook == "")
-            then throw("empty orderbook")
-        else {
-            let amount = orderTotal-filledTotal;
-            let status = if(surplusBond >= amount) then FILLED else NEW
-            let newFilledTotal = if(surplusBond >= amount) then amount else surplusBond
+        let orderId = getOrdersInOrderbook(orderbook)[0]
+        let orderTotal = getOrderTotal(orderId)
+        let orderOwner = getOrderOwner(orderId)
+        let filledTotal = getOrderFilledTotal(orderId)
 
-            ScriptResult(
-                WriteSet([
-                    DataEntry(OrderbookKey, if(surplusBond >= amount) then dropOrder(orderId) else orderbook),
-                    DataEntry(getOrderFilledTotalKey(orderId), filledTotal + newFilledTotal),
-                    DataEntry(getOrderStatusKey(orderId), status)
-                ]), 
-                TransferSet([
-                    ScriptTransfer(addressFromStringValue(orderOwner), convertBondToNeutrino(newFilledTotal), neutrinoAssetId)
-                ])
-            )
-        }
+        let amount = orderTotal-filledTotal;
+        let status = if(surplusBond >= amount) then FILLED else NEW
+        let newTotal = if(surplusBond >= amount) then amount else surplusBond
+
+        ScriptResult(
+            WriteSet([
+                DataEntry(OrderbookKey, if(status == FILLED) then dropOrder(orderId) else orderbook),
+                DataEntry(getOrderFilledTotalKey(orderId), filledTotal + newTotal),
+                DataEntry(getOrderStatusKey(orderId), status)
+            ]), 
+            TransferSet([
+                ScriptTransfer(addressFromStringValue(orderOwner), convertBondToNeutrino(newTotal), neutrinoAssetId),
+                ScriptTransfer(neutrinoContract, returnAmount, neutrinoAssetId)
+            ])
+        )
     }
 }
