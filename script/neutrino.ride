@@ -50,7 +50,7 @@ let LISTSPLITSYMBOL = "_"
 let LISTDATASYMBOL = "+"
 let WAVELET = 100000000
 let PAULI = 1000000
-let DEFICITOFFSET = 10
+let DEFICITOFFSET = 5
 
 #-------------------Constructor-------------------------
 let NeutrinoAssetIdKey = "neutrino_asset_id"
@@ -88,8 +88,8 @@ func getNeutrinoLockedBalanceKey(owner: String) = NeutrinoLockedBalanceKey + "_"
 func getBalanceUnlockBlockKey(owner: String) = "balance_unlock_block_" + owner
 func getRPDProfitKey(count: Int) = "rpd_profit" + "_" + toString(count)
 #-------------------Convert functions-------------------
-func convertNeutrinoToWaves(amount: Int, price: Int) = amount*100/price*WAVELET/PAULI
-func convertWavesToNeutrino(amount: Int, price: Int) = amount*price/100*PAULI/WAVELET
+func convertNeutrinoToWaves(amount: Int, price: Int) = fraction(fraction(amount, 100, price),WAVELET, PAULI)
+func convertWavesToNeutrino(amount: Int, price: Int) = fraction(fraction(amount, price, 100), PAULI, WAVELET)
 func convertNeutrinoToBond(amount: Int) = amount/PAULI 
 func convertBondToNeutrino(amount: Int) = amount*PAULI 
 func convertWavesToBond(amount: Int, price: Int) = convertNeutrinoToBond(convertWavesToNeutrino(amount, price))

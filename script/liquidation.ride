@@ -59,8 +59,8 @@ func getOrderStatusKey(orderId: String) = "order_status_" + orderId
 func getOrderFilledTotalKey(orderId: String) = "order_filled_total_" + orderId
 
 #-------------------Convert functions-------------------
-func convertNeutrinoToWaves(amount: Int, price: Int) = amount*100/price*WAVELET/PAULI
-func convertWavesToNeutrino(amount: Int, price: Int) = amount*price/100*PAULI/WAVELET 
+func convertNeutrinoToWaves(amount: Int, price: Int) = fraction(fraction(amount, 100, price),WAVELET, PAULI)
+func convertWavesToNeutrino(amount: Int, price: Int) = fraction(fraction(amount, price, 100), PAULI, WAVELET)
 func convertNeutrinoToBond(amount: Int) = amount/PAULI 
 func convertBondToNeutrino(amount: Int) = amount*PAULI 
 func convertWavesToBond(amount: Int, price: Int) = convertNeutrinoToBond(convertWavesToNeutrino(amount, price))

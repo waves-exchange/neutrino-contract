@@ -69,7 +69,7 @@ describe('Swap test', async function () {
     })    
     
     it('Swap Neutrino to Waves', async function () {
-        let amount = testHelper.getRandomArbitary(1, 9999) * NeutrinoApi.PAULI
+        let amount = testHelper.getRandomArbitary(1, 9999) * 1000000
         let id = await neutrinoApi.redeemWaves(amount, accounts.testAccount);
         const state = await stateChanges(id);
         const dataState = testHelper.convertDataStateToObject(state.data)
