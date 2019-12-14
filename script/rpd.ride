@@ -7,7 +7,7 @@
 # (RPD is Reward Payouts Distribution)
 #
 
-# base function
+#-------------------Base functions----------------------
 func getNumberByKey(key: String) = {
     match getInteger(this, key) {
             case a:Int => a
@@ -32,44 +32,45 @@ func getNumberByAddressAndKey(address: String, key: String) = {
             case _ => 0
     }
 }
-func getStringByAddressAndKey(address: String, key: String) = {
-    match getString(addressFromStringValue(address), key) {
+func getStringByAddressAndKey(address: Address, key: String) = {
+     match getString(address, key) {
             case a:String => a
             case _ => ""
     }
 }
-#end base function
 
-# consts
-let LISTSPLITSYMBOL = "_"
-let PERCENTACCURACY = 10000
-# end consts
-
-#constructor
+#-------------------Constructor-------------------------
 let NeutrinoAssetIdKey = "neutrino_asset_id"
 let NeutrinoContractKey = "neutrino_contract"
-#end constructor
 
-# keys
+#-------------------Keys---------------------------------
 let BalanceKey = "rpd_balance"
-
+let LastConfirmTxKey = "last_confirm_tx"
+let ControlContractKey = "control_contract"
 func getUserBalanceKey(owner: String, assetId: String) = BalanceKey + "_" + assetId + "_" + owner
 func getContractBalanceKey(assetId: String) = BalanceKey + "_" + assetId
-#end keys
 
-#global vars
-let neutrinoContract = getStringByKey(NeutrinoContractKey)
-# Neutrino asset id
-# this value is from neutrino.ride
+func getExpireProposalKey(hash: String) = "proposal_expire" + "_" + hash
+func getOwnerProposalKey(hash: String) = "proposal_owner" + "_" + hash
+func getArgumentsProposalKey(hash: String) = "proposal_arguments" + "_" + hash
+func getVoteKey(owner: String, hash: String) = "proposal_vote" + "_" + owner + "_" + hash
+
+#-------------------Global vars-------------------------
+let neutrinoContract = addressFromStringValue(getStringByKey(NeutrinoContractKey))
+let controlContract = addressFromStringValue(getStringByAddressAndKey(neutrinoContract, ControlContractKey))
+let lastConfirmTx = getStringByAddressAndKey(controlContract, LastConfirmTxKey)
 let neutrinoAssetId = fromBase58String(getStringByAddressAndKey(neutrinoContract, NeutrinoAssetIdKey))
-#end global vars
 
-# get func
-
+#-------------------Get functions----------------------
 func getContractBalance(assetId: String) = getNumberByKey(getContractBalanceKey(assetId))
 func getUserBalance(owner : String, assetId: String) = getNumberByKey(getUserBalanceKey(owner, assetId))
-#end get func
 
+func getExpireProposal(hash: String) = getNumberByKey(getExpireProposalKey(hash))
+func getOwnerProposal(hash: String) = getStringByKey(getOwnerProposalKey(hash))
+func getArgumentsProposal(hash: String) = getStringByKey(getArgumentsProposalKey(hash))
+func getVote(owner: String, hash: String) = getStringByKey(getVoteKey(owner, hash))
+
+#-------------------Callable----------------------
 # start neutrino staking
 # [called by user]
 @Callable(i)
@@ -107,5 +108,35 @@ func unlockNeutrino(unlockAmount: Int, assetIdString: String) = {
             ]),
             TransferSet([ScriptTransfer(addressFromStringValue(account), unlockAmount, neutrinoAssetId)])
         )
+    }
+}
+
+# cancel neutrino staking
+# [called by user]
+@Callable(i)
+func vote(hash: String, indexArgument: Int) = {
+    let arguments = getArgumentsProposal(hash).split(",")
+    let argument = arguments[indexArgument]
+    if(height > getExpireProposal(hash))
+        then throw("proposal is expired")
+    else {
+        WriteSet([
+            DataEntry(getVoteKey(toString(i.caller), hash), argument)
+        ])
+    }
+}
+
+
+@Callable(i)
+func createProposal(arguments: String, expairHeight: Int) = {
+    let hash = toBase58String(keccak256(toBytes(arguments) + toBytes(expairHeight) + i.callerPublicKey))
+    if(getOwnerProposal(hash) != "")
+        then throw("proposal is exist")
+    else {
+        WriteSet([
+            DataEntry(getExpireProposalKey(hash), expairHeight),
+            DataEntry(getOwnerProposalKey(hash), toString(i.caller)),
+            DataEntry(getArgumentsProposalKey(hash), arguments)
+        ])
     }
 }
