@@ -54,6 +54,7 @@ let ControlContractKey = "control_contract"
 let BalanceLockedkKey = "balance_lock_"
 let WavesLockedBalanceKey = BalanceLockedkKey + "waves"
 let NeutrinoLockedBalanceKey = BalanceLockedkKey + "neutrino"
+let AdminsKey = "admins"
 
 func getOrderPriceKey(orderId: String) = "order_price_" + orderId
 func getOrderTotalKey(orderId: String) = "order_total_" + orderId
@@ -68,6 +69,9 @@ func convertWavesToNeutrino(amount: Int, price: Int) = fraction(fraction(amount,
 func convertNeutrinoToBond(amount: Int) = amount/PAULI 
 func convertBondToNeutrino(amount: Int) = amount*PAULI 
 func convertWavesToBond(amount: Int, price: Int) = convertNeutrinoToBond(convertWavesToNeutrino(amount, price))
+func convertJsonArrayToList(jsonArray: String) = {
+   jsonArray.split(",") #jsonArray.take(size(jsonArray)-1).drop(1).split(",")
+}
 
 #-------------------Global vars-------------------------
 let orderbook = getStringByKey(OrderbookKey)
@@ -82,6 +86,8 @@ let bondAssetId = fromBase58String(getStringByAddressAndKey(neutrinoContract, Bo
 let reserve = wavesBalance(neutrinoContract) - wavesLockedBalance
 let neutrinoSupply = extract(assetInfo(neutrinoAssetId)).quantity - assetBalance(neutrinoContract, neutrinoAssetId) + neutrinoLockedBalance
 let deficit = neutrinoSupply - convertWavesToNeutrino(reserve, currentPrice)
+let pubKeyAdmins = getStringByAddressAndKey(controlContract, AdminsKey)
+let pubKeyAdminsList = convertJsonArrayToList(pubKeyAdmins) 
 
 #-------------------Get functions----------------------
 func getOrderPrice(id : String) = getNumberByKey(getOrderPriceKey(id))
@@ -226,4 +232,13 @@ func sellBond() = {
             )
         }
     }
+}
+
+@Verifier(tx)
+func verify() = {
+    let count = 
+        (if(sigVerify(tx.bodyBytes, fromBase58String(pubKeyAdminsList[0]), tx.proofs[0])) then 1 else 0) + 
+        (if(sigVerify(tx.bodyBytes, fromBase58String(pubKeyAdminsList[1]), tx.proofs[1])) then 1 else 0) +
+        (if(sigVerify(tx.bodyBytes, fromBase58String(pubKeyAdminsList[2]), tx.proofs[2])) then 1 else 0)
+    count >= 2
 }
