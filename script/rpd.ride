@@ -47,6 +47,8 @@ let NeutrinoContractKey = "neutrino_contract"
 let BalanceKey = "rpd_balance"
 let LastConfirmTxKey = "last_confirm_tx"
 let ControlContractKey = "control_contract"
+let AdminsKey = "admins"
+
 func getUserBalanceKey(owner: String, assetId: String) = BalanceKey + "_" + assetId + "_" + owner
 func getContractBalanceKey(assetId: String) = BalanceKey + "_" + assetId
 
@@ -55,11 +57,18 @@ func getOwnerProposalKey(hash: String) = "proposal_owner" + "_" + hash
 func getArgumentsProposalKey(hash: String) = "proposal_arguments" + "_" + hash
 func getVoteKey(owner: String, hash: String) = "proposal_vote" + "_" + owner + "_" + hash
 
+#-------------------Convert functions-------------------
+func convertJsonArrayToList(jsonArray: String) = {
+   jsonArray.split(",") #jsonArray.take(size(jsonArray)-1).drop(1).split(",")
+}
+
 #-------------------Global vars-------------------------
 let neutrinoContract = addressFromStringValue(getStringByKey(NeutrinoContractKey))
 let controlContract = addressFromStringValue(getStringByAddressAndKey(neutrinoContract, ControlContractKey))
 let lastConfirmTx = getStringByAddressAndKey(controlContract, LastConfirmTxKey)
 let neutrinoAssetId = fromBase58String(getStringByAddressAndKey(neutrinoContract, NeutrinoAssetIdKey))
+let pubKeyAdmins = getStringByAddressAndKey(controlContract, AdminsKey)
+let pubKeyAdminsList = convertJsonArrayToList(pubKeyAdmins) 
 
 #-------------------Get functions----------------------
 func getContractBalance(assetId: String) = getNumberByKey(getContractBalanceKey(assetId))
@@ -139,4 +148,13 @@ func createProposal(arguments: String, expairHeight: Int) = {
             DataEntry(getArgumentsProposalKey(hash), arguments)
         ])
     }
+}
+
+@Verifier(tx)
+func verify() = {
+    let count = 
+        (if(sigVerify(tx.bodyBytes, tx.proofs[0], fromBase58String(pubKeyAdminsList[0]))) then 1 else 0) + 
+        (if(sigVerify(tx.bodyBytes, tx.proofs[1], fromBase58String(pubKeyAdminsList[1]))) then 1 else 0) +
+        (if(sigVerify(tx.bodyBytes, tx.proofs[2], fromBase58String(pubKeyAdminsList[2]))) then 1 else 0)
+    count >= 2
 }

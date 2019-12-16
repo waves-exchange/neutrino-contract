@@ -89,9 +89,9 @@ let bftCoefficientAdmin = getNumberByKey(CoefficientAdminKey)
 let percentPriceOffset = getNumberByKey(PriceOffsetKey)
 let voteInterval = getNumberByKey(VoteIntervalKey)
 let oracles = getStringByKey(OraclesKey)
-let admins = getStringByKey(AdminsKey)
 let oraclesList = convertJsonArrayToList(oracles) 
-let adminsList = convertJsonArrayToList(admins) 
+let pubKeyAdmins = getStringByKey(AdminsKey)
+let pubKeyAdminsList = convertJsonArrayToList(pubKeyAdmins) 
 
 #-------------------Get func----------------------------
 func getAdminVoteAction(owner: String) = getStringByKey(getAdminVoteActionKey(owner))
@@ -102,7 +102,7 @@ func isOracle(address: String) = {
     isDefined(indexOf(oracles, address))
 }
 func isAdmin(address: String) = {
-    isDefined(indexOf(admins, address))
+    isDefined(indexOf(pubKeyAdmins, address))
 }
 
 #-------------------Fold func--------------------------
@@ -164,42 +164,11 @@ func finalizeCurrentPrice() = {
     }
 }
 
-# [called by emergency oracles]
-@Callable(i)
-func vote(action: String) = {
-    let account = toString(i.caller)
-    let adminsListWithoutAccount = convertJsonArrayToList(dropElementInJsonArray(admins, account))
-    let lastAction = getAdminVoteAction(account)
-
-    let blockVotes = FOLD<5>(adminsListWithoutAccount, [], filterAdminsVoteByBlockAction)
-    let unblockVotes = FOLD<5>(adminsListWithoutAccount, [], filterAdminsVoteByUnblockAction)
-    let updateVotes = FOLD<5>(adminsListWithoutAccount, [], filterAdminsVoteByUpdateAction)
-
-    let blockVoteCount = size(blockVotes) + if( action == BLOCK) then 1 else 0
-    let unblockVoteCount = size(unblockVotes) + if( action == UNBLOCK) then 1 else 0
-    let updateVotesCount = size(updateVotes) + if( action == UPDATE) then 1 else 0
-
-    let resetResult = [
-        DataEntry(BlockExpireVoteKey, 0),
-        DataEntry(getAdminVoteActionKey(adminsListWithoutAccount[0]), ""),
-        DataEntry(getAdminVoteActionKey(adminsListWithoutAccount[1]), ""),
-        DataEntry(getAdminVoteActionKey(adminsListWithoutAccount[2]), ""),
-        DataEntry(getAdminVoteActionKey(adminsListWithoutAccount[3]), "")
-    ]
-    if(blockVoteCount >= bftCoefficientAdmin || unblockVoteCount >= bftCoefficientAdmin) then {
-        WriteSet(
-            cons(DataEntry(IsBlockedKey, if(blockVoteCount >= bftCoefficientAdmin) then true else false), resetResult)
-        )
-    }
-    else if(updateVotesCount > bftCoefficientAdmin) then {
-        WriteSet(
-            cons(DataEntry(ScriptUpdateBlockKey, if(updateVotesCount > bftCoefficientAdmin) then height + scriptUpdateInterval else scriptUpdateBlock), resetResult)
-        )
-    }
-    else {
-        WriteSet([
-            DataEntry(BlockExpireVoteKey, if(height > blockExpireVote) then height + voteInterval else blockExpireVote),
-            DataEntry(getAdminVoteActionKey(account), action)
-        ])
-    }
+@Verifier(tx)
+func verify() = {
+    let count = 
+        (if(sigVerify(tx.bodyBytes, tx.proofs[0], fromBase58String(pubKeyAdminsList[0]))) then 1 else 0) + 
+        (if(sigVerify(tx.bodyBytes, tx.proofs[1], fromBase58String(pubKeyAdminsList[1]))) then 1 else 0) +
+        (if(sigVerify(tx.bodyBytes, tx.proofs[2], fromBase58String(pubKeyAdminsList[2]))) then 1 else 0)
+    count >= 2
 }
