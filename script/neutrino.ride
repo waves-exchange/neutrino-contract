@@ -119,9 +119,9 @@ let minNeutrinoSwapAmount = getNumberByKey(MinNeutrinoSwapAmountKey)
 let reserve = wavesBalance(this) - wavesLockedBalance
 let bondAssetId = fromBase58String(getStringByKey(BondAssetIdKey))
 let bondSupply = extract(assetInfo(bondAssetId)).quantity - assetBalance(this, bondAssetId)
-let neutrinoSupply = extract(assetInfo(neutrinoAssetId)).quantity - assetBalance(this, neutrinoAssetId) + neutrinoLockedBalance
+let neutrinoSupply = extract(assetInfo(neutrinoAssetId)).quantity - assetBalance(this, neutrinoAssetId) + neutrinoLockedBalance - assetBalance(addressFromStringValue(liquidationContract), neutrinoAssetId)
 let surplus = convertWavesToNeutrino(reserve, currentPrice) - neutrinoSupply
-let deficit = neutrinoSupply - convertWavesToNeutrino(reserve, currentPrice)
+let deficit = neutrinoSupply - convertWavesToNeutrino(reserve, currentPrice) 
 let pubKeyAdmins = getStringByAddressAndKey(controlContract, AdminsKey)
 let pubKeyAdminsList = convertJsonArrayToList(pubKeyAdmins) 
 
@@ -249,7 +249,8 @@ func transferToAuction() = {
         then TransferSet([ScriptTransfer(addressFromStringValue(auctionContract), deficitBondAmount, bondAssetId)])
     else if(surplusBond > 0)
         then TransferSet([ScriptTransfer(addressFromStringValue(liquidationContract), convertBondToNeutrino(surplusBond), neutrinoAssetId)])
-    else throw("bond were generated or do not need it. Deficit:" + toString(deficitBondAmount) + "|" + toString(minDeficit) + ". Surplus:" + toString(surplusBond) + "|" + toString(surplus))
+    else 
+        throw("bond were generated or do not need it. Deficit:" + toString(deficitBondAmount) + "|" + toString(minDeficit) + ". Surplus:" + toString(surplusBond) + "|" + toString(surplus))
 }
 
 # Transfers tokens from one address to another via smart contact
