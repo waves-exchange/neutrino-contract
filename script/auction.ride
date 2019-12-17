@@ -55,6 +55,7 @@ let BalanceLockedkKey = "balance_lock_"
 let WavesLockedBalanceKey = BalanceLockedkKey + "waves"
 let NeutrinoLockedBalanceKey = BalanceLockedkKey + "neutrino"
 let AdminsKey = "admins"
+let LiquidationContractKey = "liquidation_contract"
 
 func getOrderPriceKey(orderId: String) = "order_price_" + orderId
 func getOrderTotalKey(orderId: String) = "order_total_" + orderId
@@ -77,6 +78,7 @@ func convertJsonArrayToList(jsonArray: String) = {
 let orderbook = getStringByKey(OrderbookKey)
 let neutrinoContract = addressFromStringValue(getStringByKey(NeutrinoContractKey))
 let controlContract = addressFromStringValue(getStringByAddressAndKey(neutrinoContract, ControlContractKey)) ## The value from neutrino.ride
+let liquidationContract = getStringByAddressAndKey(neutrinoContract, LiquidationContractKey)
 let currentPrice = getNumberByAddressAndKey(controlContract, PriceKey) # The value from control.ride
 
 let neutrinoLockedBalance = getNumberByAddressAndKey(neutrinoContract, NeutrinoLockedBalanceKey)
@@ -84,7 +86,7 @@ let wavesLockedBalance = getNumberByAddressAndKey(neutrinoContract, WavesLockedB
 let neutrinoAssetId = fromBase58String(getStringByAddressAndKey(neutrinoContract, NeutrinoAssetIdKey)) # Assets ids. The value from neutrino.ride
 let bondAssetId = fromBase58String(getStringByAddressAndKey(neutrinoContract, BondAssetIdKey))
 let reserve = wavesBalance(neutrinoContract) - wavesLockedBalance
-let neutrinoSupply = extract(assetInfo(neutrinoAssetId)).quantity - assetBalance(neutrinoContract, neutrinoAssetId) + neutrinoLockedBalance
+let neutrinoSupply = extract(assetInfo(neutrinoAssetId)).quantity - assetBalance(neutrinoContract, neutrinoAssetId) + neutrinoLockedBalance - assetBalance(addressFromStringValue(liquidationContract), neutrinoAssetId)
 let deficit = neutrinoSupply - convertWavesToNeutrino(reserve, currentPrice)
 let pubKeyAdmins = getStringByAddressAndKey(controlContract, AdminsKey)
 let pubKeyAdminsList = convertJsonArrayToList(pubKeyAdmins) 

@@ -45,7 +45,6 @@ let NeutrinoContractKey = "neutrino_contract"
 
 #-------------------Keys---------------------------------
 let BalanceKey = "rpd_balance"
-let LastConfirmTxKey = "last_confirm_tx"
 let ControlContractKey = "control_contract"
 let AdminsKey = "admins"
 
@@ -65,7 +64,6 @@ func convertJsonArrayToList(jsonArray: String) = {
 #-------------------Global vars-------------------------
 let neutrinoContract = addressFromStringValue(getStringByKey(NeutrinoContractKey))
 let controlContract = addressFromStringValue(getStringByAddressAndKey(neutrinoContract, ControlContractKey))
-let lastConfirmTx = getStringByAddressAndKey(controlContract, LastConfirmTxKey)
 let neutrinoAssetId = fromBase58String(getStringByAddressAndKey(neutrinoContract, NeutrinoAssetIdKey))
 let pubKeyAdmins = getStringByAddressAndKey(controlContract, AdminsKey)
 let pubKeyAdminsList = convertJsonArrayToList(pubKeyAdmins) 
