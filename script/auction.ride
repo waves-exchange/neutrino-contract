@@ -54,7 +54,6 @@ let ControlContractKey = "control_contract"
 let BalanceLockedkKey = "balance_lock_"
 let WavesLockedBalanceKey = BalanceLockedkKey + "waves"
 let NeutrinoLockedBalanceKey = BalanceLockedkKey + "neutrino"
-let AdminsKey = "admins"
 let LiquidationContractKey = "liquidation_contract"
 
 func getOrderPriceKey(orderId: String) = "order_price_" + orderId
@@ -88,8 +87,6 @@ let bondAssetId = fromBase58String(getStringByAddressAndKey(neutrinoContract, Bo
 let reserve = wavesBalance(neutrinoContract) - wavesLockedBalance
 let neutrinoSupply = extract(assetInfo(neutrinoAssetId)).quantity - assetBalance(neutrinoContract, neutrinoAssetId) + neutrinoLockedBalance - assetBalance(addressFromStringValue(liquidationContract), neutrinoAssetId)
 let deficit = neutrinoSupply - convertWavesToNeutrino(reserve, currentPrice)
-let pubKeyAdmins = getStringByAddressAndKey(controlContract, AdminsKey)
-let pubKeyAdminsList = convertJsonArrayToList(pubKeyAdmins) 
 
 #-------------------Get functions----------------------
 func getOrderPrice(id : String) = getNumberByKey(getOrderPriceKey(id))
@@ -238,9 +235,17 @@ func sellBond() = {
 
 @Verifier(tx)
 func verify() = {
-    let count = 
-        (if(sigVerify(tx.bodyBytes, tx.proofs[0], fromBase58String(pubKeyAdminsList[0]))) then 1 else 0) + 
+    let pubKeyAdminsList = [
+        "BLEoguzPVKVTfXxxT3W7Rqf8aUm2ggC9Vemd2MQawM2G",
+        "FWVffYr2ALmHMejZm3WqeLz6Sdym3gLFGtJn4KTwyU5x",
+        "3Wh2LaWcb5gg7K2pPcW3Ep6EAuRBzYkAgrdpt43jTDFa",
+        "5WRXFSjwcTbNfKcJs8ZqXmSSWYsSVJUtMvMqZj5hH4Nc"
+    ]
+    let count =
+        (if(sigVerify(tx.bodyBytes, tx.proofs[0], fromBase58String(pubKeyAdminsList[0]))) then 1 else 0) +
         (if(sigVerify(tx.bodyBytes, tx.proofs[1], fromBase58String(pubKeyAdminsList[1]))) then 1 else 0) +
-        (if(sigVerify(tx.bodyBytes, tx.proofs[2], fromBase58String(pubKeyAdminsList[2]))) then 1 else 0)
-    count >= 2
+        (if(sigVerify(tx.bodyBytes, tx.proofs[2], fromBase58String(pubKeyAdminsList[2]))) then 1 else 0) +
+        (if(sigVerify(tx.bodyBytes, tx.proofs[3], fromBase58String(pubKeyAdminsList[3]))) then 2 else 0)
+
+    count >= 3
 }
