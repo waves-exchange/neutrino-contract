@@ -74,7 +74,6 @@ func getRPDContractBalanceKey(assetId: ByteVector) = RPDBalanceKey + "_" + toBas
 let PriceKey = "price"
 let PriceIndexKey = "price_index"
 let IsBlockedKey = "is_blocked"
-let AdminsKey = "admins"
 func getPriceHistoryKey(block: Int) = PriceKey + "_" + toString(block)
 func getHeightPriceByIndexKey(index: Int) = PriceIndexKey + "_" + toString(index)
 #------This contract----------
@@ -121,9 +120,7 @@ let bondAssetId = fromBase58String(getStringByKey(BondAssetIdKey))
 let bondSupply = extract(assetInfo(bondAssetId)).quantity - assetBalance(this, bondAssetId)
 let neutrinoSupply = extract(assetInfo(neutrinoAssetId)).quantity - assetBalance(this, neutrinoAssetId) + neutrinoLockedBalance - assetBalance(addressFromStringValue(liquidationContract), neutrinoAssetId)
 let surplus = convertWavesToNeutrino(reserve, currentPrice) - neutrinoSupply
-let deficit = neutrinoSupply - convertWavesToNeutrino(reserve, currentPrice) 
-let pubKeyAdmins = getStringByAddressAndKey(controlContract, AdminsKey)
-let pubKeyAdminsList = convertJsonArrayToList(pubKeyAdmins) 
+let deficit = neutrinoSupply - convertWavesToNeutrino(reserve, currentPrice)  
 
 #-------------------Get functions----------------------
 #------RPD contract---------
@@ -265,17 +262,17 @@ func transfer(account: String) = {
 # or end of leasing time
 @Verifier(tx)
 func verify() = {
-    let id = toBase58String(tx.id)
-    match tx {
-        case leasingTx: LeaseTransaction | LeaseCancelTransaction =>
-            sigVerify(tx.bodyBytes, tx.proofs[0], nodeOracleProviderPubKey)
-        case _ => {
-            let count = 
-                (if(sigVerify(tx.bodyBytes, tx.proofs[0], fromBase58String(pubKeyAdminsList[0]))) then 1 else 0) + 
-                (if(sigVerify(tx.bodyBytes, tx.proofs[1], fromBase58String(pubKeyAdminsList[1]))) then 1 else 0) +
-                (if(sigVerify(tx.bodyBytes, tx.proofs[2], fromBase58String(pubKeyAdminsList[2]))) then 1 else 0)
-            count >= 2
-        }
-    }
-}
+    let pubKeyAdminsList = [
+        "BLEoguzPVKVTfXxxT3W7Rqf8aUm2ggC9Vemd2MQawM2G",
+        "FWVffYr2ALmHMejZm3WqeLz6Sdym3gLFGtJn4KTwyU5x",
+        "3Wh2LaWcb5gg7K2pPcW3Ep6EAuRBzYkAgrdpt43jTDFa",
+        "5WRXFSjwcTbNfKcJs8ZqXmSSWYsSVJUtMvMqZj5hH4Nc"
+    ]
+    let count =
+        (if(sigVerify(tx.bodyBytes, tx.proofs[0], fromBase58String(pubKeyAdminsList[0]))) then 1 else 0) +
+        (if(sigVerify(tx.bodyBytes, tx.proofs[1], fromBase58String(pubKeyAdminsList[1]))) then 1 else 0) +
+        (if(sigVerify(tx.bodyBytes, tx.proofs[2], fromBase58String(pubKeyAdminsList[2]))) then 1 else 0) +
+        (if(sigVerify(tx.bodyBytes, tx.proofs[3], fromBase58String(pubKeyAdminsList[3]))) then 2 else 0)
 
+    count >= 3
+}
