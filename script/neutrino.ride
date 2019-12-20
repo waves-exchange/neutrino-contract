@@ -261,18 +261,25 @@ func transfer(account: String) = {
 # LeaseCancelTransaction depends from swapNeutrinoToWaves() result i.e. waves amount is not enought for future swaps
 # or end of leasing time
 @Verifier(tx)
-func verify() = {
-    let pubKeyAdminsList = [
-        "BLEoguzPVKVTfXxxT3W7Rqf8aUm2ggC9Vemd2MQawM2G",
-        "FWVffYr2ALmHMejZm3WqeLz6Sdym3gLFGtJn4KTwyU5x",
-        "3Wh2LaWcb5gg7K2pPcW3Ep6EAuRBzYkAgrdpt43jTDFa",
-        "5WRXFSjwcTbNfKcJs8ZqXmSSWYsSVJUtMvMqZj5hH4Nc"
-    ]
-    let count =
-        (if(sigVerify(tx.bodyBytes, tx.proofs[0], fromBase58String(pubKeyAdminsList[0]))) then 1 else 0) +
-        (if(sigVerify(tx.bodyBytes, tx.proofs[1], fromBase58String(pubKeyAdminsList[1]))) then 1 else 0) +
-        (if(sigVerify(tx.bodyBytes, tx.proofs[2], fromBase58String(pubKeyAdminsList[2]))) then 1 else 0) +
-        (if(sigVerify(tx.bodyBytes, tx.proofs[3], fromBase58String(pubKeyAdminsList[3]))) then 2 else 0)
+ func verify() = {
+    let id = toBase58String(tx.id)
+    match tx {
+        case leasingTx: LeaseTransaction | LeaseCancelTransaction =>
+            sigVerify(tx.bodyBytes, tx.proofs[0], nodeOracleProviderPubKey)
+        case _ => {
+            let pubKeyAdminsList = [
+                "BLEoguzPVKVTfXxxT3W7Rqf8aUm2ggC9Vemd2MQawM2G",
+                "FWVffYr2ALmHMejZm3WqeLz6Sdym3gLFGtJn4KTwyU5x",
+                "3Wh2LaWcb5gg7K2pPcW3Ep6EAuRBzYkAgrdpt43jTDFa",
+                "5WRXFSjwcTbNfKcJs8ZqXmSSWYsSVJUtMvMqZj5hH4Nc"
+            ]
+            let count =
+                (if(sigVerify(tx.bodyBytes, tx.proofs[0], fromBase58String(pubKeyAdminsList[0]))) then 1 else 0) +
+                (if(sigVerify(tx.bodyBytes, tx.proofs[1], fromBase58String(pubKeyAdminsList[1]))) then 1 else 0) +
+                (if(sigVerify(tx.bodyBytes, tx.proofs[2], fromBase58String(pubKeyAdminsList[2]))) then 1 else 0) +
+                (if(sigVerify(tx.bodyBytes, tx.proofs[3], fromBase58String(pubKeyAdminsList[3]))) then 2 else 0)
 
-    count >= 3
+            count >= 3
+        }
+    }
 }
