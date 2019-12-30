@@ -122,7 +122,7 @@ func addBuyBondOrder(price : Int, position: Int) = {
     let pmt = extract(i.payment);
     let newOrderId = toBase58String(keccak256(toBytes(price) + toBytes(pmt.amount) + i.caller.bytes + toBytes(height)))
     let neutrnoequivalent = convertWavesToNeutrino(pmt.amount, currentPrice)
-    let discount = fraction(convertBondToNeutrino(convertWavesToBond(pmt.amount, price)) - neutrnoequivalent, 100, neutrnoequivalent)
+    let discount = fraction(convertBondToNeutrino(convertWavesToBond(pmt.amount, price)) - neutrnoequivalent, 100, convertBondToNeutrino(convertWavesToBond(pmt.amount, price)))
     if(pmt.amount < MINORDERTOTAL)
         then throw("min order total equals " + toString(MINORDERTOTAL))
     else if (discount >= MAXDISCOUNT)
