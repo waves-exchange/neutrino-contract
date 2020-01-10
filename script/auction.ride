@@ -149,12 +149,13 @@ func addBuyBondOrder(price : Int, position: Int) = {
         else
             WriteSet([
                 DataEntry(OrderbookKey, addOrder(newOrderId, position)),
-         
                 DataEntry(getOrderPriceKey(newOrderId), price),
                 DataEntry(getOrderTotalKey(newOrderId), pmt.amount),
                 DataEntry(getOrderOwnerKey(newOrderId), toString(i.caller)),
                 DataEntry(getOrderHeightKey(newOrderId), height),
-                DataEntry(getOrderStatusKey(newOrderId), NEW)
+                DataEntry(getOrderStatusKey(newOrderId), NEW),
+                DataEntry("debug_order_currentPrice_" + newOrderId, currentPrice),
+                DataEntry("debug_order_roi_" + newOrderId, roi)
             ])
     }
 }
