@@ -33,10 +33,10 @@ func getNumberByAddressAndKey(address: Address, key: String) = {
 
 #-------------------Constants---------------------------
 let WAVELET = 100000000
-let ORDERSPLITSYMBOL = "_"
 let PAULI = 1000000
 let PERCENTACCURACY = 1000
-let MAXDISCOUNT = 50
+let MINORDERTOTAL = 10*WAVELET
+let MAXROI = 100
 #------Order statuses------
 let CANCELED = "canceled"
 let NEW = "new"
@@ -66,6 +66,7 @@ func getOrderHistoryKey(height: Int) = "order_history_" + toString(height)
 #-------------------Convert functions-------------------
 func convertNeutrinoToWaves(amount: Int, price: Int) = fraction(fraction(amount, 100, price),WAVELET, PAULI)
 func convertWavesToNeutrino(amount: Int, price: Int) = fraction(fraction(amount, price, 100), PAULI, WAVELET)
+
 func convertNeutrinoToBond(amount: Int) = amount/PAULI 
 func convertBondToNeutrino(amount: Int) = amount*PAULI 
 func convertWavesToBond(amount: Int, price: Int) = convertNeutrinoToBond(convertWavesToNeutrino(amount, price))
@@ -95,9 +96,9 @@ func getOrderOwner(id : String) = getStringByKey(getOrderOwnerKey(id))
 func getOrderStatus(id : String) = getStringByKey(getOrderStatusKey(id))
 func getOrderFilledTotal(id : String) = getNumberByKey(getOrderFilledTotalKey(id))
 #-------------------Any functions----------------------
-func getOrderElementById(id : String) = id + ORDERSPLITSYMBOL
+func getOrderElementById(id : String) = id + "_"
 func addOrder(orderId: String, position: Int) = {
-    let orders = orderbook.split(ORDERSPLITSYMBOL)
+    let orders = orderbook.split("_")
     let newOrder = getOrderElementById(orderId)
     if(position == 0)
         then newOrder + orderbook
@@ -112,10 +113,6 @@ func dropOrder(orderId: String) = {
     let parts = orderbook.split(getOrderElementById(orderId))
     parts[0] + parts[1]
 }
-func getOrdersInOrderbook(orderbook: String) = {
-    orderbook.split(ORDERSPLITSYMBOL)
-}
-
 #-------------------Callable---------------------------
 
 # set buy bonds order
@@ -124,18 +121,21 @@ func getOrdersInOrderbook(orderbook: String) = {
 func addBuyBondOrder(price : Int, position: Int) = {
     let pmt = extract(i.payment);
     let newOrderId = toBase58String(keccak256(toBytes(price) + toBytes(pmt.amount) + i.caller.bytes + toBytes(height)))
-    
-    if(price < MAXDISCOUNT)
-        then throw("max discount is 50%")
-    else if (pmt.assetId != neutrinoAssetId)
-        then throw("can use neutrino only")
+    # price = 100*usdnb/waves, but we have to work with price with another scale: priceWavesByBondCents = 100*waves/usdnb, so priceWavesByBondCents = 100*1/(price/100)
+    let priceWavesByBondCents = fraction(100, 100, price)
+    let roi = fraction(priceWavesByBondCents - currentPrice, 100, currentPrice) # Example: 1.2 WAVES/USDNB (1.2 bonds for 1 waves) and 0.8 WAVES/USD (0.8 usd for 1 waves) gives 100*(1.2-0.8/0.8) 50% ROI
+    if(pmt.amount < MINORDERTOTAL)
+        then throw("min order total equals " + toString(MINORDERTOTAL))
+    else if (roi > MAXROI)
+        then throw("max setOrder ROI is 100%")
+    else if (isDefined(pmt.assetId))
+        then throw("can use waves only")
     else if(price <= 0)
         then throw("price less zero")
     else if(getOrderOwner(newOrderId) != "")
         then throw("order exists")
     else {
-        let orders = getOrdersInOrderbook(orderbook)
-
+        let orders =  orderbook.split("_")
         let nextOrderId = if(position == 0) then "" else orders[position-1];
         let nextOrderPrice = getOrderPrice(nextOrderId)
         let isNextOrderError = if(nextOrderId != "" && price > nextOrderPrice) then true else false;
@@ -149,12 +149,13 @@ func addBuyBondOrder(price : Int, position: Int) = {
         else
             WriteSet([
                 DataEntry(OrderbookKey, addOrder(newOrderId, position)),
-         
                 DataEntry(getOrderPriceKey(newOrderId), price),
                 DataEntry(getOrderTotalKey(newOrderId), pmt.amount),
                 DataEntry(getOrderOwnerKey(newOrderId), toString(i.caller)),
                 DataEntry(getOrderHeightKey(newOrderId), height),
-                DataEntry(getOrderStatusKey(newOrderId), NEW)
+                DataEntry(getOrderStatusKey(newOrderId), NEW),
+                DataEntry("debug_order_currentPrice_" + newOrderId, currentPrice),
+                DataEntry("debug_order_roi_" + newOrderId, roi)
             ])
     }
 }
@@ -177,7 +178,7 @@ func cancelOrder(orderId : String) = {
                 DataEntry(getOrderStatusKey(orderId), CANCELED)
             ]),
             TransferSet([
-                ScriptTransfer(i.caller, amount, neutrinoAssetId)
+                ScriptTransfer(i.caller, amount, unit)
             ])
         )
     }
@@ -203,30 +204,37 @@ func sellBond() = {
     else if(orderbook == "")
         then throw("empty orderbook")
     else {
-        let orderId = getOrdersInOrderbook(orderbook)[0]
+        let orderId =  orderbook.split("_")[0]
         let filledTotal = getOrderFilledTotal(orderId)
-        let orderTotal = getOrderTotal(orderId)
-        let orderPrice = getOrderPrice(orderId)
-        let orderOwner = getOrderOwner(orderId)
-        let amount = convertNeutrinoToBond((orderTotal-filledTotal)*100/orderPrice);
+        let orderPrice = getOrderPrice(orderId) 
+        
+        let freeTotal = getOrderTotal(orderId) - filledTotal
+        let amount = convertWavesToBond(freeTotal, orderPrice);
     
-        let filledAmount = if(bondAmount >= amount) then amount else bondAmount
+        let fillableAmount = if(bondAmount >= amount) then amount else bondAmount
 
-        let total = fraction((filledAmount*orderPrice),PAULI,100)
-        let status = if(bondAmount >= amount) then FILLED else NEW
-        if(total == 0)
-            then throw("total equal zero")
+        let total = fraction((fillableAmount*orderPrice),PAULI,100)
+        if(total == 0 || amount == 0) then
+            ScriptResult(
+                WriteSet([
+                    DataEntry(OrderbookKey, dropOrder(orderId)),
+                    DataEntry(getOrderStatusKey(orderId), CANCELED)
+               ]),
+               TransferSet([
+                    ScriptTransfer(addressFromStringValue(getOrderOwner(orderId)), freeTotal, unit)
+                ])
+            )
         else {
             ScriptResult(
                 WriteSet([
                     DataEntry(OrderbookKey, if(bondAmount >= amount) then dropOrder(orderId) else orderbook),
                     DataEntry(getOrderFilledTotalKey(orderId), filledTotal + total),
-                    DataEntry(getOrderStatusKey(orderId), status),
+                    DataEntry(getOrderStatusKey(orderId), if(bondAmount >= amount) then FILLED else NEW),
                     DataEntry(getOrderHistoryKey(height), orderPrice)
                ]),
                TransferSet([
-                    ScriptTransfer(addressFromStringValue(orderOwner), filledAmount, bondAssetId),
-                    ScriptTransfer(neutrinoContract, total, neutrinoAssetId)
+                    ScriptTransfer(addressFromStringValue(getOrderOwner(orderId)), fillableAmount, bondAssetId),
+                    ScriptTransfer(neutrinoContract, total, unit)
                 ])
             )
         }
