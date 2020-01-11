@@ -197,7 +197,7 @@ func sellBond() = {
     if(deficitPositive == 0 && bondBalance == 0) 
         then throw("without deficit")
     else if(returnAmount > 0) then {
-        # return bonds back only if there is no deficit 
+        # return bonds back if there is more bonds than deficit  
         TransferSet([
             ScriptTransfer(neutrinoContract, returnAmount, bondAssetId)
         ])
