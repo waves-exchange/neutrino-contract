@@ -205,7 +205,7 @@ func sellBond() = {
     else if(orderbook == "")
         then throw("empty orderbook")
     else {
-        let orderId = take(orderbook, valueOrErrorMessage(indexOf(orderbook, "_"), "no orders found") - 1) # instead of orderbook.split("_")[0] with 100complx we have 20+1+13 = 34
+        let orderId = take(orderbook, valueOrErrorMessage(indexOf(orderbook, "_"), "no orders found")) # instead of orderbook.split("_")[0] with 100complx we have 20+1+13 = 34
         let filledTotal = getOrderFilledTotal(orderId) #waveletes; returns 0 if there is no records
         let orderPrice = getOrderPrice(orderId) #100*usdnb/waves
         let priceWavesByBondCents = fraction(100, 100, orderPrice)
