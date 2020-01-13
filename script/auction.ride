@@ -194,8 +194,10 @@ func sellBond() = {
     let deficitPositive = if(deficit <= 0) then 0 else deficit/PAULI #paulis to integers (dollars)
     let bondAmount = if(deficitPositive >= bondBalance) then bondBalance else deficitPositive # possible bond amount for selling; scale: integers (dollars)
     let returnAmount = if(deficitPositive >= bondBalance) then 0 else bondBalance-deficitPositive #scale: integers (dollars); send bonds back if there is remaining bonds on the main contract
-    if(deficitPositive == 0 && bondBalance == 0) 
+    if(deficitPositive == 0 && bondBalance == 0)
         then throw("without deficit")
+    else if (bondBalance == 0)
+        then throw("without bonds to sell")
     else if(returnAmount > 0) then {
         # return bonds back if there is more bonds than deficit  
         TransferSet([
@@ -214,12 +216,12 @@ func sellBond() = {
         let amountToExecuteOrder = convertWavesToBond(remainedTotal, priceWavesByBondCents); # expected price format 100*waves/usd; return scale: bonds (integers/dollars)
     
         let fillOrderCondition = bondAmount >= amountToExecuteOrder
-        let fillableOrderAmount = if(fillOrderCondition) then amountToExecuteOrder else bondAmount #scale: bonds (integers/dollars)
+        let fillableOrderAmount = if(fillOrderCondition) then amountToExecuteOrder else bondAmount #scale: bonds (integers/dollars) то, сколько бондов можно продать в эту итерацию
 
         let totalOrderWaveletesRequired = convertBondToWaves(fillableOrderAmount, priceWavesByBondCents) # expected in wavelets
 
-        if(totalOrderWaveletesRequired*amountToExecuteOrder == 0) then
-        # this code is executing if there is not enough amount of waves to sell integer number of bonds, but there is still remaining waves amount in the order
+        if (amountToExecuteOrder == 0) then
+            # this code is executing if there is not enough amount of waves to sell integer number of bonds, but there is still remaining waves amount in the order
             ScriptResult(
                 WriteSet([
                     DataEntry(OrderbookKey, dropOrder(orderId)),
@@ -229,6 +231,8 @@ func sellBond() = {
                     ScriptTransfer(addressFromStringValue(getOrderOwner(orderId)), remainedTotal, unit)
                 ])
             )
+        else if(totalOrderWaveletesRequired == 0) then
+            throw("cannot fill order at the moment") #it happens if not enought bonds to fill the order by order price
         else {
             ScriptResult(
                 WriteSet([
