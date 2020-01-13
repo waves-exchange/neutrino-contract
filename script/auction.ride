@@ -213,15 +213,17 @@ func sellBond() = {
         let remainedTotal = getOrderTotal(orderId) - filledTotal #waveletes
         let amountToExecuteOrder = convertWavesToBond(remainedTotal, priceWavesByBondCents); # expected price format 100*waves/usd; return scale: bonds (integers/dollars)
     
-        let fillableOrderAmount = if(bondAmount >= amountToExecuteOrder) then amountToExecuteOrder else bondAmount #scale: bonds (integers/dollars)
+        let fillOrderCondition = bondAmount >= amountToExecuteOrder
+        let fillableOrderAmount = if(fillOrderCondition) then amountToExecuteOrder else bondAmount #scale: bonds (integers/dollars)
 
         let totalOrderWaveletesRequired = convertBondToWaves(fillableOrderAmount, priceWavesByBondCents) # expected in wavelets
 
-        if(totalOrderWaveletesRequired == 0 || amountToExecuteOrder == 0) then
+        if((totalOrderWaveletesRequired == 0 || amountToExecuteOrder == 0) && remainedTotal > 0) then
+        # this code is executing if there is not enough amount of waves to sell integer number of bonds, but there is still remaining waves amount in the order
             ScriptResult(
                 WriteSet([
                     DataEntry(OrderbookKey, dropOrder(orderId)),
-                    DataEntry(getOrderStatusKey(orderId), CANCELED)
+                    DataEntry(getOrderStatusKey(orderId), FILLED)
                ]),
                TransferSet([
                     ScriptTransfer(addressFromStringValue(getOrderOwner(orderId)), remainedTotal, unit)
@@ -230,9 +232,9 @@ func sellBond() = {
         else {
             ScriptResult(
                 WriteSet([
-                    DataEntry(OrderbookKey, if(bondAmount >= amountToExecuteOrder) then dropOrder(orderId) else orderbook),
+                    DataEntry(OrderbookKey, if(fillOrderCondition && remainedTotal == 0) then dropOrder(orderId) else orderbook), #drop order will be executed in the next sell bonds call in the condition above
                     DataEntry(getOrderFilledTotalKey(orderId), filledTotal + totalOrderWaveletesRequired),
-                    DataEntry(getOrderStatusKey(orderId), if(bondAmount >= amountToExecuteOrder) then FILLED else NEW),
+                    DataEntry(getOrderStatusKey(orderId), if(fillOrderCondition && remainedTotal == 0) then FILLED else NEW), # filled status if there is no remained waveletes in the order 
                     DataEntry(getOrderHistoryKey(height), orderPrice)
                ]),
                TransferSet([
