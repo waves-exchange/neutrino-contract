@@ -218,7 +218,7 @@ func sellBond() = {
 
         let totalOrderWaveletesRequired = convertBondToWaves(fillableOrderAmount, priceWavesByBondCents) # expected in wavelets
 
-        if((totalOrderWaveletesRequired == 0 || amountToExecuteOrder == 0) && remainedTotal > 0) then
+        if(totalOrderWaveletesRequired*amountToExecuteOrder == 0) then
         # this code is executing if there is not enough amount of waves to sell integer number of bonds, but there is still remaining waves amount in the order
             ScriptResult(
                 WriteSet([
