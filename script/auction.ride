@@ -70,6 +70,7 @@ func convertWavesToNeutrino(amount: Int, price: Int) = fraction(fraction(amount,
 func convertNeutrinoToBond(amount: Int) = amount/PAULI 
 func convertBondToNeutrino(amount: Int) = amount*PAULI 
 func convertWavesToBond(amount: Int, price: Int) = convertNeutrinoToBond(convertWavesToNeutrino(amount, price))
+func convertBondToWaves(amount: Int, price: Int) = convertNeutrinoToWaves(convertBondToNeutrino(amount), price)
 func convertJsonArrayToList(jsonArray: String) = {
    jsonArray.split(",") #jsonArray.take(size(jsonArray)-1).drop(1).split(",")
 }
@@ -189,14 +190,16 @@ func cancelOrder(orderId : String) = {
 # [called by pacemaker oracles]
 @Callable(i)
 func sellBond() = {
-    let bondBalance = assetBalance(this, bondAssetId)
-    let deficitPositive = if(deficit <= 0) then 0 else deficit
-    let bondAmount = if(deficitPositive >= bondBalance) then bondBalance else deficitPositive
-    let returnAmount = if(deficitPositive >= bondBalance) then 0 else bondBalance-deficitPositive
-  
-    if(returnAmount == 0 && bondAmount == 0) 
+    let bondBalance = assetBalance(this, bondAssetId) #integers (dollars)
+    let deficitPositive = if(deficit <= 0) then 0 else deficit/PAULI #paulis to integers (dollars)
+    let bondAmount = if(deficitPositive >= bondBalance) then bondBalance else deficitPositive # possible bond amount for selling; scale: integers (dollars)
+    let returnAmount = if(deficitPositive >= bondBalance) then 0 else bondBalance-deficitPositive #scale: integers (dollars); send bonds back if there is remaining bonds on the main contract
+    if(deficitPositive == 0 && bondBalance == 0)
         then throw("without deficit")
-    else if(bondAmount == 0) then {
+    else if (bondBalance == 0)
+        then throw("without bonds to sell")
+    else if(returnAmount > 0) then {
+        # return bonds back if there is more bonds than deficit  
         TransferSet([
             ScriptTransfer(neutrinoContract, returnAmount, bondAssetId)
         ])
@@ -204,37 +207,42 @@ func sellBond() = {
     else if(orderbook == "")
         then throw("empty orderbook")
     else {
-        let orderId =  orderbook.split("_")[0]
-        let filledTotal = getOrderFilledTotal(orderId)
-        let orderPrice = getOrderPrice(orderId) 
+        let orderId = take(orderbook, valueOrErrorMessage(indexOf(orderbook, "_"), "no orders found")) # instead of orderbook.split("_")[0] with 100complx we have 20+1+13 = 34
+        let filledTotal = getOrderFilledTotal(orderId) #waveletes; returns 0 if there is no records
+        let orderPrice = getOrderPrice(orderId) #100*usdnb/waves
+        let priceWavesByBondCents = fraction(100, 100, orderPrice)
         
-        let freeTotal = getOrderTotal(orderId) - filledTotal
-        let amount = convertWavesToBond(freeTotal, orderPrice);
+        let remainedTotal = getOrderTotal(orderId) - filledTotal #waveletes
+        let amountToExecuteOrder = convertWavesToBond(remainedTotal, priceWavesByBondCents); # expected price format 100*waves/usd; return scale: bonds (integers/dollars)
     
-        let fillableAmount = if(bondAmount >= amount) then amount else bondAmount
+        let fillOrderCondition = bondAmount >= amountToExecuteOrder
+        let fillableOrderAmount = if(fillOrderCondition) then amountToExecuteOrder else bondAmount #scale: bonds (integers/dollars) то, сколько бондов можно продать в эту итерацию
 
-        let total = fraction((fillableAmount*orderPrice),PAULI,100)
-        if(total == 0 || amount == 0) then
+        let totalOrderWaveletesRequired = convertBondToWaves(fillableOrderAmount, priceWavesByBondCents) # expected in wavelets
+
+        if (amountToExecuteOrder == 0) then
+            # this code is executing if there is not enough amount of waves to sell integer number of bonds, but there is still remaining waves amount in the order
             ScriptResult(
                 WriteSet([
                     DataEntry(OrderbookKey, dropOrder(orderId)),
-                    DataEntry(getOrderStatusKey(orderId), CANCELED)
+                    DataEntry(getOrderStatusKey(orderId), FILLED)
                ]),
                TransferSet([
-                    ScriptTransfer(addressFromStringValue(getOrderOwner(orderId)), freeTotal, unit)
+                    ScriptTransfer(addressFromStringValue(getOrderOwner(orderId)), remainedTotal, unit)
                 ])
             )
+        else if(totalOrderWaveletesRequired == 0) then
+            throw("cannot fill order at the moment") #it happens if not enought bonds to fill the order by order price
         else {
             ScriptResult(
                 WriteSet([
-                    DataEntry(OrderbookKey, if(bondAmount >= amount) then dropOrder(orderId) else orderbook),
-                    DataEntry(getOrderFilledTotalKey(orderId), filledTotal + total),
-                    DataEntry(getOrderStatusKey(orderId), if(bondAmount >= amount) then FILLED else NEW),
-                    DataEntry(getOrderHistoryKey(height), orderPrice)
+                    DataEntry(OrderbookKey, if(fillOrderCondition && remainedTotal == 0) then dropOrder(orderId) else orderbook), #drop order will be executed in the next sell bonds call in the condition above
+                    DataEntry(getOrderFilledTotalKey(orderId), filledTotal + totalOrderWaveletesRequired),
+                    DataEntry(getOrderStatusKey(orderId), if(fillOrderCondition && remainedTotal == 0) then FILLED else NEW) # filled status if there is no remained waveletes in the order 
                ]),
                TransferSet([
-                    ScriptTransfer(addressFromStringValue(getOrderOwner(orderId)), fillableAmount, bondAssetId),
-                    ScriptTransfer(neutrinoContract, total, unit)
+                    ScriptTransfer(addressFromStringValue(getOrderOwner(orderId)), fillableOrderAmount, bondAssetId),
+                    ScriptTransfer(neutrinoContract, totalOrderWaveletesRequired, unit)
                 ])
             )
         }
