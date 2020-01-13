@@ -234,8 +234,7 @@ func sellBond() = {
                 WriteSet([
                     DataEntry(OrderbookKey, if(fillOrderCondition && remainedTotal == 0) then dropOrder(orderId) else orderbook), #drop order will be executed in the next sell bonds call in the condition above
                     DataEntry(getOrderFilledTotalKey(orderId), filledTotal + totalOrderWaveletesRequired),
-                    DataEntry(getOrderStatusKey(orderId), if(fillOrderCondition && remainedTotal == 0) then FILLED else NEW), # filled status if there is no remained waveletes in the order 
-                    DataEntry(getOrderHistoryKey(height), orderPrice)
+                    DataEntry(getOrderStatusKey(orderId), if(fillOrderCondition && remainedTotal == 0) then FILLED else NEW) # filled status if there is no remained waveletes in the order 
                ]),
                TransferSet([
                     ScriptTransfer(addressFromStringValue(getOrderOwner(orderId)), fillableOrderAmount, bondAssetId),
