@@ -1,4 +1,4 @@
-const deployHelper = require('../api/ContractHelper.js');
+const deployHelper = require('../neutrino-api/ContractHelper.js');
 let deployResult = {}
 let leaseTx= {}
 describe('Leasing test', async function () {
