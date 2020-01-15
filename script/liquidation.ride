@@ -60,6 +60,7 @@ func getOrderOwnerKey(orderId: String) = "order_owner_" + orderId
 func getOrderHeightKey(orderId: String) = "order_height_" + orderId
 func getOrderStatusKey(orderId: String) = "order_status_" + orderId
 func getOrderFilledTotalKey(orderId: String) = "order_filled_total_" + orderId
+func getLastOrderOwnerKey(owner: String) = "last_order_owner_" + owner
 
 #-------------------Convert functions-------------------
 func convertNeutrinoToWaves(amount: Int, price: Int) = fraction(fraction(amount, 100, price),WAVELET, PAULI)
@@ -80,7 +81,7 @@ let reserve = wavesBalance(neutrinoContract) - wavesLockedBalance
 let neutrinoSupply = extract(assetInfo(neutrinoAssetId)).quantity - assetBalance(neutrinoContract, neutrinoAssetId) + neutrinoLockedBalance - assetBalance(this, neutrinoAssetId)
 let surplus = convertWavesToNeutrino(reserve, currentPrice) - neutrinoSupply
 let firstOrder = getStringByKey(FirstOrderKey)
-let lastOrder = getStringByKey(FirstOrderKey)
+let lastOrder = getStringByKey(LastOrderKey)
 
 #-------------------Get functions------------------------
 func getOrderTotal(id : String) = getNumberByKey(getOrderTotalKey(id))
@@ -90,6 +91,7 @@ func getOrderFilledTotal(id : String) = getNumberByKey(getOrderFilledTotalKey(id
 func getOrderPrev(id: String) = getStringByKey(getOrderPrevKey(id))
 func getOrderNext(id: String) = getStringByKey(getOrderNextKey(id))
 func getOrderHeight(id: String) = getNumberByKey(getOrderHeightKey(id))
+func getLastOrderOwner(owner: String) = getStringByKey(getLastOrderOwnerKey(owner))
 
 #-------------------Callable---------------------------
 
@@ -98,31 +100,32 @@ func getOrderHeight(id: String) = getNumberByKey(getOrderHeightKey(id))
 @Callable(i)
 func addLiquidationOrder() = {
     let pmt = extract(i.payment);
-    let newOrderId = toBase58String(keccak256(toBytes(pmt.amount) + i.caller.bytes + toBytes(height)))
+    let newOrderId = toBase58String(keccak256(toBytes(pmt.amount) + i.caller.bytes + toBytes(height) + i.transactionId))
     
     let prevOrder = getOrderPrev(lastOrder)
     let orderStatus = getOrderStatus(lastOrder)
-
+    let owner = toString(i.caller)
     if (pmt.assetId != bondAssetId) 
         then throw("can use appropriate neutrino bonds tokens only")
     else if(getOrderOwner(newOrderId) != "")
         then throw("an order is already exists")
     else if(prevOrder != "")
-        then throw("nextOrder is not last")
+        then throw("nextOrder is not last. Info:" + prevOrder)
     else if(firstOrder != "" && lastOrder == "")
         then throw("invalid last order")
     else if(firstOrder != "" && orderStatus != NEW)
         then throw("last order status is not new")
     else {
         WriteSet([
+            DataEntry(getLastOrderOwnerKey(owner), newOrderId),
             DataEntry(getOrderNextKey(newOrderId), lastOrder),
-            DataEntry(getOrderPrevKey(lastOrder), newOrderId),
+            DataEntry(getOrderPrevKey(lastOrder), if lastOrder == "" then "" else newOrderId),
 
             DataEntry(FirstOrderKey, if firstOrder == "" then newOrderId else firstOrder),
             DataEntry(LastOrderKey, newOrderId),
 
             DataEntry(getOrderTotalKey(newOrderId), pmt.amount),
-            DataEntry(getOrderOwnerKey(newOrderId), toString(i.caller)),
+            DataEntry(getOrderOwnerKey(newOrderId), owner),
             DataEntry(getOrderHeightKey(newOrderId), height),
             DataEntry(getOrderStatusKey(newOrderId), NEW)
         ])
