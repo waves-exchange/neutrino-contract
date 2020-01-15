@@ -9,10 +9,12 @@ const orderCount = 1;
 let neutrinoApi = null;
 describe('Auction test', async function () {
     before(async function () {
-        deployResult = await deployHelper.deploy(env.SEED, env.API_BASE, env.CHAIN_ID, "./script/", "TST-N", "TST-NB", "test asset", "test bond asset", "") 
         setupAccounts({
             testAccount: 100000 * NeutrinoApi.WAVELET
         })
+        console.log("")
+        deployResult = await deployHelper.deploy(env.SEED, env.API_BASE, env.CHAIN_ID, "./script/", "TST-N", "TST-NB", "test asset", "test bond asset", "", true) 
+        
 
         var massTx = massTransfer({
             transfers: [
@@ -33,7 +35,7 @@ describe('Auction test', async function () {
         var massNeutrinoTx = massTransfer({
             transfers: [
                 {
-                    amount: testHelper.getRandomArbitary(1, 9999) * NeutrinoApi.WAVELET * NeutrinoApi.PAULI,
+                    amount: testHelper.getRandomArbitary(1, 9999) * NeutrinoApi.PAULI,
                     recipient: address(accounts.testAccount)
                 }
             ],

@@ -1,4 +1,4 @@
-function getRandomArbitary(min, max) {
+function getRandomNumber(min, max) {
     return Math.floor(Math.random() * (max - min) + min);
 }
 function convertDataStateToObject(array) {
@@ -8,5 +8,5 @@ function convertDataStateToObject(array) {
     }
     return newObject;
 }
-exports.getRandomArbitary = getRandomArbitary;
+exports.getRandomNumber = getRandomNumber;
 exports.convertDataStateToObject = convertDataStateToObject;
