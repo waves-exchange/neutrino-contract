@@ -1,7 +1,7 @@
-const deployHelper = require('../api/ContractHelper.js').ContractHelper;
-const NeutrinoApi = require('../api/NeutrinoApi.js').NeutrinoApi;
-const neutrinoHelper = require('../api/NeutrinoApi.js');
-const oracleHelper = require('../api/OracleApi.js');
+const deployHelper = require('../neutrino-api/ContractHelper.js').ContractHelper;
+const NeutrinoApi = require('../neutrino-api/NeutrinoApi.js').NeutrinoApi;
+const neutrinoHelper = require('../neutrino-api/NeutrinoApi.js');
+const oracleHelper = require('../neutrino-api/OracleApi.js');
 const testHelper = require('../helpers/testHelper.js');
 
 let deployResult = {}
@@ -9,10 +9,12 @@ const orderCount = 1;
 let neutrinoApi = null;
 describe('Auction test', async function () {
     before(async function () {
-        deployResult = await deployHelper.deploy(env.SEED, env.API_BASE, env.CHAIN_ID, "./script/", "TST-N", "TST-NB", "test asset", "test bond asset", "") 
         setupAccounts({
             testAccount: 100000 * NeutrinoApi.WAVELET
         })
+        console.log("")
+        deployResult = await deployHelper.deploy(env.SEED, env.API_BASE, env.CHAIN_ID, "./script/", "TST-N", "TST-NB", "test asset", "test bond asset", "", true) 
+        
 
         var massTx = massTransfer({
             transfers: [
@@ -33,7 +35,7 @@ describe('Auction test', async function () {
         var massNeutrinoTx = massTransfer({
             transfers: [
                 {
-                    amount: testHelper.getRandomArbitary(1, 9999) * NeutrinoApi.WAVELET * NeutrinoApi.PAULI,
+                    amount: testHelper.getRandomArbitary(1, 9999) * NeutrinoApi.PAULI,
                     recipient: address(accounts.testAccount)
                 }
             ],
