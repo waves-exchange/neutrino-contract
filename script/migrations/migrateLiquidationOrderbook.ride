@@ -112,11 +112,7 @@ func migrateOrder() = {
         let prevOrder = getOrderPrev(lastOrder)
         let owner = toString(i.caller)
 
-        if(getOrderOwner(firstOldOrder) != "")
-            then throw("an order is already exists")
-        else if(prevOrder != "")
-            then throw("nextOrder is not last. Info:" + prevOrder)
-        else if(firstOrder != "" && lastOrder == "")
+        if(firstOrder != "" && lastOrder == "")
             then throw("invalid last order")
         else {
             WriteSet([
