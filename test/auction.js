@@ -2,7 +2,7 @@ const deployHelper = require('../neutrino-api/ContractHelper.js').ContractHelper
 const NeutrinoApi = require('../neutrino-api/NeutrinoApi.js').NeutrinoApi;
 const neutrinoHelper = require('../neutrino-api/NeutrinoApi.js');
 const oracleHelper = require('../neutrino-api/OracleApi.js');
-const testHelper = require('../helpers/testHelper.js');
+const testHelper = require('../helpers/TestHelper.js/index.js');
 
 let deployResult = {}
 const orderCount = 1;
