@@ -1,6 +1,6 @@
-const deployHelper = require('../api/ContractHelper.js');
-const neutrinoHelper = require('../api/NeutrinoApi.js');
-const oracleHelper = require('../api/OracleApi.js');
+const deployHelper = require('../neutrino-api/ContractHelper.js');
+const neutrinoHelper = require('../neutrino-api/NeutrinoApi.js');
+const oracleHelper = require('../neutrino-api/OracleApi.js');
 
 
 let deployResult = {}
