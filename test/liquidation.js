@@ -55,10 +55,9 @@ describe('Liqidate test', async function () {
             let orderHash = stateObject["last_order_owner_" + address(accounts.testAccount)] 
 
             assert.equal(stateObject["order_first"], orderHash, "invalid first order in list")
-            assert.equal(stateObject["order_first"], orderHash, "invalid first order in list")
 
-            assert.equal(stateObject["order_prev_"], "", "invalid prev order")
-            assert.equal(stateObject["order_next_" + orderHash], "", "invalid next order")
+            assert.equal(stateObject["order_next_"], "", "invalid next order")
+            assert.equal(stateObject["order_prev_" + orderHash], "", "invalid prev order")
 
             assert.equal(stateObject["order_last"], orderHash, "invalid last order in list")
             assert.equal(stateObject["order_total_" + orderHash], amount, "invalid order total")
@@ -81,8 +80,8 @@ describe('Liqidate test', async function () {
 
             assert.equal(contractState["order_first"].value, txStateObject["order_first"], "invalid first order in list")
 
-            assert.equal(txStateObject["order_prev_" + beforeLastOrder], orderHash, "invalid prev order")
-            assert.equal(txStateObject["order_next_" + orderHash], beforeLastOrder, "invalid next order")
+            assert.equal(txStateObject["order_next_" + beforeLastOrder], orderHash, "invalid next order")
+            assert.equal(txStateObject["order_prev_" + orderHash], beforeLastOrder, "invalid prev order")
 
             assert.equal(txStateObject["order_last"], orderHash, "invalid last order in list")
             assert.equal(txStateObject["order_total_" + orderHash], amount, "invalid order total")
@@ -94,15 +93,15 @@ describe('Liqidate test', async function () {
     it('Drop first orders', async function () {
         const contractState = await accountData(deployResult.accounts.liquidationContract.address)
         const beforeFirstOrder = contractState["order_first"].value
-        const beforePrevOrder = contractState["order_prev_" + beforeFirstOrder].value
+        const beforeNextOrder = contractState["order_next_" + beforeFirstOrder].value
         const id = await neutrinoApi.cancelLiquidationOrder(beforeFirstOrder, accounts.testAccount)
 
         const txState = await stateChanges(id);
         const txStateObject = testHelper.convertDataStateToObject(txState.data)
-        const prevNextOrder = txStateObject["order_next_" + beforePrevOrder]
+        const prevNextOrder = txStateObject["order_prev_" + beforeNextOrder]
 
         assert.equal(txStateObject["order_last"], contractState["order_last"].value, "invalid last order in list")
-        assert.equal(txStateObject["order_first"], beforePrevOrder, "invalid first order in list")
+        assert.equal(txStateObject["order_first"], beforeNextOrder, "invalid first order in list")
         assert.equal(prevNextOrder, "", "invalid prev order")
         assert.equal(txStateObject["order_status_" + beforeFirstOrder], "canceled", "invalid order status")
     })
@@ -110,7 +109,7 @@ describe('Liqidate test', async function () {
     it('Drop middle orders', async function () {
         const contractState = await accountData(deployResult.accounts.liquidationContract.address)
         const beforeFirstOrder = contractState["order_first"].value
-        const cancelOrder = contractState["order_prev_" + beforeFirstOrder].value
+        const cancelOrder = contractState["order_next_" + beforeFirstOrder].value
         const nextOrder = contractState["order_next_" + cancelOrder].value
         const prevOrder = contractState["order_prev_" + cancelOrder].value
         const id = await neutrinoApi.cancelLiquidationOrder(cancelOrder, accounts.testAccount)
@@ -127,16 +126,16 @@ describe('Liqidate test', async function () {
     it('Drop last orders', async function () {
         const contractState = await accountData(deployResult.accounts.liquidationContract.address)
         const beforeLastOrder = contractState["order_last"].value
-        const beforeNextOrder = contractState["order_next_" + beforeLastOrder].value
+        const beforePrevOrder = contractState["order_prev_" + beforeLastOrder].value
         const id = await neutrinoApi.cancelLiquidationOrder(beforeLastOrder, accounts.testAccount)
 
         const txState = await stateChanges(id);
         const txStateObject = testHelper.convertDataStateToObject(txState.data)
-        const prevLastOrder = txStateObject["order_prev_" + beforeNextOrder]
+        const nextLastOrder = txStateObject["order_next_" + beforePrevOrder]
 
         assert.equal(txStateObject["order_first"], contractState["order_first"].value, "invalid first order in list")
-        assert.equal(txStateObject["order_last"], beforeNextOrder, "invalid last order in list")
-        assert.equal(prevLastOrder, "", "invalid prev order in last")
+        assert.equal(txStateObject["order_last"], beforePrevOrder, "invalid last order in list")
+        assert.equal(nextLastOrder, "", "invalid prev order in last")
         assert.equal(txStateObject["order_status_" + beforeLastOrder], "canceled", "invalid order status")
     })
 
@@ -170,7 +169,7 @@ describe('Liqidate test', async function () {
         const contractState = await accountData(deployResult.accounts.liquidationContract.address)
         const firstOrderHash = contractState["order_first"].value
         const totalOrder = Math.floor(contractState["order_total_" + firstOrderHash].value - contractState["order_filled_total_" + firstOrderHash].value)
-        const beforePrevOrder = contractState["order_prev_" + firstOrderHash].value
+        const beforeNextOrder = contractState["order_next_" + firstOrderHash].value
 
         var transferTx = transfer({
                 amount: totalOrder * neutrinoHelper.WAVELET,
@@ -185,7 +184,7 @@ describe('Liqidate test', async function () {
         
         const txState = await stateChanges(id);
         const txStateObject = testHelper.convertDataStateToObject(txState.data)
-        const prevNextOrder = txStateObject["order_next_" + beforePrevOrder]
+        const prevNextOrder = txStateObject["order_prev_" + beforeNextOrder]
         
         const transferToOrderOwner = txState.transfers.find(x => x.address == address(accounts.testAccount))
    
@@ -194,7 +193,7 @@ describe('Liqidate test', async function () {
         assert.equal(transferToOrderOwner.asset, deployResult.assets.neutrinoAssetId, "invalid asset id transfer to user")
         assert.equal(txStateObject["order_status_" + firstOrderHash], "filled", "invalid order status")
         assert.equal(txStateObject["order_last"], contractState["order_last"].value, "invalid last order in list")
-        assert.equal(txStateObject["order_first"], beforePrevOrder, "invalid first order in list")
+        assert.equal(txStateObject["order_first"], beforeNextOrder, "invalid first order in list")
         assert.equal(prevNextOrder, "", "invalid prev order")
     })
           
