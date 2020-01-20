@@ -106,15 +106,15 @@ func addLiquidationOrder() = {
     let pmt = extract(i.payment);
     let newOrderId = toBase58String(keccak256(toBytes(pmt.amount) + i.caller.bytes + toBytes(height) + i.transactionId))
     
-    let prevOrder = getOrderPrev(lastOrder)
+    let nextOrder = getOrderNext(lastOrder)
     let orderStatus = getOrderStatus(lastOrder)
     let owner = toString(i.caller)
     if (pmt.assetId != bondAssetId) 
         then throw("can use appropriate neutrino bonds tokens only")
     else if(getOrderOwner(newOrderId) != "")
         then throw("an order is already exists")
-    else if(prevOrder != "")
-        then throw("nextOrder is not last. Info:" + prevOrder)
+    else if(nextOrder != "")
+        then throw("nextOrder is not last. Info:" + nextOrder)
     else if(firstOrder != "" && lastOrder == "")
         then throw("invalid last order")
     else if(firstOrder != "" && orderStatus != NEW)
@@ -122,8 +122,8 @@ func addLiquidationOrder() = {
     else {
         WriteSet([
             DataEntry(getLastOrderOwnerKey(owner), newOrderId),
-            DataEntry(getOrderNextKey(newOrderId), lastOrder),
-            DataEntry(getOrderPrevKey(lastOrder), if lastOrder == "" then "" else newOrderId),
+            DataEntry(getOrderPrevKey(newOrderId), lastOrder),
+            DataEntry(getOrderNextKey(lastOrder), if lastOrder == "" then "" else newOrderId),
 
             DataEntry(FirstOrderKey, if firstOrder == "" then newOrderId else firstOrder),
             DataEntry(LastOrderKey, newOrderId),
@@ -153,8 +153,8 @@ func cancelOrder(orderId : String) = {
     else {
         ScriptResult(
             WriteSet([
-                DataEntry(FirstOrderKey, if firstOrder == orderId then prevOrder else firstOrder),
-                DataEntry(LastOrderKey, if lastOrder == orderId then nextOrder else lastOrder),
+                DataEntry(FirstOrderKey, if firstOrder == orderId then nextOrder else firstOrder),
+                DataEntry(LastOrderKey, if lastOrder == orderId then prevOrder else lastOrder),
 
                 DataEntry(getOrderNextKey(prevOrder), nextOrder),
                 DataEntry(getOrderPrevKey(nextOrder), prevOrder),
