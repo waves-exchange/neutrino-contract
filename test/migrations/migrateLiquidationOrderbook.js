@@ -59,8 +59,8 @@ describe('Migrate liquidation orderbook test', async function () {
 
             assert.equal(stateObject["order_first"], orderHash, "invalid first order in list")
 
-            assert.equal(stateObject["order_prev_"], "", "invalid prev order")
-            assert.equal(stateObject["order_next_" + orderHash], "", "invalid next order")
+            assert.equal(stateObject["order_next_"], "", "invalid next order")
+            assert.equal(stateObject["order_prev_" + orderHash], "", "invalid prev order")
 
             assert.equal(stateObject["order_last"], orderHash, "invalid last order in list")
     })
@@ -90,8 +90,8 @@ describe('Migrate liquidation orderbook test', async function () {
 
             assert.equal(contractState["order_first"].value, txStateObject["order_first"], "invalid first order in list")
 
-            assert.equal(txStateObject["order_prev_" + beforeLastOrder], orderHash, "invalid prev order")
-            assert.equal(txStateObject["order_next_" + orderHash], beforeLastOrder, "invalid next order")
+            assert.equal(txStateObject["order_next_" + beforeLastOrder], orderHash, "invalid next order")
+            assert.equal(txStateObject["order_prev_" + orderHash], beforeLastOrder, "invalid prev order")
 
             assert.equal(txStateObject["order_last"], orderHash, "invalid last order in list")
         }

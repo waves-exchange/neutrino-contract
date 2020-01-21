@@ -109,7 +109,6 @@ func migrateOrder() = {
         let parts = orderbook.split(firstOldOrder + "_")
         let newOrderbook = parts[0] + parts[1]
 
-        let prevOrder = getOrderPrev(lastOrder)
         let owner = toString(i.caller)
 
         if(firstOrder != "" && lastOrder == "")
@@ -117,8 +116,8 @@ func migrateOrder() = {
         else {
             WriteSet([
                 DataEntry(getLastOrderOwnerKey(owner), firstOldOrder),
-                DataEntry(getOrderNextKey(firstOldOrder), lastOrder),
-                DataEntry(getOrderPrevKey(lastOrder), if lastOrder == "" then "" else firstOldOrder),
+                DataEntry(getOrderPrevKey(firstOldOrder), lastOrder),
+                DataEntry(getOrderNextKey(lastOrder), if lastOrder == "" then "" else firstOldOrder),
 
                 DataEntry(FirstOrderKey, if firstOrder == "" then firstOldOrder else firstOrder),
                 DataEntry(LastOrderKey, firstOldOrder),
