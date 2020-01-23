@@ -41,6 +41,7 @@ let FILLED = "filled"
 
 #-------------------Constructor-------------------------
 let NeutrinoContractKey = "neutrino_contract"
+let migrationOrderCurrentIndexKey = "migration_current_order"
 
 #-------------------Keys--------------------------------
 let PriceKey = "price"
@@ -83,6 +84,8 @@ let surplus = convertWavesToNeutrino(reserve, currentPrice) - neutrinoSupply
 let firstOrder = getStringByKey(FirstOrderKey)
 let lastOrder = getStringByKey(LastOrderKey)
 
+let currentMigrationOrderIndex = getNumberByKey(migrationOrderCurrentIndexKey)
+
 #-------------------Get functions------------------------
 func getOrderTotal(id : String) = getNumberByKey(getOrderTotalKey(id))
 func getOrderOwner(id : String) = getStringByKey(getOrderOwnerKey(id))
@@ -92,6 +95,7 @@ func getOrderPrev(id: String) = getStringByKey(getOrderPrevKey(id))
 func getOrderNext(id: String) = getStringByKey(getOrderNextKey(id))
 func getOrderHeight(id: String) = getNumberByKey(getOrderHeightKey(id))
 func getLastOrderOwner(owner: String) = getStringByKey(getLastOrderOwnerKey(owner))
+
 
 #-------------------Callable---------------------------
 
@@ -104,24 +108,18 @@ func migrateOrder() = {
         then throw("empty orderbook")
     else {
         let orders = orderbook.split("_")
-        let firstOldOrder = orders[0]
-
-        let parts = orderbook.split(firstOldOrder + "_")
-        let newOrderbook = parts[0] + parts[1]
-
         let owner = toString(i.caller)
-
-        if(firstOrder != "" && lastOrder == "")
-            then throw("invalid last order")
+        if(size(orders) <= currentMigrationOrderIndex)
+            then throw("currentMigrationOrderIndex is out of orderbook size")
         else {
+            let firstOldOrder = orders[currentMigrationOrderIndex]
             WriteSet([
                 DataEntry(getLastOrderOwnerKey(owner), firstOldOrder),
                 DataEntry(getOrderPrevKey(firstOldOrder), lastOrder),
                 DataEntry(getOrderNextKey(lastOrder), if lastOrder == "" then "" else firstOldOrder),
-
                 DataEntry(FirstOrderKey, if firstOrder == "" then firstOldOrder else firstOrder),
                 DataEntry(LastOrderKey, firstOldOrder),
-                DataEntry("orderbook", newOrderbook)
+                DataEntry(migrationOrderCurrentIndexKey, currentMigrationOrderIndex + 1)
             ])
         }
     }
