@@ -3,7 +3,7 @@
 {-# SCRIPT_TYPE ACCOUNT #-}
 #
 # Smart Contract for Price Oracles and Emergency Oracles of Neutrino Protocol
-#  
+#
 
 #-------------------Base functions----------------------
 func getNumberByKey(key: String) = {
@@ -48,30 +48,21 @@ func convertJsonArrayToList(jsonArray: String) = {
    jsonArray.split(",") #jsonArray.take(size(jsonArray)-1).drop(1).split(",")
 }
 
-#-------------------Constants--------------------------- 
+#-------------------Constants---------------------------
 let BLOCK = "block"
 let UNBLOCK = "unblock"
 let UPDATE = "update"
 
 #-------------------Constructor-------------------------
 let OraclesKey = "oracles"
-let AdminsKey = "admins"
-let VoteIntervalKey = "vote_interval"
-let CoefficientOracleKey = "coefficient_oracle"
-let CoefficientAdminKey = "coefficient_admin"
-let ScriptUpdateIntervalKey = "script_update_interval"
 let PriceOffsetKey = "price_offset"
 
 #-------------------Keys---------------------------------
 #------This contract----------
 let PriceKey = "price"
 let IsBlockedKey = "is_blocked"
-let BlockExpireVoteKey = "vote_expire_block"
-let ScriptUpdateBlockKey = "script_update_block"
 let PriceIndexKey = "price_index"
 
-func getAdminVoteKey(owner: String) = "admin_vote_" + owner
-func getAdminVoteActionKey(owner: String) = getAdminVoteKey(owner) + "_" + "action"
 func getBlackSwarmPriceKey(block: Int) = "black_swarm_price" + "_" + toString(block)
 func getPriceHistoryKey(block: Int) = PriceKey + "_" + toString(block)
 func getHeightPriceByIndexKey(index: Int) = PriceIndexKey + "_" + toString(index)
@@ -80,19 +71,13 @@ func getOracleProvidePriceKey(height: Int) = "price_" + toString(height)
 #-------------------Global vars-------------------------
 let price = getNumberByKey(PriceKey)
 let priceIndex = getNumberByKey(PriceIndexKey)
-let blockExpireVote = getNumberByKey(BlockExpireVoteKey)
-let scriptUpdateBlock = getNumberByKey(ScriptUpdateBlockKey)
-let scriptUpdateInterval = getNumberByKey(ScriptUpdateIntervalKey)
 let isBlocked = getBoolByKey(IsBlockedKey)
-let bftCoefficientOracle = getNumberByKey(CoefficientOracleKey)
-let bftCoefficientAdmin = getNumberByKey(CoefficientAdminKey)
+let bftCoefficientOracle = 3
 let percentPriceOffset = getNumberByKey(PriceOffsetKey)
-let voteInterval = getNumberByKey(VoteIntervalKey)
 let oracles = getStringByKey(OraclesKey)
-let oraclesList = convertJsonArrayToList(oracles) 
+let oraclesList = convertJsonArrayToList(oracles)
 
 #-------------------Get func----------------------------
-func getAdminVoteAction(owner: String) = getStringByKey(getAdminVoteActionKey(owner))
 func getOracleProvideHeight(owner: String, height: Int) = getNumberByAddressAndKey(addressFromStringValue(owner), getOracleProvidePriceKey(height))
 func getPriceHistory(height: Int) = getNumberByKey(getPriceHistoryKey(height))
 #-------------------Other func--------------------------
@@ -101,7 +86,7 @@ func isOracle(address: String) = {
 }
 
 #-------------------Fold func--------------------------
-func filterAdminsVoteByAction(result: List[String], address: String, action: String) = 
+func filterAdminsVoteByAction(result: List[String], address: String, action: String) =
    address :: result
 
 func filterAdminsVoteByBlockAction(result: List[String], address: String) =
@@ -113,27 +98,106 @@ func filterAdminsVoteByUnblockAction(result: List[String], address: String) =
 func filterAdminsVoteByUpdateAction(result: List[String], address: String) =
    filterAdminsVoteByAction(result, address, UPDATE)
 
+func findPricesInRange(prices: List[Int]) = {
+    let minPercentBound = 90
+    let maxPercentBound = 110
+    let p0 = prices[0]
+    let check0 = if (prices[0] <= 0) then [0] else {
+        let p01 = prices[1] * 100 / p0
+        let p02 = prices[2] * 100 / p0
+        let p03 = prices[3] * 100 / p0
+        let p04 = prices[4] * 100 / p0
+
+        let array1 = if(p01 < maxPercentBound && p01 > minPercentBound) then 1::[0] else [0]
+        let array2 = if(p02 < maxPercentBound && p02 > minPercentBound) then 2::array1 else array1
+        let array3 = if(p03 < maxPercentBound && p03 > minPercentBound) then 3::array2 else array2
+        if(p04 < maxPercentBound && p04 > minPercentBound) then 4::array3 else array3
+    }
+
+    let check1 = if (check0.size() >= 3) then check0 else {
+        let p1 = prices[1]
+        if (p1 <= 0) then [1] else {
+            let p10 = prices[0] * 100 / p1
+            let p12 = prices[2] * 100 / p1
+            let p13 = prices[3] * 100 / p1
+            let p14 = prices[4] * 100 / p1
+
+            let array1 = if(p10 < maxPercentBound && p10 > minPercentBound) then 0::[1] else [1]
+            let array2 = if(p12 < maxPercentBound && p12 > minPercentBound) then 2::array1 else array1
+            let array3 = if(p13 < maxPercentBound && p13 > minPercentBound) then 3::array2 else array2
+            if(p14 < maxPercentBound && p14 > minPercentBound) then 4::array3 else array3
+        }
+    }
+
+    let check2 = if (check1.size() >= 3) then check1 else {
+        let p2 = prices[2]
+        if (p2 <= 0) then [2] else {
+            let p20 = prices[0] * 100 / p2
+            let p21 = prices[1] * 100 / p2
+            let p23 = prices[3] * 100 / p2
+            let p24 = prices[4] * 100 / p2
+
+            let array1 = if (p20 < maxPercentBound && p20 > minPercentBound) then 0::[2] else [2]
+            let array2 = if(p21 < maxPercentBound && p21 > minPercentBound) then 1::array1 else array1
+            let array3 = if(p23 < maxPercentBound && p23 > minPercentBound) then 3::array2 else array2
+            if(p24 < maxPercentBound && p24 > minPercentBound) then 4::array3 else array3
+        }
+    }
+
+    let check3 = if (check2.size() >= 3) then check2 else {
+        let p3 = prices[3]
+        if (p3 <= 0) then [3] else {
+            let p30 = prices[0] * 100 / p3
+            let p31 = prices[1] * 100 / p3
+            let p32 = prices[2] * 100 / p3
+            let p34 = prices[4] * 100 / p3
+
+            let array1 = if (p30 < maxPercentBound && p30 > minPercentBound) then 0::[3] else [3]
+            let array2 = if(p31 < maxPercentBound && p31 > minPercentBound) then 1::array1 else array1
+            let array3 = if(p32 < maxPercentBound && p32 > minPercentBound) then 2::array2 else array2
+            if(p34 < maxPercentBound && p34 > minPercentBound) then 4::array3 else array3
+        }
+    }
+
+    if (check3.size() >= 3) then check3 else {
+        let p4 = prices[4]
+        if (p4 <= 0) then [4] else {
+            let p40 = prices[0] * 100 / p4
+            let p41 = prices[1] * 100 / p4
+            let p42 = prices[2] * 100 / p4
+            let p43 = prices[3] * 100 / p4
+
+            let array1 = if (p40 < maxPercentBound && p40 > minPercentBound) then 0::[4] else [4]
+            let array2 = if(p41 < maxPercentBound && p41 > minPercentBound) then 1::array1 else array1
+            let array3 = if(p42 < maxPercentBound && p42 > minPercentBound) then 2::array2 else array2
+            if(p43 < maxPercentBound && p43 > minPercentBound) then 3::array3 else array3
+        }
+    }
+}
+
 #-------------------Callable----------------------
 
 # [called by price oracles]
 @Callable(i)
-func finalizeCurrentPrice() = {        
+func finalizeCurrentPrice() = {
     let prices = [
         getOracleProvideHeight(oraclesList[0], height),
         getOracleProvideHeight(oraclesList[1], height),
         getOracleProvideHeight(oraclesList[2], height),
         getOracleProvideHeight(oraclesList[3], height),
         getOracleProvideHeight(oraclesList[4], height)
-    ]                  
+    ]
 
-    let priceProvidingCount = 
-        (if(prices[0] != 0) then 1 else 0) +
-        (if(prices[1] != 0) then 1 else 0) + 
-        (if(prices[2] != 0) then 1 else 0) +
-        (if(prices[3] != 0) then 1 else 0) +
-        (if(prices[4] != 0) then 1 else 0)
+    let pricesInRange = findPricesInRange(prices)
 
-    let priceSum = prices[0] + prices[1] + prices[2] + prices[3] + prices[4]
+    let priceProvidingCount = pricesInRange.size();
+
+    if (priceProvidingCount < 3) then throw("Could not finalize price because of big variation") else
+    let sum1 = prices[pricesInRange[0]] + prices[pricesInRange[1]] + prices[pricesInRange[2]]
+    let sum2 = if (priceProvidingCount >= 4) then sum1 + prices[pricesInRange[3]] else sum1
+    let priceSum = if (priceProvidingCount >= 5) then sum2 + prices[pricesInRange[4]] else sum2
+    if (priceProvidingCount >= 6) then throw("Invalid pricesInRange creation") else
+
     let newPrice = priceSum/priceProvidingCount
 
     if(isBlocked)

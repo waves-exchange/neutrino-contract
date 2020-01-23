@@ -10,7 +10,7 @@ const nodeAddress = ""
 
 describe('Deploy', async function () {
     it('Deploy', async function () {
-        const result = await deployHelper.deploy(env.SEED, env.API_BASE, env.CHAIN_ID, "./script/", symbolNeutrino, symbolBond, descriptionNeutrino,descriptionBond, nodeAddress) 
+        const result = await deployHelper.deploy(env.SEED, env.API_BASE, env.CHAIN_ID, "./script/", symbolNeutrino, symbolBond, descriptionNeutrino,descriptionBond, nodeAddress, true) 
         console.log(JSON.stringify(result))
     });
 })

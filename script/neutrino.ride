@@ -99,15 +99,13 @@ func convertJsonArrayToList(jsonArray: String) = {
 }
 
 #-------------------Global vars-------------------------
-let neutrinoLockedBalance = getNumberByKey(NeutrinoLockedBalanceKey)
-let wavesLockedBalance = getNumberByKey(WavesLockedBalanceKey)
+
 let liquidationContract = getStringByKey(LiquidationContractKey)
 let neutrinoAssetIdString = getStringByKey(NeutrinoAssetIdKey)
 let neutrinoAssetId = fromBase58String(neutrinoAssetIdString)
 let auctionContract = getStringByKey(AuctionContractKey)
 let rpdContract = getStringByKey(RPDContractKey)
 let controlContract = getStringByKey(ContolContractKey)
-let currentPrice = getNumberByAddressAndKey(controlContract,PriceKey) # The price that oracles are providing to control.ride
 let priceIndex = getNumberByAddressAndKey(controlContract, PriceIndexKey) # Last price history iterator from control.ride
 let isBlocked = getBoolByAddressAndKey(controlContract,IsBlockedKey) # Checks for contract locks that might happen after attacks.  The var is read from control contract
 let nodeOracleProviderPubKey = fromBase58String(getStringByKey(NodeOracleProviderPubKeyKey))
@@ -115,12 +113,19 @@ let balanceWavesLockInterval = getNumberByKey(BalanceWavesLockIntervalKey)
 let balanceNeutrinoLockInterval = getNumberByKey(BalanceNeutrinoLockIntervalKey)
 let minWavesSwapAmount = getNumberByKey(MinWavesSwapAmountKey)
 let minNeutrinoSwapAmount = getNumberByKey(MinNeutrinoSwapAmountKey)
-let reserve = wavesBalance(this) - wavesLockedBalance
 let bondAssetId = fromBase58String(getStringByKey(BondAssetIdKey))
-let bondSupply = extract(assetInfo(bondAssetId)).quantity - assetBalance(this, bondAssetId)
-let neutrinoSupply = extract(assetInfo(neutrinoAssetId)).quantity - assetBalance(this, neutrinoAssetId) + neutrinoLockedBalance - assetBalance(addressFromStringValue(liquidationContract), neutrinoAssetId)
+
+let neutrinoContract = this
+#-------------------Global vars deficit, locked & supply -------------------------
+let currentPrice = getNumberByAddressAndKey(controlContract, PriceKey) # The value from control.ride
+let neutrinoLockedBalance = getNumberByKey(NeutrinoLockedBalanceKey) #locked balance from USDN -> WAVES swap
+let wavesLockedBalance = getNumberByKey(WavesLockedBalanceKey) #locked balance from WAVES -> USDN swap
+let reserve = wavesBalance(neutrinoContract) - wavesLockedBalance #waves reserves to cover USDN supply
+let neutrinoSupply = neutrinoLockedBalance + extract(assetInfo(neutrinoAssetId)).quantity - assetBalance(neutrinoContract, neutrinoAssetId) 
+    - assetBalance(addressFromStringValue(liquidationContract), neutrinoAssetId) # supply outside main sc or liquidation contract
 let surplus = convertWavesToNeutrino(reserve, currentPrice) - neutrinoSupply
-let deficit = neutrinoSupply - convertWavesToNeutrino(reserve, currentPrice)  
+let deficit = neutrinoSupply - convertWavesToNeutrino(reserve, currentPrice)
+
 
 #-------------------Get functions----------------------
 #------RPD contract---------
@@ -238,16 +243,17 @@ func withdraw(account : String, index: Int) = {
 @Callable(i)
 func transferToAuction() = {
     let deficitBondAmount = convertNeutrinoToBond(deficit) - assetBalance(addressFromStringValue(auctionContract), bondAssetId)
-    let surplusBond = convertNeutrinoToBond(surplus)
     let minDeficit = convertNeutrinoToBond(neutrinoSupply)*DEFICITOFFSET/100
+
+    let surplusWithLiquidation = surplus - assetBalance(addressFromStringValue(liquidationContract), neutrinoAssetId)
     if(isBlocked)
         then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles") # see control.ride
     else if(deficitBondAmount >= minDeficit && deficitBondAmount > 0)
         then TransferSet([ScriptTransfer(addressFromStringValue(auctionContract), deficitBondAmount, bondAssetId)])
-    else if(surplusBond > 0)
-        then TransferSet([ScriptTransfer(addressFromStringValue(liquidationContract), convertBondToNeutrino(surplusBond), neutrinoAssetId)])
+    else if(surplusWithLiquidation > 1*PAULI)
+        then TransferSet([ScriptTransfer(addressFromStringValue(liquidationContract), surplusWithLiquidation, neutrinoAssetId)])
     else 
-        throw("bond were generated or do not need it. Deficit:" + toString(deficitBondAmount) + "|" + toString(minDeficit) + ". Surplus:" + toString(surplusBond) + "|" + toString(surplus))
+        throw("bond were generated or do not need it. Deficit:" + toString(deficitBondAmount) + "|" + toString(minDeficit) + ". Surplus:" + toString(surplusWithLiquidation) + "|" + toString(surplus))
 }
 
 # Transfers tokens from one address to another via smart contact

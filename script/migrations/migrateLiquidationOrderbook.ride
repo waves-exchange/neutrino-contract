@@ -1,0 +1,145 @@
+{-# STDLIB_VERSION 3 #-}
+{-# CONTENT_TYPE DAPP #-}
+{-# SCRIPT_TYPE ACCOUNT #-}
+
+#-------------------Base functions----------------------
+func getNumberByKey(key: String) = {
+    match getInteger(this, key) {
+            case a:Int => a
+            case _ => 0
+    }
+}
+func getStringByKey(key: String) = {
+    match getString(this, key) {
+            case a:String => a
+            case _ => ""
+    }
+}
+func getStringByAddressAndKey(address: Address, key: String) = {
+   match getString(address, key) {
+            case a:String => a
+            case _ => ""
+    }
+}
+func getNumberByAddressAndKey(address: Address, key: String) = {
+    match getInteger(address, key) {
+            case a:Int => a
+            case _ => 0
+    }
+}
+
+#-------------------Constants---------------------------
+let WAVELET = 100000000
+let ORDERSPLITSYMBOL = "_"
+let PAULI = 1000000
+let PERCENTACCURACY = 1000
+let MAXDISCOUNT = 50
+#------Order statuses------
+let CANCELED = "canceled"
+let NEW = "new"
+let FILLED = "filled"
+
+#-------------------Constructor-------------------------
+let NeutrinoContractKey = "neutrino_contract"
+
+#-------------------Keys--------------------------------
+let PriceKey = "price"
+let BondAssetIdKey = "bond_asset_id"
+let NeutrinoAssetIdKey = "neutrino_asset_id"
+let ControlContractKey = "control_contract"
+let BalanceLockedkKey = "balance_lock_"
+let WavesLockedBalanceKey = BalanceLockedkKey + "waves"
+let NeutrinoLockedBalanceKey = BalanceLockedkKey + "neutrino"
+let FirstOrderKey = "order_first"
+let LastOrderKey = "order_last"
+
+func getOrderPrevKey(orderId: String) = "order_prev_" + orderId
+func getOrderNextKey(orderId: String) = "order_next_" + orderId
+func getOrderTotalKey(orderId: String) = "order_total_" + orderId
+func getOrderOwnerKey(orderId: String) = "order_owner_" + orderId
+func getOrderHeightKey(orderId: String) = "order_height_" + orderId
+func getOrderStatusKey(orderId: String) = "order_status_" + orderId
+func getOrderFilledTotalKey(orderId: String) = "order_filled_total_" + orderId
+func getLastOrderOwnerKey(owner: String) = "last_order_owner_" + owner
+
+#-------------------Convert functions-------------------
+func convertNeutrinoToWaves(amount: Int, price: Int) = fraction(fraction(amount, 100, price),WAVELET, PAULI)
+func convertWavesToNeutrino(amount: Int, price: Int) = fraction(fraction(amount, price, 100), PAULI, WAVELET)
+func convertNeutrinoToBond(amount: Int) = amount/PAULI 
+func convertBondToNeutrino(amount: Int) = amount*PAULI 
+func convertWavesToBond(amount: Int, price: Int) = convertNeutrinoToBond(convertWavesToNeutrino(amount, price))
+
+#-------------------Global vars-------------------------
+let neutrinoContract = addressFromStringValue(getStringByKey(NeutrinoContractKey))
+let controlContract = addressFromStringValue(getStringByAddressAndKey(neutrinoContract, ControlContractKey)) ## The value from neutrino.ride
+let currentPrice = getNumberByAddressAndKey(controlContract, PriceKey) # The value from control.ride
+let neutrinoLockedBalance = getNumberByAddressAndKey(neutrinoContract, NeutrinoLockedBalanceKey)
+let wavesLockedBalance = getNumberByAddressAndKey(neutrinoContract, WavesLockedBalanceKey)
+let neutrinoAssetId = fromBase58String(getStringByAddressAndKey(neutrinoContract, NeutrinoAssetIdKey)) # Assets ids. The value from neutrino.ride
+let bondAssetId = fromBase58String(getStringByAddressAndKey(neutrinoContract, BondAssetIdKey))
+let reserve = wavesBalance(neutrinoContract) - wavesLockedBalance
+let neutrinoSupply = extract(assetInfo(neutrinoAssetId)).quantity - assetBalance(neutrinoContract, neutrinoAssetId) + neutrinoLockedBalance - assetBalance(this, neutrinoAssetId)
+let surplus = convertWavesToNeutrino(reserve, currentPrice) - neutrinoSupply
+let firstOrder = getStringByKey(FirstOrderKey)
+let lastOrder = getStringByKey(LastOrderKey)
+
+#-------------------Get functions------------------------
+func getOrderTotal(id : String) = getNumberByKey(getOrderTotalKey(id))
+func getOrderOwner(id : String) = getStringByKey(getOrderOwnerKey(id))
+func getOrderStatus(id : String) = getStringByKey(getOrderStatusKey(id))
+func getOrderFilledTotal(id : String) = getNumberByKey(getOrderFilledTotalKey(id))
+func getOrderPrev(id: String) = getStringByKey(getOrderPrevKey(id))
+func getOrderNext(id: String) = getStringByKey(getOrderNextKey(id))
+func getOrderHeight(id: String) = getNumberByKey(getOrderHeightKey(id))
+func getLastOrderOwner(owner: String) = getStringByKey(getLastOrderOwnerKey(owner))
+
+#-------------------Callable---------------------------
+
+
+@Callable(i)
+func migrateOrder() = {
+    let orderbook = getStringByKey("orderbook")
+
+    if(orderbook == "")
+        then throw("empty orderbook")
+    else {
+        let orders = orderbook.split("_")
+        let firstOldOrder = orders[0]
+
+        let parts = orderbook.split(firstOldOrder + "_")
+        let newOrderbook = parts[0] + parts[1]
+
+        let owner = toString(i.caller)
+
+        if(firstOrder != "" && lastOrder == "")
+            then throw("invalid last order")
+        else {
+            WriteSet([
+                DataEntry(getLastOrderOwnerKey(owner), firstOldOrder),
+                DataEntry(getOrderPrevKey(firstOldOrder), lastOrder),
+                DataEntry(getOrderNextKey(lastOrder), if lastOrder == "" then "" else firstOldOrder),
+
+                DataEntry(FirstOrderKey, if firstOrder == "" then firstOldOrder else firstOrder),
+                DataEntry(LastOrderKey, firstOldOrder),
+                DataEntry("orderbook", newOrderbook)
+            ])
+        }
+    }
+}
+
+@Verifier(tx)
+func verify() = {
+    let pubKeyAdminsList = [
+        "BLEoguzPVKVTfXxxT3W7Rqf8aUm2ggC9Vemd2MQawM2G",
+        "FWVffYr2ALmHMejZm3WqeLz6Sdym3gLFGtJn4KTwyU5x",
+        "3Wh2LaWcb5gg7K2pPcW3Ep6EAuRBzYkAgrdpt43jTDFa",
+        "5WRXFSjwcTbNfKcJs8ZqXmSSWYsSVJUtMvMqZj5hH4Nc"
+    ]
+    let count =
+        (if(sigVerify(tx.bodyBytes, tx.proofs[0], fromBase58String(pubKeyAdminsList[0]))) then 1 else 0) +
+        (if(sigVerify(tx.bodyBytes, tx.proofs[1], fromBase58String(pubKeyAdminsList[1]))) then 1 else 0) +
+        (if(sigVerify(tx.bodyBytes, tx.proofs[2], fromBase58String(pubKeyAdminsList[2]))) then 1 else 0) +
+        (if(sigVerify(tx.bodyBytes, tx.proofs[3], fromBase58String(pubKeyAdminsList[3]))) then 2 else 0)
+
+    count >= 3
+}
