@@ -52,6 +52,7 @@ func convertJsonArrayToList(jsonArray: String) = {
 let BLOCK = "block"
 let UNBLOCK = "unblock"
 let UPDATE = "update"
+let SIGNPREFIX = "WAVESNEUTRINOPREFIX"
 
 #-------------------Constructor-------------------------
 let OraclesKey = "oracles"
@@ -74,30 +75,14 @@ let priceIndex = getNumberByKey(PriceIndexKey)
 let isBlocked = getBoolByKey(IsBlockedKey)
 let bftCoefficientOracle = 3
 let percentPriceOffset = getNumberByKey(PriceOffsetKey)
-let oracles = getStringByKey(OraclesKey)
-let oraclesList = convertJsonArrayToList(oracles)
+let pubKeyOracles = getStringByKey(OraclesKey)
+let pubKeyOraclesList = convertJsonArrayToList(pubKeyOracles)
 
 #-------------------Get func----------------------------
 func getOracleProvideHeight(owner: String, height: Int) = getNumberByAddressAndKey(addressFromStringValue(owner), getOracleProvidePriceKey(height))
 func getPriceHistory(height: Int) = getNumberByKey(getPriceHistoryKey(height))
+
 #-------------------Other func--------------------------
-func isOracle(address: String) = {
-    isDefined(indexOf(oracles, address))
-}
-
-#-------------------Fold func--------------------------
-func filterAdminsVoteByAction(result: List[String], address: String, action: String) =
-   address :: result
-
-func filterAdminsVoteByBlockAction(result: List[String], address: String) =
-   filterAdminsVoteByAction(result, address, BLOCK)
-
-func filterAdminsVoteByUnblockAction(result: List[String], address: String) =
-   filterAdminsVoteByAction(result, address, UNBLOCK)
-
-func filterAdminsVoteByUpdateAction(result: List[String], address: String) =
-   filterAdminsVoteByAction(result, address, UPDATE)
-
 func findPricesInRange(prices: List[Int]) = {
     let minPercentBound = 90
     let maxPercentBound = 110
@@ -175,17 +160,23 @@ func findPricesInRange(prices: List[Int]) = {
     }
 }
 
+func formattingPriceMsg(price: String, height: Int) = {
+    toBytes(SIGNPREFIX + "_" + price + "_" + toString(height))
+}
+
 #-------------------Callable----------------------
 
 # [called by price oracles]
 @Callable(i)
-func finalizeCurrentPrice() = {
-    let prices = [
-        getOracleProvideHeight(oraclesList[0], height),
-        getOracleProvideHeight(oraclesList[1], height),
-        getOracleProvideHeight(oraclesList[2], height),
-        getOracleProvideHeight(oraclesList[3], height),
-        getOracleProvideHeight(oraclesList[4], height)
+func finalizeCurrentPrice(stringPrices: String, stringSigns: String) = {
+    let unconfirmedPrice = stringPrices.split(";")
+    let signs = stringSigns.split(";")
+    let prices = [ 
+        if sigVerify(formattingPriceMsg(unconfirmedPrice[0], height), fromBase58String(signs[0]), fromBase58String(pubKeyOraclesList[0])) then parseIntValue(unconfirmedPrice[0]) else 0,
+        if sigVerify(formattingPriceMsg(unconfirmedPrice[1], height), fromBase58String(signs[1]), fromBase58String(pubKeyOraclesList[1])) then parseIntValue(unconfirmedPrice[1]) else 0,
+        if sigVerify(formattingPriceMsg(unconfirmedPrice[2], height), fromBase58String(signs[2]), fromBase58String(pubKeyOraclesList[2])) then parseIntValue(unconfirmedPrice[2]) else 0,
+        if sigVerify(formattingPriceMsg(unconfirmedPrice[3], height), fromBase58String(signs[3]), fromBase58String(pubKeyOraclesList[3])) then parseIntValue(unconfirmedPrice[3]) else 0,
+        if sigVerify(formattingPriceMsg(unconfirmedPrice[4], height), fromBase58String(signs[4]), fromBase58String(pubKeyOraclesList[4])) then parseIntValue(unconfirmedPrice[4]) else 0
     ]
 
     let pricesInRange = findPricesInRange(prices)
