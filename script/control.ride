@@ -68,6 +68,7 @@ func getBlackSwarmPriceKey(block: Int) = "black_swarm_price" + "_" + toString(bl
 func getPriceHistoryKey(block: Int) = PriceKey + "_" + toString(block)
 func getHeightPriceByIndexKey(index: Int) = PriceIndexKey + "_" + toString(index)
 func getOracleProvidePriceKey(height: Int) = "price_" + toString(height)
+func getOracleIpsKey(oracle: String) = "ips_" + oracle
 
 #-------------------Global vars-------------------------
 let price = getNumberByKey(PriceKey)
@@ -81,8 +82,13 @@ let pubKeyOraclesList = convertJsonArrayToList(pubKeyOracles)
 #-------------------Get func----------------------------
 func getOracleProvideHeight(owner: String, height: Int) = getNumberByAddressAndKey(addressFromStringValue(owner), getOracleProvidePriceKey(height))
 func getPriceHistory(height: Int) = getNumberByKey(getPriceHistoryKey(height))
+func getOracleIps(oracle: String) = getStringByKey(getOracleIpsKey(oracle))
 
 #-------------------Other func--------------------------
+func isOracle(address: String) = {
+    isDefined(indexOf(pubKeyOracles, address))
+}
+
 func findPricesInRange(prices: List[Int]) = {
     let minPercentBound = 90
     let maxPercentBound = 110
@@ -161,16 +167,31 @@ func findPricesInRange(prices: List[Int]) = {
 }
 
 func formattingPriceMsg(price: String, height: Int) = {
-    toBytes(SIGNPREFIX + "_" + price + "_" + toString(height))
+    toBytes(SIGNPREFIX + "_" + toString(height) + "_" + price)
 }
 
 #-------------------Callable----------------------
 
 # [called by price oracles]
 @Callable(i)
+func setOracleIps(ips: String) = {
+    let pubKeyString = toBase58String(i.callerPublicKey)
+    if(isBlocked)
+        then throw("contract is blocked")
+    else if(!isOracle(pubKeyString))
+        then throw("user is not oracle")
+    else {
+        WriteSet([
+            DataEntry(getOracleIpsKey(pubKeyString), ips)
+        ])
+    }
+}
+
+# [called by price oracles]
+@Callable(i)
 func finalizeCurrentPrice(stringPrices: String, stringSigns: String) = {
-    let unconfirmedPrice = stringPrices.split(";")
-    let signs = stringSigns.split(";")
+    let unconfirmedPrice = stringPrices.split(",")
+    let signs = stringSigns.split(",")
     let prices = [ 
         if sigVerify(formattingPriceMsg(unconfirmedPrice[0], height), fromBase58String(signs[0]), fromBase58String(pubKeyOraclesList[0])) then parseIntValue(unconfirmedPrice[0]) else 0,
         if sigVerify(formattingPriceMsg(unconfirmedPrice[1], height), fromBase58String(signs[1]), fromBase58String(pubKeyOraclesList[1])) then parseIntValue(unconfirmedPrice[1]) else 0,
