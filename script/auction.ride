@@ -46,7 +46,6 @@ let FILLED = "filled"
 let NeutrinoContractKey = "neutrino_contract"
 
 #-------------------Keys--------------------------------
-let OrderbookKey = "orderbook"
 let PriceKey = "price"
 let BondAssetIdKey = "bond_asset_id"
 let NeutrinoAssetIdKey = "neutrino_asset_id"
@@ -55,6 +54,7 @@ let BalanceLockedkKey = "balance_lock_"
 let WavesLockedBalanceKey = BalanceLockedkKey + "waves"
 let NeutrinoLockedBalanceKey = BalanceLockedkKey + "neutrino"
 let LiquidationContractKey = "liquidation_contract"
+let FirstOrderKey = "order_first"
 
 func getOrderPriceKey(orderId: String) = "order_price_" + orderId
 func getOrderTotalKey(orderId: String) = "order_total_" + orderId
@@ -62,6 +62,10 @@ func getOrderOwnerKey(orderId: String) = "order_owner_" + orderId
 func getOrderHeightKey(orderId: String) = "order_height_" + orderId
 func getOrderStatusKey(orderId: String) = "order_status_" + orderId
 func getOrderFilledTotalKey(orderId: String) = "order_filled_total_" + orderId
+func getLastOrderOwnerKey(owner: String) = "last_order_owner_" + owner
+
+func getPrevOrderKey(orderId: String) = "order_prev_" + orderId
+func getNextOrderKey(orderId: String) = "order_next_" + orderId
 #-------------------Convert functions-------------------
 func convertNeutrinoToWaves(amount: Int, price: Int) = fraction(fraction(amount, 100, price),WAVELET, PAULI)
 func convertWavesToNeutrino(amount: Int, price: Int) = fraction(fraction(amount, price, 100), PAULI, WAVELET)
@@ -72,7 +76,6 @@ func convertWavesToBond(amount: Int, price: Int) = convertNeutrinoToBond(convert
 func convertBondToWaves(amount: Int, price: Int) = convertNeutrinoToWaves(convertBondToNeutrino(amount), price)
 
 #-------------------Global vars-------------------------
-let orderbook = getStringByKey(OrderbookKey)
 let neutrinoContract = addressFromStringValue(getStringByKey(NeutrinoContractKey))
 let controlContract = addressFromStringValue(getStringByAddressAndKey(neutrinoContract, ControlContractKey)) ## The value from neutrino.ride
 let liquidationContract = addressFromStringValue(getStringByAddressAndKey(neutrinoContract, LiquidationContractKey))
@@ -87,7 +90,7 @@ let reserve = wavesBalance(neutrinoContract) -
     getNumberByAddressAndKey(neutrinoContract, WavesLockedBalanceKey) #waves reserves to cover USDN supply
 let neutrinoSupply = neutrinoLockedBalance + extract(assetInfo(neutrinoAssetId)).quantity - assetBalance(neutrinoContract, neutrinoAssetId) - assetBalance(liquidationContract, neutrinoAssetId) # supply outside main sc or liquidation contract
 let deficit = neutrinoSupply - convertWavesToNeutrino(reserve, currentPrice)
-
+let firstOrder = getStringByKey(FirstOrderKey)
 
 #-------------------Get functions----------------------
 func getOrderPrice(id : String) = getNumberByKey(getOrderPriceKey(id))
@@ -95,33 +98,19 @@ func getOrderTotal(id : String) = getNumberByKey(getOrderTotalKey(id))
 func getOrderOwner(id : String) = getStringByKey(getOrderOwnerKey(id))
 func getOrderStatus(id : String) = getStringByKey(getOrderStatusKey(id))
 func getOrderFilledTotal(id : String) = getNumberByKey(getOrderFilledTotalKey(id))
+func getPrevOrder(id: String) = getStringByKey(getPrevOrderKey(id))
+func getNextOrder(id: String) = getStringByKey(getNextOrderKey(id))
+
 #-------------------Any functions----------------------
-func getOrderElementById(id : String) = id + "_"
-func addOrder(orderId: String, position: Int) = {
-    let orders = orderbook.split("_")
-    let newOrder = getOrderElementById(orderId)
-    if(position == 0)
-        then newOrder + orderbook
-    else if(position >= size(orders) - 1)
-        then orderbook + newOrder
-    else {
-        let parts = orderbook.split(getOrderElementById(orders[position]))
-        parts[0] + newOrder + getOrderElementById(orders[position]) + parts[1]
-    }
-}
-func dropOrder(orderId: String) = {
-    let parts = orderbook.split(getOrderElementById(orderId))
-    parts[0] + parts[1]
-}
+
 #-------------------Callable---------------------------
 
 # set buy bonds order
 # [called by user]
 @Callable(i)
-func addBuyBondOrder(price : Int, position: Int) = {
+func addBuyBondOrder(price : Int, prevOrder: String) = {
     let pmt = extract(i.payment);
-    let newOrderId = toBase58String(keccak256(toBytes(price) + toBytes(pmt.amount) + i.caller.bytes + toBytes(height)))
-    # price = 100*usdnb/waves, but we have to work with price with another scale: priceWavesByBondCents = 100*waves/usdnb, so priceWavesByBondCents = 100*1/(price/100)
+    let orderId = toBase58String(keccak256(toBytes(price) + toBytes(pmt.amount) + i.caller.bytes + toBytes(height) + i.transactionId)) # price = 100*usdnb/waves, but we have to work with price with another scale: priceWavesByBondCents = 100*waves/usdnb, so priceWavesByBondCents = 100*1/(price/100)
     let priceWavesByBondCents = fraction(100, 100, price)
     let roi = fraction(priceWavesByBondCents - currentPrice, 100, currentPrice) # Example: 1.2 WAVES/USDNB (1.2 bonds for 1 waves) and 0.8 WAVES/USD (0.8 usd for 1 waves) gives 100*(1.2-0.8/0.8) 50% ROI
     if(pmt.amount < MINORDERTOTAL)
@@ -132,30 +121,39 @@ func addBuyBondOrder(price : Int, position: Int) = {
         then throw("can use waves only")
     else if(price <= 0)
         then throw("price less zero")
-    else if(getOrderOwner(newOrderId) != "")
+    else if(getOrderOwner(orderId) != "")
         then throw("order exists")
+    else if(prevOrder != "" && getOrderStatus(prevOrder) != NEW)
+        then throw("prev order status is not new")
     else {
-        let orders =  orderbook.split("_")
-        let nextOrderId = if(position == 0) then "" else orders[position-1];
-        let nextOrderPrice = getOrderPrice(nextOrderId)
-        let isNextOrderError = if(nextOrderId != "" && price > nextOrderPrice) then true else false;
+        let owner = toString(i.caller)
+        let nextOrder = if prevOrder == "" then firstOrder else getNextOrder(prevOrder)
+        let nextOrderPrice = getOrderPrice(nextOrder)
+        let isNextOrderError = if(nextOrder != "" && price <= nextOrderPrice) then true else false;
 
-        let prevOrderId = orders[position];
-        let prevOrderPrice = getOrderPrice(prevOrderId)
-        let isPrevOrderError = if(price <= prevOrderPrice) then true else false;
+        let prevOrderPrice = getOrderPrice(prevOrder)
+        let isPrevOrderError = if(prevOrder != "" && price > prevOrderPrice) then true else false;
 
         if (isNextOrderError || isPrevOrderError)
             then throw("invalid order isPrevOrderError:" + toString(isPrevOrderError) + " isNextOrderError:" + toString(isNextOrderError))
         else
             WriteSet([
-                DataEntry(OrderbookKey, addOrder(newOrderId, position)),
-                DataEntry(getOrderPriceKey(newOrderId), price),
-                DataEntry(getOrderTotalKey(newOrderId), pmt.amount),
-                DataEntry(getOrderOwnerKey(newOrderId), toString(i.caller)),
-                DataEntry(getOrderHeightKey(newOrderId), height),
-                DataEntry(getOrderStatusKey(newOrderId), NEW),
-                DataEntry("debug_order_currentPrice_" + newOrderId, currentPrice),
-                DataEntry("debug_order_roi_" + newOrderId, roi)
+                DataEntry(getLastOrderOwnerKey(owner), orderId),
+                DataEntry(getPrevOrderKey(orderId), prevOrder),
+                DataEntry(getNextOrderKey(orderId), nextOrder),
+
+                DataEntry(getNextOrderKey(prevOrder), if prevOrder == "" then "" else orderId),
+                DataEntry(getPrevOrderKey(nextOrder), if nextOrder == "" then "" else orderId),
+
+                DataEntry(FirstOrderKey, if firstOrder == "" || firstOrder == nextOrder then orderId else firstOrder),
+
+                DataEntry(getOrderPriceKey(orderId), price),
+                DataEntry(getOrderTotalKey(orderId), pmt.amount),
+                DataEntry(getOrderOwnerKey(orderId), owner),
+                DataEntry(getOrderHeightKey(orderId), height),
+                DataEntry(getOrderStatusKey(orderId), NEW),
+                DataEntry("debug_order_currentPrice_" + orderId, currentPrice),
+                DataEntry("debug_order_roi_" + orderId, roi)
             ])
     }
 }
@@ -166,15 +164,21 @@ func addBuyBondOrder(price : Int, position: Int) = {
 func cancelOrder(orderId : String) = {
     let owner = getOrderOwner(orderId)
     let amount = getOrderTotal(orderId) - getOrderFilledTotal(orderId)
+
+    let nextOrder = getNextOrder(orderId)
+    let prevOrder = getPrevOrder(orderId)
+
     if(owner != toString(i.caller))
         then throw("permission denied")
     else if(getOrderStatus(orderId) != NEW)
         then throw("invalid order status")
     else {
         ScriptResult(
-            WriteSet([
-                DataEntry(OrderbookKey, dropOrder(orderId)),
+            WriteSet([ 
+                DataEntry(FirstOrderKey, if firstOrder == orderId then nextOrder else firstOrder),
 
+                DataEntry(getNextOrderKey(prevOrder), nextOrder),
+                DataEntry(getPrevOrderKey(nextOrder), prevOrder),
                 DataEntry(getOrderStatusKey(orderId), CANCELED)
             ]),
             TransferSet([
@@ -193,6 +197,7 @@ func sellBond() = {
     let deficitPositive = if(deficit <= 0) then 0 else deficit/PAULI #paulis to integers (dollars)
     let bondAmount = if(deficitPositive >= bondBalance) then bondBalance else deficitPositive # possible bond amount for selling; scale: integers (dollars)
     let returnAmount = if(deficitPositive >= bondBalance) then 0 else bondBalance-deficitPositive #scale: integers (dollars); send bonds back if there is remaining bonds on the main contract
+   
     if(deficitPositive == 0 && bondBalance == 0)
         then throw("without deficit")
     else if (bondBalance == 0)
@@ -203,15 +208,15 @@ func sellBond() = {
             ScriptTransfer(neutrinoContract, returnAmount, bondAssetId)
         ])
     }
-    else if(orderbook == "")
+    else if(firstOrder == "")
         then throw("empty orderbook")
     else {
-        let orderId = take(orderbook, valueOrErrorMessage(indexOf(orderbook, "_"), "no orders found")) # instead of orderbook.split("_")[0] with 100complx we have 20+1+13 = 34
-        let filledTotal = getOrderFilledTotal(orderId) #waveletes; returns 0 if there is no records
-        let orderPrice = getOrderPrice(orderId) #100*usdnb/waves
+        let nextOrder = getNextOrder(firstOrder)
+        let filledTotal = getOrderFilledTotal(firstOrder) #waveletes; returns 0 if there is no records
+        let orderPrice = getOrderPrice(firstOrder) #100*usdnb/waves
         let priceWavesByBondCents = fraction(100, 100, orderPrice)
         
-        let remainedTotal = getOrderTotal(orderId) - filledTotal #waveletes
+        let remainedTotal = getOrderTotal(firstOrder) - filledTotal #waveletes
         let amountToExecuteOrder = convertWavesToBond(remainedTotal, priceWavesByBondCents); # expected price format 100*waves/usd; return scale: bonds (integers/dollars)
     
         let fillOrderCondition = bondAmount >= amountToExecuteOrder
@@ -223,24 +228,30 @@ func sellBond() = {
             # this code is executing if there is not enough amount of waves to sell integer number of bonds, but there is still remaining waves amount in the order
             ScriptResult(
                 WriteSet([
-                    DataEntry(OrderbookKey, dropOrder(orderId)),
-                    DataEntry(getOrderStatusKey(orderId), FILLED)
+                    DataEntry(FirstOrderKey, nextOrder),
+
+                    DataEntry(getPrevOrderKey(nextOrder), ""), #if current first order has new status filled so, his prev order is now empty
+                    DataEntry(FirstOrderKey, nextOrder),
+                    DataEntry(getOrderStatusKey(firstOrder), FILLED)
                ]),
                TransferSet([
-                    ScriptTransfer(addressFromStringValue(getOrderOwner(orderId)), remainedTotal, unit)
+                    ScriptTransfer(addressFromStringValue(getOrderOwner(firstOrder)), remainedTotal, unit)
                 ])
             )
         else if(totalOrderWaveletesRequired == 0) then
             throw("cannot fill order at the moment") #it happens if not enought bonds to fill the order by order price
         else {
+            let newStatus = if(fillOrderCondition && remainedTotal == 0) then FILLED else NEW
             ScriptResult(
                 WriteSet([
-                    DataEntry(OrderbookKey, if(fillOrderCondition && remainedTotal == 0) then dropOrder(orderId) else orderbook), #drop order will be executed in the next sell bonds call in the condition above
-                    DataEntry(getOrderFilledTotalKey(orderId), filledTotal + totalOrderWaveletesRequired),
-                    DataEntry(getOrderStatusKey(orderId), if(fillOrderCondition && remainedTotal == 0) then FILLED else NEW) # filled status if there is no remained waveletes in the order 
+                    DataEntry(getPrevOrderKey(nextOrder), if(newStatus == FILLED) then "" else firstOrder), #if current first order has new status filled so, his prev order is now empty
+                    DataEntry(FirstOrderKey, if(newStatus == FILLED) then nextOrder else firstOrder),
+
+                    DataEntry(getOrderFilledTotalKey(firstOrder), filledTotal + totalOrderWaveletesRequired),
+                    DataEntry(getOrderStatusKey(firstOrder), newStatus) # filled status if there is no remained waveletes in the order 
                ]),
                TransferSet([
-                    ScriptTransfer(addressFromStringValue(getOrderOwner(orderId)), fillableOrderAmount, bondAssetId),
+                    ScriptTransfer(addressFromStringValue(getOrderOwner(firstOrder)), fillableOrderAmount, bondAssetId),
                     ScriptTransfer(neutrinoContract, totalOrderWaveletesRequired, unit)
                 ])
             )
