@@ -128,6 +128,8 @@ func addBuyBondOrder(price : Int, position: Int) = {
         then throw("min order total equals " + toString(MINORDERTOTAL))
     else if (roi > MAXROI)
         then throw("max setOrder ROI is 100%")
+    else if (roi <= 0)
+        then throw("min setOrder ROI is more than 0%")
     else if (isDefined(pmt.assetId))
         then throw("can use waves only")
     else if(price <= 0)
