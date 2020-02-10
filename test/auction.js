@@ -1,186 +1,129 @@
 const deployHelper = require('../neutrino-api/ContractHelper.js').ContractHelper;
-const NeutrinoApi = require('../neutrino-api/NeutrinoApi.js').NeutrinoApi;
-const neutrinoHelper = require('../neutrino-api/NeutrinoApi.js');
-const oracleHelper = require('../neutrino-api/OracleApi.js');
-const testHelper = require('../helpers/TestHelper.js/index.js');
+const neutrinoHelper = require('../neutrino-api/NeutrinoApi.js').NeutrinoApi;
+const oracleHelper = require('../neutrino-api/OracleApi.js').OracleApi;
+const testHelper = require('../helpers/TestHelper.js');
+var assert = require('assert')
 
 let deployResult = {}
-const orderCount = 1;
+let orderCount = 4;
 let neutrinoApi = null;
+let oracleApi = null;
 describe('Auction test', async function () {
     before(async function () {
+        deployResult =  await deployHelper.deploy(env.SEED, env.API_BASE, env.CHAIN_ID, "./script/", "TST-N", "TST-B", "","", "", true) 
+
         setupAccounts({
-            testAccount: 100000 * NeutrinoApi.WAVELET
+            testAccount: 100000 * neutrinoHelper.WAVELET
         })
-        console.log("")
-        deployResult = await deployHelper.deploy(env.SEED, env.API_BASE, env.CHAIN_ID, "./script/", "TST-N", "TST-NB", "test asset", "test bond asset", "", true) 
-        
 
         var massTx = massTransfer({
             transfers: [
                 {
-                    amount: 1800000,
+                    amount: 600000,
                     recipient: deployResult.accounts.neutrinoContract.address
-                },
-                {
-                    amount: 500000,
-                    recipient: deployResult.accounts.controlContract.address
                 }
             ],
-            fee: 600000
+            fee: 500000
         }, env.SEED)
         await broadcast(massTx);
         await waitForTx(massTx.id);
 
-        var massNeutrinoTx = massTransfer({
-            transfers: [
-                {
-                    amount: testHelper.getRandomArbitary(1, 9999) * NeutrinoApi.PAULI,
-                    recipient: address(accounts.testAccount)
-                }
-            ],
-            fee: 600000,
-            assetId: deployResult.assets.neutrinoAssetId
+        var transferTx = transfer({
+            amount: 10000 *neutrinoHelper.PAULI,
+            recipient: address(accounts.testAccount),
+            assetId: deployResult.assets.neutrinoAssetId,
+            fee: 500000
         }, deployResult.accounts.neutrinoContract.phrase)
-        await broadcast(massNeutrinoTx);
+        await broadcast(transferTx);
+        await waitForTx(transferTx.id);
 
-        await waitForTx(massNeutrinoTx.id);
+        neutrinoApi = await neutrinoHelper.create(env.API_BASE, env.CHAIN_ID, deployResult.accounts.neutrinoContract.address);
+        oracleApi = await oracleHelper.create(env.API_BASE, env.CHAIN_ID, deployResult.accounts.neutrinoContract.address);
 
-        price = testHelper.getRandomArbitary(1, 9999) * NeutrinoApi.WAVELET
-        neutrinoApi = await neutrinoHelper.NeutrinoApi.create(env.API_BASE, env.CHAIN_ID, deployResult.accounts.neutrinoContract.address);
-        oracleApi = await oracleHelper.OracleApi.create(env.API_BASE, env.CHAIN_ID, deployResult.accounts.neutrinoContract.address);
-        await oracleApi.forceSetCurrentPrice(100, deployResult.accounts.controlContract.phrase)
+        await oracleApi.transferToAuction(accounts.testAccount);
     });
-    it('Add orders', async function () {
-        for (let i = 0; i < orderCount; i++) {
-            const orderPrice = testHelper.getRandomArbitary(51, 99)/100
-            const balance = await assetBalance(deployResult.assets.neutrinoAssetId, address(accounts.testAccount));
-            const amount = Math.floor(balance / (testHelper.getRandomArbitary(2, 10)))
 
-            let id = await neutrinoApi.addBuyBondOrder(50, 0.6, accounts.testAccount)
-           /*  const state = await stateChanges(id);
-            const data = deployHelper.convertDataStateToObject(state.data)
-           const orderHash = data.orderbook.split("_")[index] //TODO hash
-            if (data["order_total_" + orderHash] != amount)
-                throw "invalid order total"
-            else if (data["order_owner_" + orderHash] != address(accounts.testAccount))
-                throw "invalid order owner"
-            else if (data["order_status_" + orderHash]!= "new")
-                throw "invalid order status"*/
+    it('Add first order', async function () {
+            const amount = Math.floor(testHelper.getRandomNumber(10, 100)) * neutrinoHelper.WAVELET
+            const price = Math.floor(testHelper.getRandomNumber(10, 15))
+
+            const id = await neutrinoApi.addBuyBondOrder(amount, price, accounts.testAccount)
+        
+            const state = await stateChanges(id);
+            const stateObject = testHelper.convertDataStateToObject(state.data)
+
+            let orderHash = stateObject["last_order_owner_" + address(accounts.testAccount)]
+            assert.equal(stateObject["order_first"], orderHash, "invalid first order in list")
+
+            assert.equal(stateObject["order_next_"], "", "invalid next order")
+            assert.equal(stateObject["order_prev_" + orderHash], "", "invalid prev order")
+
+            assert.equal(stateObject["order_total_" + orderHash], amount, "invalid order total")
+            assert.equal(stateObject["order_owner_" + orderHash], address(accounts.testAccount), "invalid order owner")
+            assert.equal(stateObject["order_status_" + orderHash], "new", "invalid order status")
+    })
+
+    it('Add next orders', async function () {
+        const count = Math.floor(testHelper.getRandomNumber(2, 4))
+        let price = Math.floor(testHelper.getRandomNumber(5, 10))
+        
+        let contractState = await accountData(deployResult.accounts.auctionContract.address)
+
+        let firstOrder = contractState["order_first"].value;
+        let prevOrder = firstOrder;
+        for(let i = 0; i < count; i++){
+            contractState = await accountData(deployResult.accounts.auctionContract.address)
+            const amount = Math.floor(testHelper.getRandomNumber(10, 100)) * neutrinoHelper.WAVELET
+
+            const id = await neutrinoApi.addBuyBondOrder(amount, price, accounts.testAccount)
+
+            const txState = await stateChanges(id);
+            const txStateObject = testHelper.convertDataStateToObject(txState.data)
+
+            let orderHash = txStateObject["last_order_owner_" + address(accounts.testAccount)] 
+            assert.equal(firstOrder, txStateObject["order_first"], "invalid first order in list")
+
+            assert.equal(txStateObject["order_next_" + prevOrder], orderHash, "invalid next order")
+            assert.equal(txStateObject["order_prev_" + orderHash], prevOrder, "invalid prev order")
+
+            assert.equal(txStateObject["order_total_" + orderHash], amount, "invalid order total")
+            assert.equal(txStateObject["order_owner_" + orderHash], address(accounts.testAccount), "invalid order owner")
+            assert.equal(txStateObject["order_status_" + orderHash], "new", "invalid order status")
+
+            price -= 1;
+            prevOrder = orderHash;
         }
     })
-    it('Cancel order', async function () {
-        const index = testHelper.getRandomArbitary(0, orderCount-1)
-        const data = await accountData(deployResult.accounts.auctionContract.address)
-        const orders = data.orderbook.value.split("_")
-        
-        let id = await neutrinoApi.cancelBuyBondOrder(orders[index], accounts.testAccount)
 
-        const state = await stateChanges(id);
-        const dataState = testHelper.convertDataStateToObject(state.data)
+    it('Drop first orders', async function () {
+        const contractState = await accountData(deployResult.accounts.auctionContract.address)
+        const beforeFirstOrder = contractState["order_first"].value
+        const beforeNextOrder = contractState["order_next_" + beforeFirstOrder].value
+        const id = await neutrinoApi.cancelBuyBondOrder(beforeFirstOrder, accounts.testAccount)
 
-        const newOrderbookItems = data.orderbook.value.split(orders[index] + "_")
-        const newOrderbook  = newOrderbookItems[0] + newOrderbookItems[1]
+        const txState = await stateChanges(id);
+        const txStateObject = testHelper.convertDataStateToObject(txState.data)
+        const prevNextOrder = txStateObject["order_prev_" + beforeNextOrder]
 
-        const amount = data["order_total_" + orders[index]].value
-        if (dataState.orderbook != newOrderbook)
-            throw "invalid order total"
-        else if (dataState["order_status_" + orders[index]] != "canceled")
-            throw "invalid order status"
-        else if(state.transfers[0].address != address(accounts.testAccount))
-            throw "invalid receiver address"
-        else if(state.transfers[0].amount != amount)
-            throw "invalid receiver amount"
-        else if(state.transfers[0].asset != deployResult.assets.neutrinoAssetId)
-            throw "invalid asset"
+        assert.equal(txStateObject["order_first"], beforeNextOrder, "invalid first order in list")
+        assert.equal(prevNextOrder, "", "invalid prev order")
+        assert.equal(txStateObject["order_status_" + beforeFirstOrder], "canceled", "invalid order status")
     })
-    it('Partially filled order', async function () {
-        const data = await accountData(deployResult.accounts.auctionContract.address)
-        console.log(data)
-        const orderHash = data.orderbook.value.split("_")[0]
-        console.log(orderHash)
-        const price = data["order_price_" + orderHash].value
-        const totalOrder = Math.floor(data["order_total_" + orderHash].value/2)
-        const amount = Math.floor(totalOrder*100/price/NeutrinoApi.PAULI)
-        const realTotal = Math.floor(amount*price*NeutrinoApi.PAULI/100)
-        
-        var transferTx = transfer({
-            amount: amount,
-            recipient: deployResult.accounts.auctionContract.address,
-            fee: 600000,
-            assetId: deployResult.assets.bondAssetId
-        }, deployResult.accounts.neutrinoContract.phrase)
-        await broadcast(transferTx);
-        await waitForTx(transferTx.id);
 
-        let id = await oracleApi.executeBuyBondOrder(accounts.testAccount);
-        const state = await stateChanges(id);
-        const dataState = testHelper.convertDataStateToObject(state.data)
+    it('Drop middle orders', async function () {
+        const contractState = await accountData(deployResult.accounts.auctionContract.address)
+        const beforeFirstOrder = contractState["order_first"].value
+        const cancelOrder = contractState["order_next_" + beforeFirstOrder].value
+        const nextOrder = contractState["order_next_" + cancelOrder].value
+        const prevOrder = contractState["order_prev_" + cancelOrder].value
+        const id = await neutrinoApi.cancelBuyBondOrder(cancelOrder, accounts.testAccount)
 
-        const transferToNeutrinoContract = state.transfers.find(x=>x.address == deployResult.accounts.neutrinoContract.address)
-        const transferToOrderOwner = state.transfers.find(x=>x.address == address(accounts.testAccount))
-        
-        if (dataState.orderbook != data.orderbook.value)
-            throw "invalid orderbook"
-        else if (dataState["order_status_" + orderHash] != "new")
-            throw "invalid order status"
-        else if(transferToNeutrinoContract == null)
-            throw "not find transfer to neutrino contract"
-        else if(transferToOrderOwner == null)
-            throw "not find transfer to order owner"
-        else if(transferToNeutrinoContract.amount != realTotal)
-            throw "invalid receiver amount transfer to neutrino contract"
-        else if(transferToNeutrinoContract.asset != deployResult.assets.neutrinoAssetId)
-            throw "invalid asset transfer to neutrino contract"
-        else if(transferToOrderOwner.amount != amount)
-            throw "invalid receiver amount to order owner"
-        else if(transferToOrderOwner.asset != deployResult.assets.bondAssetId)
-            throw "invalid asset to order owner"
-        
+        const txState = await stateChanges(id);
+        const txStateObject = testHelper.convertDataStateToObject(txState.data)
+
+        assert.equal(txStateObject["order_first"], contractState["order_first"].value, "invalid first order in list")
+        assert.equal(txStateObject["order_next_" + prevOrder], nextOrder, "invalid next order")
+        assert.equal(txStateObject["order_prev_" + nextOrder], prevOrder, "invalid prev order")
     })
-    it('Fully filled order', async function () {
-        const data = await accountData(deployResult.accounts.auctionContract.address)
-        const orderHash = data.orderbook.value.split("_")[0]
-        const price = data["order_price_" + orderHash].value
-        const totalOrder = data["order_total_" + orderHash].value - data["order_filled_total_" + orderHash].value
-        const amount = Math.floor(totalOrder*100/price/NeutrinoApi.PAULI)
-        const realTotal = Math.floor(amount*price*NeutrinoApi.PAULI/100)
-
-        var transferTx = transfer({
-            amount: amount,
-            recipient: deployResult.accounts.auctionContract.address,
-            fee: 600000,
-            assetId: deployResult.assets.bondAssetId
-        }, deployResult.accounts.neutrinoContract.phrase)
-        await broadcast(transferTx);
-        await waitForTx(transferTx.id);
-
-        let id = await oracleApi.executeBuyBondOrder(accounts.testAccount);
-        const state = await stateChanges(id);
-        const dataState = testHelper.convertDataStateToObject(state.data)
-        
-        const transferToNeutrinoContract = state.transfers.find(x=>x.address == deployResult.accounts.neutrinoContract.address)
-        const transferToOrderOwner = state.transfers.find(x=>x.address == address(accounts.testAccount))
-
-        const orderbookElements = data.orderbook.value.split(orderHash + "_")
-        const newOrderbook = orderbookElements[0] + orderbookElements[1]
-        
-        if (dataState.orderbook != newOrderbook)
-            throw "invalid orderbook"
-        else if (dataState["order_status_" + orderHash] != "filled")
-            throw "invalid order status"
-        else if(transferToNeutrinoContract == null)
-            throw "not find transfer to neutrino contract"
-        else if(transferToOrderOwner == null)
-            throw "not find transfer to order owner"
-        else if(transferToNeutrinoContract.amount != realTotal)
-            throw "invalid amount transfer to neutrino contract"
-        else if(transferToNeutrinoContract.asset != deployResult.assets.neutrinoAssetId)
-            throw "invalid asset transfer to neutrino contract"
-        else if(transferToOrderOwner.amount != amount)
-            throw "invalid amount to order owner"
-        else if(transferToOrderOwner.asset != deployResult.assets.bondAssetId)
-            throw "invalid asset to order owner"
-        
-    })
+          
 })
