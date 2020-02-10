@@ -223,7 +223,7 @@ func finalizeCurrentPrice() = {
     let newPrice = priceSum/priceProvidingCount
 
     if(isBlocked)
-        then throw("contract is blocked")
+        then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles")
     else if(getPriceHistory(height) != 0)
         then throw("wait next block")
     else if(priceProvidingCount < bftCoefficientOracle)
