@@ -217,7 +217,11 @@ func withdraw(account : String, index: Int) = {
     else if(unlockHeight > height)
         then throw("please wait for: " + toString(unlockHeight) + " block height to withdraw WAVES funds")
     else if(index > priceIndex  || indexHeight < unlockHeight || (prevIndexHeight != 0 && unlockHeight <= prevIndexHeight))
-        then throw("invalid price history index")
+        then throw("invalid price history index: index=" + toString(index)
+                + " priceIndex=" + toString(priceIndex)
+                + " indexHeight=" + toString(indexHeight)
+                + " unlockHeight=" + toString(unlockHeight)
+                + " prevIndexHeight=" + toString(prevIndexHeight))
     else if(neutrinoAmount <= 0 && wavesAmount <= 0)
         then throw("balance equals zero")
     else {   
