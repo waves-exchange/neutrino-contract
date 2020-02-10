@@ -123,8 +123,13 @@ func migrateOrder() = {
             then throw("empty order")
         else {
             let firstOldOrder = orders[currentMigrationOrderIndex]
+            let nextOldOrder = orders[currentMigrationOrderIndex+1]
+            let prevOldOrder = if currentMigrationOrderIndex == 0 then "" else orders[currentMigrationOrderIndex-1]
             WriteSet([
                 DataEntry(getLastOrderOwnerKey(owner), firstOldOrder),
+                DataEntry(getPrevOrderKey(firstOldOrder), prevOldOrder),
+                DataEntry(getNextOrderKey(firstOldOrder), nextOldOrder),
+
                 DataEntry(FirstOrderKey, if firstOrder == "" then firstOldOrder else firstOrder),
                 DataEntry(MigrationOrderCurrentIndexKey, currentMigrationOrderIndex + 1)
             ])
