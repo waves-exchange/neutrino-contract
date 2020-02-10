@@ -18,6 +18,14 @@ func getStringByKey(key: String) = {
             case _ => ""
     }
 }
+
+func getBoolByAddressAndKey(address: Address, key: String) = {
+     match getBoolean(address, key) {
+            case a:Boolean => a
+            case _ => false
+    }
+}
+
 func getStringByAddressAndKey(address: Address, key: String) = {
    match getString(address, key) {
             case a:String => a
@@ -81,6 +89,8 @@ let liquidationContract = addressFromStringValue(getStringByAddressAndKey(neutri
 let neutrinoAssetId = fromBase58String(getStringByAddressAndKey(neutrinoContract, NeutrinoAssetIdKey)) # Assets ids. The value from neutrino.ride
 let bondAssetId = fromBase58String(getStringByAddressAndKey(neutrinoContract, BondAssetIdKey))
 
+let isBlocked = getBoolByAddressAndKey(controlContract, "is_blocked")
+
 #-------------------Global vars deficit, locked & supply -------------------------
 let currentPrice = getNumberByAddressAndKey(controlContract, PriceKey) # The value from control.ride
 let neutrinoLockedBalance = getNumberByAddressAndKey(neutrinoContract, NeutrinoLockedBalanceKey) #locked balance from USDN -> WAVES swap
@@ -109,14 +119,19 @@ func getNextOrder(id: String) = getStringByKey(getNextOrderKey(id))
 @Callable(i)
 func addBuyBondOrder(price : Int, prevOrder: String) = {
     let pmt = extract(i.payment);
-    let orderId = toBase58String(keccak256(toBytes(price) + toBytes(pmt.amount) + i.caller.bytes + toBytes(height) + i.transactionId)) 
+    let orderId = toBase58String(keccak256(toBytes(price) + toBytes(pmt.amount) + i.caller.bytes + toBytes(height) + i.transactionId))
     # price = 100*usdnb/waves, but we have to work with price with another scale: priceWavesByBondCents = 100*waves/usdnb, so priceWavesByBondCents = 100*1/(price/100)
     let priceWavesByBondCents = fraction(100, 100, price)
     let roi = fraction(priceWavesByBondCents - currentPrice, 100, currentPrice) # Example: 1.2 WAVES/USDNB (1.2 bonds for 1 waves) and 0.8 WAVES/USD (0.8 usd for 1 waves) gives 100*(1.2-0.8/0.8) 50% ROI
-    if(pmt.amount < MINORDERTOTAL)
+
+    if (isBlocked)
+        then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles")
+    else if(pmt.amount < MINORDERTOTAL)
         then throw("min order total equals " + toString(MINORDERTOTAL))
     else if (roi > MAXROI)
         then throw("max setOrder ROI is 100%")
+    else if (roi <= 0)
+        then throw("min setOrder ROI is more than 0%")
     else if (isDefined(pmt.assetId))
         then throw("can use waves only")
     else if(price <= 0)
@@ -167,13 +182,15 @@ func cancelOrder(orderId : String) = {
     let nextOrder = getNextOrder(orderId)
     let prevOrder = getPrevOrder(orderId)
 
-    if(owner != toString(i.caller))
+    if (isBlocked)
+        then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles")
+    else if(owner != toString(i.caller))
         then throw("permission denied")
     else if(getOrderStatus(orderId) != NEW)
         then throw("invalid order status")
     else {
         ScriptResult(
-            WriteSet([ 
+            WriteSet([
                 DataEntry(FirstOrderKey, if firstOrder == orderId then nextOrder else firstOrder),
 
                 DataEntry(getNextOrderKey(prevOrder), nextOrder),
@@ -196,7 +213,7 @@ func sellBond() = {
     let deficitPositive = if(deficit <= 0) then 0 else deficit/PAULI #paulis to integers (dollars)
     let bondAmount = if(deficitPositive >= bondBalance) then bondBalance else deficitPositive # possible bond amount for selling; scale: integers (dollars)
     let returnAmount = if(deficitPositive >= bondBalance) then 0 else bondBalance-deficitPositive #scale: integers (dollars); send bonds back if there is remaining bonds on the main contract
-   
+
     if(deficitPositive == 0 && bondBalance == 0)
         then throw("without deficit")
     else if (bondBalance == 0)
@@ -247,7 +264,7 @@ func sellBond() = {
                     DataEntry(FirstOrderKey, if(newStatus == FILLED) then nextOrder else firstOrder),
 
                     DataEntry(getOrderFilledTotalKey(firstOrder), filledTotal + totalOrderWaveletesRequired),
-                    DataEntry(getOrderStatusKey(firstOrder), newStatus) # filled status if there is no remained waveletes in the order 
+                    DataEntry(getOrderStatusKey(firstOrder), newStatus) # filled status if there is no remained waveletes in the order
                ]),
                TransferSet([
                     ScriptTransfer(addressFromStringValue(getOrderOwner(firstOrder)), fillableOrderAmount, bondAssetId),

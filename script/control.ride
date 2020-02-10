@@ -61,6 +61,8 @@ let PriceOffsetKey = "price_offset"
 #------This contract----------
 let PriceKey = "price"
 let IsBlockedKey = "is_blocked"
+let IsBlockedCallerKey = "is_blocked_caller"
+let IsBlockedReasonKey = "is_blocked_reason"
 let PriceIndexKey = "price_index"
 
 func getBlackSwarmPriceKey(block: Int) = "black_swarm_price" + "_" + toString(block)
@@ -72,6 +74,7 @@ func getOracleProvidePriceKey(height: Int) = "price_" + toString(height)
 let price = getNumberByKey(PriceKey)
 let priceIndex = getNumberByKey(PriceIndexKey)
 let isBlocked = getBoolByKey(IsBlockedKey)
+let isBlockedCaller = getBoolByKey(IsBlockedCallerKey)
 let bftCoefficientOracle = 3
 let percentPriceOffset = getNumberByKey(PriceOffsetKey)
 let oracles = getStringByKey(OraclesKey)
@@ -176,6 +179,25 @@ func findPricesInRange(prices: List[Int]) = {
 }
 
 #-------------------Callable----------------------
+# [called by price oracles]
+# only price oracles can block smart contract untill another price oracle will unblock it
+@Callable(i)
+func callEmergencyShutdown(shouldBlockNeutrino: Boolean, reason: String) = {
+    let callerAddress = toString(i.caller)
+    if (!isOracle(callerAddress)) 
+        then throw("caller must be one of price oracles")
+    else if (shouldBlockNeutrino)
+        then WriteSet([
+            DataEntry(IsBlockedKey, shouldBlockNeutrino),
+            DataEntry(IsBlockedCallerKey, callerAddress),
+            DataEntry(IsBlockedReasonKey, reason)
+        ])
+    else if (!shouldBlockNeutrino && getStringByKey(IsBlockedCallerKey) != callerAddress)
+        then WriteSet([
+            DataEntry(IsBlockedKey, shouldBlockNeutrino)
+        ])
+    else throw("wrong parameters")
+}
 
 # [called by price oracles]
 @Callable(i)
@@ -201,7 +223,7 @@ func finalizeCurrentPrice() = {
     let newPrice = priceSum/priceProvidingCount
 
     if(isBlocked)
-        then throw("contract is blocked")
+        then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles")
     else if(getPriceHistory(height) != 0)
         then throw("wait next block")
     else if(priceProvidingCount < bftCoefficientOracle)
