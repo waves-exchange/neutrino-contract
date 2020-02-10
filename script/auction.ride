@@ -62,7 +62,6 @@ func getOrderOwnerKey(orderId: String) = "order_owner_" + orderId
 func getOrderHeightKey(orderId: String) = "order_height_" + orderId
 func getOrderStatusKey(orderId: String) = "order_status_" + orderId
 func getOrderFilledTotalKey(orderId: String) = "order_filled_total_" + orderId
-func getLastOrderOwnerKey(owner: String) = "last_order_owner_" + owner
 
 func getPrevOrderKey(orderId: String) = "order_prev_" + orderId
 func getNextOrderKey(orderId: String) = "order_next_" + orderId
@@ -110,7 +109,8 @@ func getNextOrder(id: String) = getStringByKey(getNextOrderKey(id))
 @Callable(i)
 func addBuyBondOrder(price : Int, prevOrder: String) = {
     let pmt = extract(i.payment);
-    let orderId = toBase58String(keccak256(toBytes(price) + toBytes(pmt.amount) + i.caller.bytes + toBytes(height) + i.transactionId)) # price = 100*usdnb/waves, but we have to work with price with another scale: priceWavesByBondCents = 100*waves/usdnb, so priceWavesByBondCents = 100*1/(price/100)
+    let orderId = toBase58String(keccak256(toBytes(price) + toBytes(pmt.amount) + i.caller.bytes + toBytes(height) + i.transactionId)) 
+    # price = 100*usdnb/waves, but we have to work with price with another scale: priceWavesByBondCents = 100*waves/usdnb, so priceWavesByBondCents = 100*1/(price/100)
     let priceWavesByBondCents = fraction(100, 100, price)
     let roi = fraction(priceWavesByBondCents - currentPrice, 100, currentPrice) # Example: 1.2 WAVES/USDNB (1.2 bonds for 1 waves) and 0.8 WAVES/USD (0.8 usd for 1 waves) gives 100*(1.2-0.8/0.8) 50% ROI
     if(pmt.amount < MINORDERTOTAL)
@@ -138,7 +138,6 @@ func addBuyBondOrder(price : Int, prevOrder: String) = {
             then throw("invalid order isPrevOrderError:" + toString(isPrevOrderError) + " isNextOrderError:" + toString(isNextOrderError))
         else
             WriteSet([
-                DataEntry(getLastOrderOwnerKey(owner), orderId),
                 DataEntry(getPrevOrderKey(orderId), prevOrder),
                 DataEntry(getNextOrderKey(orderId), nextOrder),
 
