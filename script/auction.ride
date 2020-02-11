@@ -56,6 +56,8 @@ let WavesLockedBalanceKey = BalanceLockedkKey + "waves"
 let NeutrinoLockedBalanceKey = BalanceLockedkKey + "neutrino"
 let LiquidationContractKey = "liquidation_contract"
 
+func getRoiByOrderIdKey(orderId: String) = "debug_order_roi_" + orderId
+
 func getOrderPriceKey(orderId: String) = "order_price_" + orderId
 func getOrderTotalKey(orderId: String) = "order_total_" + orderId
 func getOrderOwnerKey(orderId: String) = "order_owner_" + orderId
@@ -155,7 +157,7 @@ func addBuyBondOrder(price : Int, position: Int) = {
                 DataEntry(getOrderHeightKey(newOrderId), height),
                 DataEntry(getOrderStatusKey(newOrderId), NEW),
                 DataEntry("debug_order_currentPrice_" + newOrderId, currentPrice),
-                DataEntry("debug_order_roi_" + newOrderId, roi)
+                DataEntry(getRoiByOrderIdKey(newOrderId), roi)
             ])
     }
 }
@@ -210,7 +212,7 @@ func sellBond() = {
         let filledTotal = getOrderFilledTotal(orderId) #waveletes; returns 0 if there is no records
         let orderPrice = getOrderPrice(orderId) #100*usdnb/waves
         let priceWavesByBondCents = fraction(100, 100, orderPrice)
-        let roi = fraction(priceWavesByBondCents - currentPrice, 100, currentPrice)
+        let roi = getNumberByKey(getRoiByOrderIdKey(orderId))
         
         let remainedTotal = getOrderTotal(orderId) - filledTotal #waveletes
         let amountToExecuteOrder = convertWavesToBond(remainedTotal, priceWavesByBondCents); # expected price format 100*waves/usd; return scale: bonds (integers/dollars)
@@ -220,7 +222,7 @@ func sellBond() = {
 
         let totalOrderWaveletesRequired = convertBondToWaves(fillableOrderAmount, priceWavesByBondCents) # expected in wavelets
         
-        if (fraction(deficitPositive, 100, neutrinoSupply) < roi)
+        if ( fraction(deficitPositive, 100, neutrinoSupply) < roi )
             then throw("deficit should be higther or equal than roi: " + toString(roi))
         else if (amountToExecuteOrder == 0) then
             # this code is executing if there is not enough amount of waves to sell integer number of bonds, but there is still remaining waves amount in the order
