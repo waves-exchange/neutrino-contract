@@ -222,7 +222,7 @@ func sellBond() = {
 
         let totalOrderWaveletesRequired = convertBondToWaves(fillableOrderAmount, priceWavesByBondCents) # expected in wavelets
         
-        if ( fraction(deficit, 100, neutrinoSupply) < roi || deficit < 0)
+        if ( fraction(deficit, 100, neutrinoSupply) < roi || deficitPositive <= 0)
             then throw("deficit should be higther or equal than roi: " + toString(roi))
         else if (amountToExecuteOrder == 0) then
             # this code is executing if there is not enough amount of waves to sell integer number of bonds, but there is still remaining waves amount in the order
