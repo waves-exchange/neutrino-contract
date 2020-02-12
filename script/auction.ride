@@ -233,7 +233,7 @@ func sellBond() = {
         let filledTotal = getOrderFilledTotal(firstOrder) #waveletes; returns 0 if there is no records
         let orderPrice = getOrderPrice(firstOrder) #100*usdnb/waves
         let priceWavesByBondCents = fraction(100, 100, orderPrice)
-        let roi = getNumberByKey(getRoiByOrderIdKey(orderId))
+        let roi = getNumberByKey(getRoiByOrderIdKey(firstOrder))
 
         let remainedTotal = getOrderTotal(firstOrder) - filledTotal #waveletes
         let amountToExecuteOrder = convertWavesToBond(remainedTotal, priceWavesByBondCents); # expected price format 100*waves/usd; return scale: bonds (integers/dollars)
