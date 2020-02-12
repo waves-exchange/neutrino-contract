@@ -64,6 +64,8 @@ let NeutrinoLockedBalanceKey = BalanceLockedkKey + "neutrino"
 let LiquidationContractKey = "liquidation_contract"
 let FirstOrderKey = "order_first"
 
+func getRoiByOrderIdKey(orderId: String) = "debug_order_roi_" + orderId
+
 func getOrderPriceKey(orderId: String) = "order_price_" + orderId
 func getOrderTotalKey(orderId: String) = "order_total_" + orderId
 func getOrderOwnerKey(orderId: String) = "order_owner_" + orderId
@@ -83,11 +85,11 @@ func convertWavesToBond(amount: Int, price: Int) = convertNeutrinoToBond(convert
 func convertBondToWaves(amount: Int, price: Int) = convertNeutrinoToWaves(convertBondToNeutrino(amount), price)
 
 #-------------------Global vars-------------------------
-let neutrinoContract = addressFromStringValue(getStringByKey(NeutrinoContractKey))
-let controlContract = addressFromStringValue(getStringByAddressAndKey(neutrinoContract, ControlContractKey)) ## The value from neutrino.ride
-let liquidationContract = addressFromStringValue(getStringByAddressAndKey(neutrinoContract, LiquidationContractKey))
-let neutrinoAssetId = fromBase58String(getStringByAddressAndKey(neutrinoContract, NeutrinoAssetIdKey)) # Assets ids. The value from neutrino.ride
-let bondAssetId = fromBase58String(getStringByAddressAndKey(neutrinoContract, BondAssetIdKey))
+let neutrinoContract = addressFromStringValue("3PC9BfRwJWWiw9AREE2B3eWzCks3CYtg4yo")
+let controlContract = addressFromStringValue("3P5Bfd58PPfNvBM2Hy8QfbcDqMeNtzg7KfP") ## The value from neutrino.ride
+let liquidationContract = addressFromStringValue("3P4PCxsJqMzQBALo8zANHtBDZRRquobHQp7")
+let neutrinoAssetId = fromBase58String("DG2xFkPdDwKUoBkzGAhQtLpSGzfXLiCYPEzeKH2Ad24p") # Assets ids. The value from neutrino.ride
+let bondAssetId = fromBase58String("975akZBfnMj513U7MZaHKzQrmsEx5aE3wdWKTrHBhbjF")
 
 let isBlocked = getBoolByAddressAndKey(controlContract, "is_blocked")
 
@@ -167,7 +169,7 @@ func addBuyBondOrder(price : Int, prevOrder: String) = {
                 DataEntry(getOrderHeightKey(orderId), height),
                 DataEntry(getOrderStatusKey(orderId), NEW),
                 DataEntry("debug_order_currentPrice_" + orderId, currentPrice),
-                DataEntry("debug_order_roi_" + orderId, roi)
+                DataEntry(getRoiByOrderIdKey(orderId), roi)
             ])
     }
 }
@@ -231,7 +233,8 @@ func sellBond() = {
         let filledTotal = getOrderFilledTotal(firstOrder) #waveletes; returns 0 if there is no records
         let orderPrice = getOrderPrice(firstOrder) #100*usdnb/waves
         let priceWavesByBondCents = fraction(100, 100, orderPrice)
-        
+        let roi = getNumberByKey(getRoiByOrderIdKey(orderId))
+
         let remainedTotal = getOrderTotal(firstOrder) - filledTotal #waveletes
         let amountToExecuteOrder = convertWavesToBond(remainedTotal, priceWavesByBondCents); # expected price format 100*waves/usd; return scale: bonds (integers/dollars)
     
@@ -240,7 +243,9 @@ func sellBond() = {
 
         let totalOrderWaveletesRequired = convertBondToWaves(fillableOrderAmount, priceWavesByBondCents) # expected in wavelets
 
-        if (amountToExecuteOrder == 0) then
+        if ( fraction(deficit, 100, neutrinoSupply) < roi || deficitPositive <= 0)
+            then throw("deficit should be higther or equal than roi: " + toString(roi))
+        else if (amountToExecuteOrder == 0) then
             # this code is executing if there is not enough amount of waves to sell integer number of bonds, but there is still remaining waves amount in the order
             ScriptResult(
                 WriteSet([
