@@ -56,6 +56,7 @@ let UPDATE = "update"
 #-------------------Constructor-------------------------
 let OraclesKey = "oracles"
 let PriceOffsetKey = "price_offset"
+let AutoEmergencyOracleAddress = "3P7ihFVxBNbHK237TNdPxT1xHEu8pHexXTr"
 
 #-------------------Keys---------------------------------
 #------This contract----------
@@ -182,21 +183,16 @@ func findPricesInRange(prices: List[Int]) = {
 # [called by price oracles]
 # only price oracles can block smart contract untill another price oracle will unblock it
 @Callable(i)
-func callEmergencyShutdown(shouldBlockNeutrino: Boolean, reason: String) = {
+func callEmergencyShutdown(reason: String) = {
     let callerAddress = toString(i.caller)
-    if (!isOracle(callerAddress)) 
-        then throw("caller must be one of price oracles")
-    else if (shouldBlockNeutrino)
-        then WriteSet([
-            DataEntry(IsBlockedKey, shouldBlockNeutrino),
+    if (AutoEmergencyOracleAddress != callerAddress) 
+        then throw("caller must be one an emergency oracle")
+    else 
+        WriteSet([
+            DataEntry(IsBlockedKey, true),
             DataEntry(IsBlockedCallerKey, callerAddress),
             DataEntry(IsBlockedReasonKey, reason)
         ])
-    else if (!shouldBlockNeutrino && getStringByKey(IsBlockedCallerKey) != callerAddress)
-        then WriteSet([
-            DataEntry(IsBlockedKey, shouldBlockNeutrino)
-        ])
-    else throw("wrong parameters")
 }
 
 # [called by price oracles]
