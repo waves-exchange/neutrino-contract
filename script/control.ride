@@ -198,6 +198,9 @@ func callEmergencyShutdown(reason: String) = {
 # [called by price oracles]
 @Callable(i)
 func finalizeCurrentPrice() = {
+    if(isBlocked) then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles") else
+    if(getPriceHistory(height) != 0) then throw("wait next block") else
+
     let prices = [
         getOracleProvideHeight(oraclesList[0], height),
         getOracleProvideHeight(oraclesList[1], height),
@@ -207,10 +210,15 @@ func finalizeCurrentPrice() = {
     ]
 
     let pricesInRange = findPricesInRange(prices)
-
     let priceProvidingCount = pricesInRange.size();
 
-    if (priceProvidingCount < 3) then throw("Could not finalize price because of big variation") else
+    if (priceProvidingCount < 3) then throw("Could not finalize price because of big variation: height=" + toString(height)
+             + "\n" + oraclesList[0] + "=" + toString(prices[0])
+             + "\n" + oraclesList[1] + "=" + toString(prices[1])
+             + "\n" + oraclesList[2] + "=" + toString(prices[2])
+             + "\n" + oraclesList[3] + "=" + toString(prices[3])
+             + "\n" + oraclesList[4] + "=" + toString(prices[4])) else
+
     let sum1 = prices[pricesInRange[0]] + prices[pricesInRange[1]] + prices[pricesInRange[2]]
     let sum2 = if (priceProvidingCount >= 4) then sum1 + prices[pricesInRange[3]] else sum1
     let priceSum = if (priceProvidingCount >= 5) then sum2 + prices[pricesInRange[4]] else sum2
@@ -218,13 +226,7 @@ func finalizeCurrentPrice() = {
 
     let newPrice = priceSum/priceProvidingCount
 
-    if(isBlocked)
-        then throw("contract is blocked")
-    else if(getPriceHistory(height) != 0)
-        then throw("wait next block")
-    else if(priceProvidingCount < bftCoefficientOracle)
-        then throw(toString(bftCoefficientOracle) + "/5 oracles need to set a price (" + toString(priceProvidingCount) + ")")
-    else if(newPrice >= (price + price*percentPriceOffset/100) || newPrice <= (price - price*percentPriceOffset/100)) then {
+    if(newPrice >= (price + price*percentPriceOffset/100) || newPrice <= (price - price*percentPriceOffset/100)) then {
         WriteSet([
             DataEntry(IsBlockedKey, true),
             DataEntry(getBlackSwarmPriceKey(height), newPrice)
