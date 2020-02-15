@@ -91,6 +91,8 @@ let liquidationContract = addressFromStringValue("3P4PCxsJqMzQBALo8zANHtBDZRRquo
 let neutrinoAssetId = fromBase58String("DG2xFkPdDwKUoBkzGAhQtLpSGzfXLiCYPEzeKH2Ad24p") # Assets ids. The value from neutrino.ride
 let bondAssetId = fromBase58String("975akZBfnMj513U7MZaHKzQrmsEx5aE3wdWKTrHBhbjF")
 
+let AutoEmergencyOracleAddress = "3P7ihFVxBNbHK237TNdPxT1xHEu8pHexXTr"
+
 let isBlocked = getBoolByAddressAndKey(controlContract, "is_blocked")
 
 #-------------------Global vars deficit, locked & supply -------------------------
@@ -145,11 +147,11 @@ func addBuyBondOrder(price : Int, prevOrder: String) = {
     else {
         let owner = toString(i.caller)
         let nextOrder = if prevOrder == "" then firstOrder else getNextOrder(prevOrder)
-        let nextOrderPrice = getOrderPrice(nextOrder)
-        let isNextOrderError = if(nextOrder != "" && price <= nextOrderPrice) then true else false;
+        let nextOrderRoi = getNumberByKey(getRoiByOrderIdKey(nextOrder))
+        let isNextOrderError = if(nextOrder != "" && roi <= nextOrderRoi) then true else false;
 
-        let prevOrderPrice = getOrderPrice(prevOrder)
-        let isPrevOrderError = if(prevOrder != "" && price > prevOrderPrice) then true else false;
+        let prevOrderRoi = getNumberByKey(getRoiByOrderIdKey(prevOrder))
+        let isPrevOrderError = if(prevOrder != "" && roi > prevOrderRoi) then true else false;
 
         if (isNextOrderError || isPrevOrderError)
             then throw("invalid order isPrevOrderError:" + toString(isPrevOrderError) + " isNextOrderError:" + toString(isNextOrderError))
@@ -175,18 +177,19 @@ func addBuyBondOrder(price : Int, prevOrder: String) = {
 }
 
 # cancel buy bonds order or liquidation order
-# [called by user]
+# [called by user or admin]
 @Callable(i)
 func cancelOrder(orderId : String) = {
     let owner = getOrderOwner(orderId)
     let amount = getOrderTotal(orderId) - getOrderFilledTotal(orderId)
+    let caller = toString(i.caller)
 
     let nextOrder = getNextOrder(orderId)
     let prevOrder = getPrevOrder(orderId)
 
     if (isBlocked)
         then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles")
-    else if(owner != toString(i.caller))
+    else if(owner != caller || caller != AutoEmergencyOracleAddress)
         then throw("permission denied")
     else if(getOrderStatus(orderId) != NEW)
         then throw("invalid order status")
