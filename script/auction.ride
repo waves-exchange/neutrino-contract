@@ -148,10 +148,10 @@ func addBuyBondOrder(price : Int, prevOrder: String) = {
         let owner = toString(i.caller)
         let nextOrder = if prevOrder == "" then firstOrder else getNextOrder(prevOrder)
         let nextOrderRoi = getNumberByKey(getRoiByOrderIdKey(nextOrder))
-        let isNextOrderError = if(nextOrder != "" && roi <= nextOrderRoi) then true else false;
+        let isNextOrderError = if(nextOrder != "" && roi >= nextOrderRoi) then true else false;
 
         let prevOrderRoi = getNumberByKey(getRoiByOrderIdKey(prevOrder))
-        let isPrevOrderError = if(prevOrder != "" && roi > prevOrderRoi) then true else false;
+        let isPrevOrderError = if(prevOrder != "" && roi < prevOrderRoi) then true else false;
 
         if (isNextOrderError || isPrevOrderError)
             then throw("invalid order isPrevOrderError:" + toString(isPrevOrderError) + " isNextOrderError:" + toString(isNextOrderError))
