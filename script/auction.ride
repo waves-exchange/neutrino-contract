@@ -128,7 +128,7 @@ func addBuyBondOrder(price : Int, prevOrder: String) = {
 
     if (isBlocked)
         then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles")
-    else if (deficit < 0)
+    else if (deficit <= 0)
         then throw("there is no ability to add order during proficit")
     else if(pmt.amount < MINORDERTOTAL)
         then throw("min order total equals " + toString(MINORDERTOTAL))
