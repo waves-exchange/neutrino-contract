@@ -175,7 +175,7 @@ func addBuyBondOrder(price : Int, prevOrder: String) = {
 }
 
 # cancel buy bonds order or liquidation order
-# [called by user or admin]
+# [called by user]
 @Callable(i)
 func cancelOrder(orderId : String) = {
     let owner = getOrderOwner(orderId)
