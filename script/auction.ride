@@ -91,8 +91,6 @@ let liquidationContract = addressFromStringValue("3P4PCxsJqMzQBALo8zANHtBDZRRquo
 let neutrinoAssetId = fromBase58String("DG2xFkPdDwKUoBkzGAhQtLpSGzfXLiCYPEzeKH2Ad24p") # Assets ids. The value from neutrino.ride
 let bondAssetId = fromBase58String("975akZBfnMj513U7MZaHKzQrmsEx5aE3wdWKTrHBhbjF")
 
-let AutoEmergencyOracleAddress = "3P7ihFVxBNbHK237TNdPxT1xHEu8pHexXTr"
-
 let isBlocked = getBoolByAddressAndKey(controlContract, "is_blocked")
 
 #-------------------Global vars deficit, locked & supply -------------------------
@@ -189,7 +187,7 @@ func cancelOrder(orderId : String) = {
 
     if (isBlocked)
         then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles")
-    else if(owner != caller && caller != AutoEmergencyOracleAddress)
+    else if(owner != caller)
         then throw("permission denied")
     else if(getOrderStatus(orderId) != NEW)
         then throw("invalid order status")
