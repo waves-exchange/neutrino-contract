@@ -128,6 +128,8 @@ func addBuyBondOrder(price : Int, prevOrder: String) = {
 
     if (isBlocked)
         then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles")
+    else if (deficit <= 0)
+        then throw("there is no ability to add order during proficit")
     else if(pmt.amount < MINORDERTOTAL)
         then throw("min order total equals " + toString(MINORDERTOTAL))
     else if (roi > MAXROI)
@@ -145,11 +147,11 @@ func addBuyBondOrder(price : Int, prevOrder: String) = {
     else {
         let owner = toString(i.caller)
         let nextOrder = if prevOrder == "" then firstOrder else getNextOrder(prevOrder)
-        let nextOrderPrice = getOrderPrice(nextOrder)
-        let isNextOrderError = if(nextOrder != "" && price <= nextOrderPrice) then true else false;
+        let nextOrderRoi = getNumberByKey(getRoiByOrderIdKey(nextOrder))
+        let isNextOrderError = if(nextOrder != "" && roi >= nextOrderRoi) then true else false;
 
-        let prevOrderPrice = getOrderPrice(prevOrder)
-        let isPrevOrderError = if(prevOrder != "" && price > prevOrderPrice) then true else false;
+        let prevOrderRoi = getNumberByKey(getRoiByOrderIdKey(prevOrder))
+        let isPrevOrderError = if(prevOrder != "" && roi < prevOrderRoi) then true else false;
 
         if (isNextOrderError || isPrevOrderError)
             then throw("invalid order isPrevOrderError:" + toString(isPrevOrderError) + " isNextOrderError:" + toString(isNextOrderError))
@@ -180,13 +182,14 @@ func addBuyBondOrder(price : Int, prevOrder: String) = {
 func cancelOrder(orderId : String) = {
     let owner = getOrderOwner(orderId)
     let amount = getOrderTotal(orderId) - getOrderFilledTotal(orderId)
+    let caller = toString(i.caller)
 
     let nextOrder = getNextOrder(orderId)
     let prevOrder = getPrevOrder(orderId)
 
     if (isBlocked)
         then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles")
-    else if(owner != toString(i.caller))
+    else if(owner != caller)
         then throw("permission denied")
     else if(getOrderStatus(orderId) != NEW)
         then throw("invalid order status")
