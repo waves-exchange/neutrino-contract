@@ -1,0 +1,167 @@
+{-# STDLIB_VERSION 3 #-}
+{-# CONTENT_TYPE DAPP #-}
+{-# SCRIPT_TYPE ACCOUNT #-}
+#
+# Smart Contract Implementing Bonds Auction in the Orderbook of Neutrino Protocol 
+#
+
+#-------------------Base functions----------------------
+func getNumberByKey(key: String) = {
+    match getInteger(this, key) {
+            case a:Int => a
+            case _ => 0
+    }
+}
+func getStringByKey(key: String) = {
+    match getString(this, key) {
+            case a:String => a
+            case _ => ""
+    }
+}
+
+func getBoolByAddressAndKey(address: Address, key: String) = {
+     match getBoolean(address, key) {
+            case a:Boolean => a
+            case _ => false
+    }
+}
+
+func getStringByAddressAndKey(address: Address, key: String) = {
+   match getString(address, key) {
+            case a:String => a
+            case _ => ""
+    }
+}
+func getNumberByAddressAndKey(address: Address, key: String) = {
+    match getInteger(address, key) {
+            case a:Int => a
+            case _ => 0
+    }
+}
+
+#-------------------Constants---------------------------
+let WAVELET = 100000000
+let PAULI = 1000000
+let PERCENTACCURACY = 1000
+let MINORDERTOTAL = 10*WAVELET
+let MAXROI = 100
+#------Order statuses------
+let CANCELED = "canceled"
+let NEW = "new"
+let FILLED = "filled"
+
+#-------------------Constructor-------------------------
+let NeutrinoContractKey = "neutrino_contract"
+
+#-------------------Keys--------------------------------
+let PriceKey = "price"
+let BondAssetIdKey = "bond_asset_id"
+let NeutrinoAssetIdKey = "neutrino_asset_id"
+let ControlContractKey = "control_contract"
+let BalanceLockedkKey = "balance_lock_"
+let WavesLockedBalanceKey = BalanceLockedkKey + "waves"
+let NeutrinoLockedBalanceKey = BalanceLockedkKey + "neutrino"
+let LiquidationContractKey = "liquidation_contract"
+let FirstOrderKey = "order_first"
+
+func getRoiByOrderIdKey(orderId: String) = "debug_order_roi_" + orderId
+
+func getOrderPriceKey(orderId: String) = "order_price_" + orderId
+func getOrderTotalKey(orderId: String) = "order_total_" + orderId
+func getOrderOwnerKey(orderId: String) = "order_owner_" + orderId
+func getOrderHeightKey(orderId: String) = "order_height_" + orderId
+func getOrderStatusKey(orderId: String) = "order_status_" + orderId
+func getOrderFilledTotalKey(orderId: String) = "order_filled_total_" + orderId
+
+func getPrevOrderKey(orderId: String) = "order_prev_" + orderId
+func getNextOrderKey(orderId: String) = "order_next_" + orderId
+#-------------------Convert functions-------------------
+func convertNeutrinoToWaves(amount: Int, price: Int) = fraction(fraction(amount, 100, price),WAVELET, PAULI)
+func convertWavesToNeutrino(amount: Int, price: Int) = fraction(fraction(amount, price, 100), PAULI, WAVELET)
+
+func convertNeutrinoToBond(amount: Int) = amount/PAULI 
+func convertBondToNeutrino(amount: Int) = amount*PAULI 
+func convertWavesToBond(amount: Int, price: Int) = convertNeutrinoToBond(convertWavesToNeutrino(amount, price))
+func convertBondToWaves(amount: Int, price: Int) = convertNeutrinoToWaves(convertBondToNeutrino(amount), price)
+
+#-------------------Global vars-------------------------
+let neutrinoContract = addressFromStringValue("3PC9BfRwJWWiw9AREE2B3eWzCks3CYtg4yo")
+let controlContract = addressFromStringValue("3P5Bfd58PPfNvBM2Hy8QfbcDqMeNtzg7KfP") ## The value from neutrino.ride
+let liquidationContract = addressFromStringValue("3P4PCxsJqMzQBALo8zANHtBDZRRquobHQp7")
+let neutrinoAssetId = fromBase58String("DG2xFkPdDwKUoBkzGAhQtLpSGzfXLiCYPEzeKH2Ad24p") # Assets ids. The value from neutrino.ride
+let bondAssetId = fromBase58String("975akZBfnMj513U7MZaHKzQrmsEx5aE3wdWKTrHBhbjF")
+
+let AutoEmergencyOracleAddress = "3P7ihFVxBNbHK237TNdPxT1xHEu8pHexXTr"
+
+let isBlocked = getBoolByAddressAndKey(controlContract, "is_blocked")
+
+#-------------------Global vars deficit, locked & supply -------------------------
+let currentPrice = getNumberByAddressAndKey(controlContract, PriceKey) # The value from control.ride
+let neutrinoLockedBalance = getNumberByAddressAndKey(neutrinoContract, NeutrinoLockedBalanceKey) #locked balance from USDN -> WAVES swap
+#cannot be expressed by complexity limitations: let wavesLockedBalance = getNumberByAddressAndKey(neutrinoContract, WavesLockedBalanceKey) #locked balance from WAVES -> USDN swap
+let reserve = wavesBalance(neutrinoContract) - 
+    getNumberByAddressAndKey(neutrinoContract, WavesLockedBalanceKey) #waves reserves to cover USDN supply
+let neutrinoSupply = neutrinoLockedBalance + extract(assetInfo(neutrinoAssetId)).quantity - assetBalance(neutrinoContract, neutrinoAssetId) - assetBalance(liquidationContract, neutrinoAssetId) # supply outside main sc or liquidation contract
+let deficit = neutrinoSupply - convertWavesToNeutrino(reserve, currentPrice)
+let firstOrder = getStringByKey(FirstOrderKey)
+
+#-------------------Get functions----------------------
+func getOrderPrice(id : String) = getNumberByKey(getOrderPriceKey(id))
+func getOrderTotal(id : String) = getNumberByKey(getOrderTotalKey(id))
+func getOrderOwner(id : String) = getStringByKey(getOrderOwnerKey(id))
+func getOrderStatus(id : String) = getStringByKey(getOrderStatusKey(id))
+func getOrderFilledTotal(id : String) = getNumberByKey(getOrderFilledTotalKey(id))
+func getPrevOrder(id: String) = getStringByKey(getPrevOrderKey(id))
+func getNextOrder(id: String) = getStringByKey(getNextOrderKey(id))
+
+#-------------------Any functions----------------------
+
+#-------------------Callable---------------------------
+
+# cancel buy bonds order or liquidation order
+# [called by user or admin]
+@Callable(i)
+func cancelOrder(orderId : String) = {
+    let owner = getOrderOwner(orderId)
+    let amount = getOrderTotal(orderId) - getOrderFilledTotal(orderId)
+    let caller = toString(i.caller)
+
+    let nextOrder = getNextOrder(orderId)
+    let prevOrder = getPrevOrder(orderId)
+
+    if(owner != caller && caller != AutoEmergencyOracleAddress)
+        then throw("permission denied")
+    else if(getOrderStatus(orderId) != NEW)
+        then throw("invalid order status")
+    else {
+        ScriptResult(
+            WriteSet([
+                DataEntry(FirstOrderKey, if firstOrder == orderId then nextOrder else firstOrder),
+
+                DataEntry(getNextOrderKey(prevOrder), nextOrder),
+                DataEntry(getPrevOrderKey(nextOrder), prevOrder),
+                DataEntry(getOrderStatusKey(orderId), CANCELED)
+            ]),
+            TransferSet([
+                ScriptTransfer(i.caller, amount, unit)
+            ])
+        )
+    }
+}
+
+@Verifier(tx)
+func verify() = {
+    let pubKeyAdminsList = [
+        "BLEoguzPVKVTfXxxT3W7Rqf8aUm2ggC9Vemd2MQawM2G",
+        "FWVffYr2ALmHMejZm3WqeLz6Sdym3gLFGtJn4KTwyU5x",
+        "3Wh2LaWcb5gg7K2pPcW3Ep6EAuRBzYkAgrdpt43jTDFa",
+        "5WRXFSjwcTbNfKcJs8ZqXmSSWYsSVJUtMvMqZj5hH4Nc"
+    ]
+    let count =
+        (if(sigVerify(tx.bodyBytes, tx.proofs[0], fromBase58String(pubKeyAdminsList[0]))) then 1 else 0) +
+        (if(sigVerify(tx.bodyBytes, tx.proofs[1], fromBase58String(pubKeyAdminsList[1]))) then 1 else 0) +
+        (if(sigVerify(tx.bodyBytes, tx.proofs[2], fromBase58String(pubKeyAdminsList[2]))) then 1 else 0) +
+        (if(sigVerify(tx.bodyBytes, tx.proofs[3], fromBase58String(pubKeyAdminsList[3]))) then 2 else 0)
+
+    count >= 3
+}
