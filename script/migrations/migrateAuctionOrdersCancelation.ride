@@ -143,7 +143,7 @@ func cancelOrder(orderId : String) = {
                 DataEntry(getOrderStatusKey(orderId), CANCELED)
             ]),
             TransferSet([
-                ScriptTransfer(i.caller, amount, unit)
+                ScriptTransfer(addressFromStringValue(owner), amount, unit)
             ])
         )
     }
