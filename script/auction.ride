@@ -189,7 +189,7 @@ func cancelOrder(orderId : String) = {
 
     if (isBlocked)
         then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles")
-    else if(owner != caller || caller != AutoEmergencyOracleAddress)
+    else if(owner != caller && caller != AutoEmergencyOracleAddress)
         then throw("permission denied")
     else if(getOrderStatus(orderId) != NEW)
         then throw("invalid order status")
