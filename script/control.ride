@@ -37,6 +37,26 @@ let oraclesList = [fromBase58String("publicA"),
                    fromBase58String("publicD"),
                    fromBase58String("publicE")]
 
+let neutrinoAddress     = addressFromPublicKey(fromBase58String("neutrinoPub"))
+let liquidationAddress  = addressFromPublicKey(fromBase58String("liquidationPub"))
+let neutrinoAsset       = fromBase58String("neutrinoAsset")
+
+#locked balance from USDN -> WAVES swap
+let neutrinoLockedBalance = match getInteger(neutrinoAddress, "balance_lock_neutrino") {
+            case a:Int => a
+            case _ => 0}
+
+#locked balance from WAVES -> USDN swap
+let wavesLockedBalance = match getInteger(neutrinoAddress, "balance_lock_waves") {
+            case a:Int => a
+            case _ => 0}
+
+let reserve = wavesBalance(neutrinoAddress) - wavesLockedBalance #waves reserves to cover USDN supply
+let neutrinoSupply = neutrinoLockedBalance + extract(assetInfo(neutrinoAsset)).quantity - assetBalance(neutrinoAddress, neutrinoAsset)
+    - assetBalance(liquidationAddress, neutrinoAsset) # supply outside main sc or liquidation contract
+let deficit = neutrinoSupply - convertWavesToNeutrino(reserve, price)
+
+
 func findPricesInRange(prices: List[Int]) = {
     let minPercentBound = 90
     let maxPercentBound = 110
@@ -180,7 +200,9 @@ func finalizeCurrentPrice() = {
             DataEntry("price", newPrice),
             DataEntry("price_" + toString(height), newPrice),
             DataEntry("price_index", newPriceIndex),
-            DataEntry("price_index_" + toString(newPriceIndex), height)
+            DataEntry("price_index_" + toString(newPriceIndex), height),
+            DataEntry("deficit_percent", deficit / neutrinoSupply),
+            DataEntry("deficit_percent_" + toString(height), deficit / neutrinoSupply)
         ])
     }
 }
