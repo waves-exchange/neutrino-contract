@@ -31,11 +31,11 @@ let isBlocked = match getBoolean(this, "is_blocked") {
 
 let percentPriceOffset = 7
 
-let oraclesList = [fromBase58String("publicA"),
-                   fromBase58String("publicB"),
-                   fromBase58String("publicC"),
-                   fromBase58String("publicD"),
-                   fromBase58String("publicE")]
+let oraclesList = [fromBase58String("9wo2tHwAG1KH3Cb4BLYWw5puhBBceodHP2knnTKLWzhP"),
+                   fromBase58String("9TECpQSnJRFzAVhTM4woEBzX5reGvWdzGKPyKe6QHwRH"),
+                   fromBase58String("Habp51FwHWFBrWhVgpEY2wpSLfCKtaJqhaNCoTHi7ix4"),
+                   fromBase58String("3Wte81zHrVKBDNVsCEreknVSNfGCVUzEurHBqwXWBC2P"),
+                   fromBase58String("3Mx9ThJMD4NbcD8VPfo1EFm6sVxBwWuafKH8qtEChLSU")]
 
 func findPricesInRange(prices: List[Int]) = {
     let minPercentBound = 90
