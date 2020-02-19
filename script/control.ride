@@ -201,8 +201,8 @@ func finalizeCurrentPrice() = {
             DataEntry("price_" + toString(height), newPrice),
             DataEntry("price_index", newPriceIndex),
             DataEntry("price_index_" + toString(newPriceIndex), height),
-            DataEntry("deficit_percent", deficit / neutrinoSupply),
-            DataEntry("deficit_percent_" + toString(height), deficit / neutrinoSupply)
+            DataEntry("deficit_" + toString(height), deficit),
+            DataEntry("neutrinoSupply_" + toString(height), neutrinoSupply)
         ])
     }
 }
