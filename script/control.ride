@@ -37,9 +37,9 @@ let oraclesList = [fromBase58String("9wo2tHwAG1KH3Cb4BLYWw5puhBBceodHP2knnTKLWzh
                    fromBase58String("3Wte81zHrVKBDNVsCEreknVSNfGCVUzEurHBqwXWBC2P"),
                    fromBase58String("3Mx9ThJMD4NbcD8VPfo1EFm6sVxBwWuafKH8qtEChLSU")]
 
-let neutrinoAddress     = addressFromPublicKey(fromBase58String("neutrinoPub"))
-let liquidationAddress  = addressFromPublicKey(fromBase58String("liquidationPub"))
-let neutrinoAsset       = fromBase58String("neutrinoAsset")
+let neutrinoAddress     = addressFromPublicKey(fromBase58String("BRnVwSVctnV8pge5vRpsJdWnkjWEJspFb6QvrmZvu3Ht"))
+let liquidationAddress  = addressFromPublicKey(fromBase58String("H8Gooqgk4486MkqEQVwACpgoyEjt5Px4eskysnEDZ1nR"))
+let neutrinoAsset       = fromBase58String("DG2xFkPdDwKUoBkzGAhQtLpSGzfXLiCYPEzeKH2Ad24p")
 
 #locked balance from USDN -> WAVES swap
 let neutrinoLockedBalance = match getInteger(neutrinoAddress, "balance_lock_neutrino") {
