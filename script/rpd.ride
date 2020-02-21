@@ -75,21 +75,39 @@ func getOwnerProposal(hash: String) = getStringByKey(getOwnerProposalKey(hash))
 func getArgumentsProposal(hash: String) = getStringByKey(getArgumentsProposalKey(hash))
 func getVote(owner: String, hash: String) = getStringByKey(getVoteKey(owner, hash))
 
+#----split protocol-------------------------------
+func getRewardsConfigKey(owner : String, share: Int, receiver: String, start: Boolean) = {
+    "r"
+}
+func getCurrentRewardsCongigKey(owner : String) = {
+    "r"
+}
+
 #-------------------Callable----------------------
 # start neutrino staking
 # [called by user]
+# getRewardsConfigKey(owner : String, share: Int, receiver: String, start: Bool)
+# getCurrentRewardsCongigKey(owner : String)
+
+# {receiver}_{share}_{owner}_start
+# {receiver}_{share}_{owner}_end
 @Callable(i)
-func lockNeutrino() = {
+func lockNeutrino(receiver: String, share: Int) = {
     let pmt = extract(i.payment)
     if (pmt.assetId != neutrinoAssetId)
-        then throw("can use neutrino")
+        then throw("can use usd only")
+    else if (share > 100)
+        then throw("staking rewards share cannot be higher than 100%")
     else {
         let account = toString(i.caller)
         let assetIdString = toBase58String(value(pmt.assetId))
 
         WriteSet([
             DataEntry(getContractBalanceKey(assetIdString), getContractBalance(assetIdString) + pmt.amount),
-            DataEntry(getUserBalanceKey(account, assetIdString), getUserBalance(account, assetIdString) + pmt.amount)
+            DataEntry(getUserBalanceKey(account, assetIdString), getUserBalance(account, assetIdString) + pmt.amount),
+            DataEntry(getRewardsConfigKey(account, share, receiver, true), receiver),
+            DataEntry(getRewardsConfigKey(account, share, receiver, true), receiver),
+            DataEntry("getRewardsConfigKey", "getRewardsConfigKey")
         ])
     }
 }
