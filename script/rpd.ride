@@ -76,21 +76,19 @@ func getArgumentsProposal(hash: String) = getStringByKey(getArgumentsProposalKey
 func getVote(owner: String, hash: String) = getStringByKey(getVoteKey(owner, hash))
 
 #----split protocol-------------------------------
-func getRewardsConfigKey(owner : String, share: Int, receiver: String, start: Boolean) = {
-    "r"
+func getRewardsConfigKey(owner : String, share: Int, receiver: String) = {
+    "stakingconfig_" + owner + "_" + toString(share) +  "_" + receiver
 }
 func getCurrentRewardsCongigKey(owner : String) = {
-    "r"
+    "stakingconfig_current_" + owner
+}
+func getRewardsConfigStartKey(configKey : String, isStart: Boolean) = {
+    configKey + (if isStart then "_start" else "_end")
 }
 
 #-------------------Callable----------------------
 # start neutrino staking
 # [called by user]
-# getRewardsConfigKey(owner : String, share: Int, receiver: String, start: Bool)
-# getCurrentRewardsCongigKey(owner : String)
-
-# {receiver}_{share}_{owner}_start
-# {receiver}_{share}_{owner}_end
 @Callable(i)
 func lockNeutrino(receiver: String, share: Int) = {
     let pmt = extract(i.payment)
@@ -101,13 +99,17 @@ func lockNeutrino(receiver: String, share: Int) = {
     else {
         let account = toString(i.caller)
         let assetIdString = toBase58String(value(pmt.assetId))
-
+        let currentConfig = getStringByKey(getCurrentRewardsCongigKey(account))
+        let newCurrentConfig = getRewardsConfigKey(account, share, receiver)
+        let isNewConfig = !(currentConfig == newCurrentConfig)
+        let end = if isNewConfig then height else 0
+        let start = if isNewConfig then height else getNumberByKey(getRewardsConfigStartKey(newCurrentConfig, true))
         WriteSet([
             DataEntry(getContractBalanceKey(assetIdString), getContractBalance(assetIdString) + pmt.amount),
             DataEntry(getUserBalanceKey(account, assetIdString), getUserBalance(account, assetIdString) + pmt.amount),
-            DataEntry(getRewardsConfigKey(account, share, receiver, true), receiver),
-            DataEntry(getRewardsConfigKey(account, share, receiver, true), receiver),
-            DataEntry("getRewardsConfigKey", "getRewardsConfigKey")
+            DataEntry(getRewardsConfigStartKey(currentConfig, false), end),
+            DataEntry(getRewardsConfigStartKey(newCurrentConfig, true), start),
+            DataEntry(getCurrentRewardsCongigKey(account), newCurrentConfig)
         ])
     }
 }
