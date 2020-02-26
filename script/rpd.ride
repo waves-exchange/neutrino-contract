@@ -86,11 +86,7 @@ func getRewardsConfigStartKey(configKey : String, isStart: Boolean) = {
     configKey + (if isStart then "_start" else "_end")
 }
 
-#-------------------Callable----------------------
-# start neutrino staking
-# [called by user]
-@Callable(i)
-func lockNeutrino(receiver: String, share: Int) = {
+func internallockNeutrino(i: Invocation, receiver: String, share: Int) = {
     let pmt = extract(i.payment)
     if (pmt.assetId != neutrinoAssetId)
         then throw("can use usd only")
@@ -113,6 +109,19 @@ func lockNeutrino(receiver: String, share: Int) = {
         ])
     }
 }
+#-------------------Callable----------------------
+# start neutrino staking
+# [called by user]
+@Callable(i)
+func lockNeutrinoSP(receiver: String, share: Int) = {
+    internallockNeutrino(i, receiver, share)
+}
+
+@Callable(i)
+func lockNeutrino() = {
+    internallockNeutrino(i, toString(i.caller), 100)
+}
+
 
 # cancel neutrino staking
 # [called by user]
