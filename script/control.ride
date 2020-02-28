@@ -5,107 +5,43 @@
 # Smart Contract for Price Oracles and Emergency Oracles of Neutrino Protocol
 #
 
-#-------------------Base functions----------------------
-func getNumberByKey(key: String) = {
-    match getInteger(this, key) {
+#-------------------Functions----------------------
+func convertWavesToNeutrino(amount: Int, price: Int) = fraction(fraction(amount, price, 100), 1000000, 100000000)
+
+func getOracleProvideHeight(ownerPub: ByteVector, height: Int) = {
+    match getInteger(addressFromPublicKey(ownerPub), "price_" + toString(height)) {
             case a:Int => a
             case _ => 0
     }
 }
-func getStringByKey(key: String) = {
-    match getString(this, key) {
-            case a:String => a
-            case _ => ""
-    }
-}
-func getBoolByKey(key: String) = {
-    match getBoolean(this, key) {
-            case a:Boolean => a
-            case _ => false
-    }
-}
-func getNumberByAddressAndKey(address: Address, key: String) = {
-    match getInteger(address, key) {
-            case a:Int => a
-            case _ => 0
-    }
-}
-func getStringByAddressAndKey(address: Address, key: String) = {
-     match getString(address, key) {
-            case a:String => a
-            case _ => ""
-    }
-}
-
-func dropElementInJsonArray(array: String, element: String) = {
-    let splitedArray = array.split(element)
-    if(splitedArray[1].take(1) == ",") then
-        splitedArray[0] + splitedArray[1].drop(1)
-    else
-        splitedArray[0].dropRight(1) + splitedArray[1]
-}
-func convertJsonArrayToList(jsonArray: String) = {
-   jsonArray.split(",") #jsonArray.take(size(jsonArray)-1).drop(1).split(",")
-}
-
-#-------------------Constants---------------------------
-let BLOCK = "block"
-let UNBLOCK = "unblock"
-let UPDATE = "update"
-
-#-------------------Constructor-------------------------
-let OraclesKey = "oracles"
-let PriceOffsetKey = "price_offset"
-let AutoEmergencyOracleAddress = "3P7ihFVxBNbHK237TNdPxT1xHEu8pHexXTr"
-
-#-------------------Keys---------------------------------
-#------This contract----------
-let PriceKey = "price"
-let IsBlockedKey = "is_blocked"
-let IsBlockedCallerKey = "is_blocked_caller"
-let IsBlockedReasonKey = "is_blocked_reason"
-let PriceIndexKey = "price_index"
-
-func getBlackSwarmPriceKey(block: Int) = "black_swarm_price" + "_" + toString(block)
-func getPriceHistoryKey(block: Int) = PriceKey + "_" + toString(block)
-func getHeightPriceByIndexKey(index: Int) = PriceIndexKey + "_" + toString(index)
-func getOracleProvidePriceKey(height: Int) = "price_" + toString(height)
 
 #-------------------Global vars-------------------------
-let price = getNumberByKey(PriceKey)
-let priceIndex = getNumberByKey(PriceIndexKey)
-let isBlocked = getBoolByKey(IsBlockedKey)
-let isBlockedCaller = getBoolByKey(IsBlockedCallerKey)
-let bftCoefficientOracle = 3
-let percentPriceOffset = getNumberByKey(PriceOffsetKey)
-let oracles = getStringByKey(OraclesKey)
-let oraclesList = convertJsonArrayToList(oracles)
+let price = match getInteger(this, "price") {
+            case a:Int => a
+            case _ => 0}
 
-#-------------------Get func----------------------------
-func getOracleProvideHeight(owner: String, height: Int) = getNumberByAddressAndKey(addressFromStringValue(owner), getOracleProvidePriceKey(height))
-func getPriceHistory(height: Int) = getNumberByKey(getPriceHistoryKey(height))
-#-------------------Other func--------------------------
-func isOracle(address: String) = {
-    isDefined(indexOf(oracles, address))
-}
+#let priceIndex = getNumberByKey("price_index")
+let priceIndex = match getInteger(this, "price_index") {
+            case a:Int => a
+            case _ => 0}
 
-#-------------------Fold func--------------------------
-func filterAdminsVoteByAction(result: List[String], address: String, action: String) =
-   address :: result
+let isBlocked = match getBoolean(this, "is_blocked") {
+            case a:Boolean => a
+            case _ => false}
 
-func filterAdminsVoteByBlockAction(result: List[String], address: String) =
-   filterAdminsVoteByAction(result, address, BLOCK)
+let percentPriceOffset = 7
 
-func filterAdminsVoteByUnblockAction(result: List[String], address: String) =
-   filterAdminsVoteByAction(result, address, UNBLOCK)
-
-func filterAdminsVoteByUpdateAction(result: List[String], address: String) =
-   filterAdminsVoteByAction(result, address, UPDATE)
+let oraclesList = [fromBase58String("9wo2tHwAG1KH3Cb4BLYWw5puhBBceodHP2knnTKLWzhP"),
+                   fromBase58String("9TECpQSnJRFzAVhTM4woEBzX5reGvWdzGKPyKe6QHwRH"),
+                   fromBase58String("Habp51FwHWFBrWhVgpEY2wpSLfCKtaJqhaNCoTHi7ix4"),
+                   fromBase58String("3Wte81zHrVKBDNVsCEreknVSNfGCVUzEurHBqwXWBC2P"),
+                   fromBase58String("3Mx9ThJMD4NbcD8VPfo1EFm6sVxBwWuafKH8qtEChLSU")]
 
 func findPricesInRange(prices: List[Int]) = {
     let minPercentBound = 90
     let maxPercentBound = 110
     let p0 = prices[0]
+
     let check0 = if (prices[0] <= 0) then [0] else {
         let p01 = prices[1] * 100 / p0
         let p02 = prices[2] * 100 / p0
@@ -184,14 +120,15 @@ func findPricesInRange(prices: List[Int]) = {
 # only price oracles can block smart contract untill another price oracle will unblock it
 @Callable(i)
 func callEmergencyShutdown(reason: String) = {
+    let AutoEmergencyOracleAddress = "3P7ihFVxBNbHK237TNdPxT1xHEu8pHexXTr"
     let callerAddress = toString(i.caller)
-    if (AutoEmergencyOracleAddress != callerAddress) 
+    if (AutoEmergencyOracleAddress != callerAddress)
         then throw("caller must be one an emergency oracle")
-    else 
+    else
         WriteSet([
-            DataEntry(IsBlockedKey, true),
-            DataEntry(IsBlockedCallerKey, callerAddress),
-            DataEntry(IsBlockedReasonKey, reason)
+            DataEntry("is_blocked", true),
+            DataEntry("is_blocked_caller", callerAddress),
+            DataEntry("is_blocked_reason", reason)
         ])
 }
 
@@ -199,7 +136,12 @@ func callEmergencyShutdown(reason: String) = {
 @Callable(i)
 func finalizeCurrentPrice() = {
     if(isBlocked) then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles") else
-    if(getPriceHistory(height) != 0) then throw("wait next block") else
+
+    # getPriceHistory(height)
+    if (match getInteger(this, "price_" + toString(height)) {
+            case a:Int => a
+            case _ => 0} != 0)
+    then throw("wait next block") else
 
     let prices = [
         getOracleProvideHeight(oraclesList[0], height),
@@ -213,11 +155,11 @@ func finalizeCurrentPrice() = {
     let priceProvidingCount = pricesInRange.size();
 
     if (priceProvidingCount < 3) then throw("Could not finalize price because of big variation: height=" + toString(height)
-             + "\n" + oraclesList[0] + "=" + toString(prices[0])
-             + "\n" + oraclesList[1] + "=" + toString(prices[1])
-             + "\n" + oraclesList[2] + "=" + toString(prices[2])
-             + "\n" + oraclesList[3] + "=" + toString(prices[3])
-             + "\n" + oraclesList[4] + "=" + toString(prices[4])) else
+             + "\n" + toBase58String(oraclesList[0]) + "=" + toString(prices[0])
+             + "\n" + toBase58String(oraclesList[1]) + "=" + toString(prices[1])
+             + "\n" + toBase58String(oraclesList[2]) + "=" + toString(prices[2])
+             + "\n" + toBase58String(oraclesList[3]) + "=" + toString(prices[3])
+             + "\n" + toBase58String(oraclesList[4]) + "=" + toString(prices[4])) else
 
     let sum1 = prices[pricesInRange[0]] + prices[pricesInRange[1]] + prices[pricesInRange[2]]
     let sum2 = if (priceProvidingCount >= 4) then sum1 + prices[pricesInRange[3]] else sum1
@@ -228,17 +170,17 @@ func finalizeCurrentPrice() = {
 
     if(newPrice >= (price + price*percentPriceOffset/100) || newPrice <= (price - price*percentPriceOffset/100)) then {
         WriteSet([
-            DataEntry(IsBlockedKey, true),
-            DataEntry(getBlackSwarmPriceKey(height), newPrice)
+            DataEntry("is_blocked", true),
+            DataEntry("black_swarm_price" + "_" + toString(height), newPrice)
         ])
     }
     else {
         let newPriceIndex = priceIndex + 1
         WriteSet([
-            DataEntry(PriceKey, newPrice),
-            DataEntry(getPriceHistoryKey(height), newPrice),
-            DataEntry(PriceIndexKey, newPriceIndex),
-            DataEntry(getHeightPriceByIndexKey(newPriceIndex), height)
+            DataEntry("price", newPrice),
+            DataEntry("price_" + toString(height), newPrice),
+            DataEntry("price_index", newPriceIndex),
+            DataEntry("price_index_" + toString(newPriceIndex), height)
         ])
     }
 }
