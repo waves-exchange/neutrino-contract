@@ -1,6 +1,9 @@
 {-# STDLIB_VERSION 3 #-}
 {-# CONTENT_TYPE DAPP #-}
 {-# SCRIPT_TYPE ACCOUNT #-}
+#
+# Smart Contract Implementing Bonds Auction in the Orderbook of Neutrino Protocol 
+#
 
 #-------------------Base functions----------------------
 func getNumberByKey(key: String) = {
@@ -30,10 +33,10 @@ func getNumberByAddressAndKey(address: Address, key: String) = {
 
 #-------------------Constants---------------------------
 let WAVELET = 100000000
-let ORDERSPLITSYMBOL = "_"
 let PAULI = 1000000
 let PERCENTACCURACY = 1000
-let MAXDISCOUNT = 50
+let MINORDERTOTAL = 10*WAVELET
+let MAXROI = 100
 #------Order statuses------
 let CANCELED = "canceled"
 let NEW = "new"
@@ -41,7 +44,6 @@ let FILLED = "filled"
 
 #-------------------Constructor-------------------------
 let NeutrinoContractKey = "neutrino_contract"
-let migrationOrderCurrentIndexKey = "migration_current_order"
 
 #-------------------Keys--------------------------------
 let PriceKey = "price"
@@ -51,11 +53,11 @@ let ControlContractKey = "control_contract"
 let BalanceLockedkKey = "balance_lock_"
 let WavesLockedBalanceKey = BalanceLockedkKey + "waves"
 let NeutrinoLockedBalanceKey = BalanceLockedkKey + "neutrino"
+let LiquidationContractKey = "liquidation_contract"
 let FirstOrderKey = "order_first"
-let LastOrderKey = "order_last"
+let MigrationOrderCurrentIndexKey = "migration_current_order"
 
-func getOrderPrevKey(orderId: String) = "order_prev_" + orderId
-func getOrderNextKey(orderId: String) = "order_next_" + orderId
+func getOrderPriceKey(orderId: String) = "order_price_" + orderId
 func getOrderTotalKey(orderId: String) = "order_total_" + orderId
 func getOrderOwnerKey(orderId: String) = "order_owner_" + orderId
 func getOrderHeightKey(orderId: String) = "order_height_" + orderId
@@ -63,43 +65,49 @@ func getOrderStatusKey(orderId: String) = "order_status_" + orderId
 func getOrderFilledTotalKey(orderId: String) = "order_filled_total_" + orderId
 func getLastOrderOwnerKey(owner: String) = "last_order_owner_" + owner
 
+func getPrevOrderKey(orderId: String) = "order_prev_" + orderId
+func getNextOrderKey(orderId: String) = "order_next_" + orderId
+
 #-------------------Convert functions-------------------
 func convertNeutrinoToWaves(amount: Int, price: Int) = fraction(fraction(amount, 100, price),WAVELET, PAULI)
 func convertWavesToNeutrino(amount: Int, price: Int) = fraction(fraction(amount, price, 100), PAULI, WAVELET)
+
 func convertNeutrinoToBond(amount: Int) = amount/PAULI 
 func convertBondToNeutrino(amount: Int) = amount*PAULI 
 func convertWavesToBond(amount: Int, price: Int) = convertNeutrinoToBond(convertWavesToNeutrino(amount, price))
+func convertBondToWaves(amount: Int, price: Int) = convertNeutrinoToWaves(convertBondToNeutrino(amount), price)
 
 #-------------------Global vars-------------------------
 let neutrinoContract = addressFromStringValue(getStringByKey(NeutrinoContractKey))
 let controlContract = addressFromStringValue(getStringByAddressAndKey(neutrinoContract, ControlContractKey)) ## The value from neutrino.ride
-let currentPrice = getNumberByAddressAndKey(controlContract, PriceKey) # The value from control.ride
-let neutrinoLockedBalance = getNumberByAddressAndKey(neutrinoContract, NeutrinoLockedBalanceKey)
-let wavesLockedBalance = getNumberByAddressAndKey(neutrinoContract, WavesLockedBalanceKey)
+let liquidationContract = addressFromStringValue(getStringByAddressAndKey(neutrinoContract, LiquidationContractKey))
 let neutrinoAssetId = fromBase58String(getStringByAddressAndKey(neutrinoContract, NeutrinoAssetIdKey)) # Assets ids. The value from neutrino.ride
 let bondAssetId = fromBase58String(getStringByAddressAndKey(neutrinoContract, BondAssetIdKey))
-let reserve = wavesBalance(neutrinoContract) - wavesLockedBalance
-let neutrinoSupply = extract(assetInfo(neutrinoAssetId)).quantity - assetBalance(neutrinoContract, neutrinoAssetId) + neutrinoLockedBalance - assetBalance(this, neutrinoAssetId)
-let surplus = convertWavesToNeutrino(reserve, currentPrice) - neutrinoSupply
+
+#-------------------Global vars deficit, locked & supply -------------------------
+let currentPrice = getNumberByAddressAndKey(controlContract, PriceKey) # The value from control.ride
+let neutrinoLockedBalance = getNumberByAddressAndKey(neutrinoContract, NeutrinoLockedBalanceKey) #locked balance from USDN -> WAVES swap
+#cannot be expressed by complexity limitations: let wavesLockedBalance = getNumberByAddressAndKey(neutrinoContract, WavesLockedBalanceKey) #locked balance from WAVES -> USDN swap
+let reserve = wavesBalance(neutrinoContract) - 
+    getNumberByAddressAndKey(neutrinoContract, WavesLockedBalanceKey) #waves reserves to cover USDN supply
+let neutrinoSupply = neutrinoLockedBalance + extract(assetInfo(neutrinoAssetId)).quantity - assetBalance(neutrinoContract, neutrinoAssetId) - assetBalance(liquidationContract, neutrinoAssetId) # supply outside main sc or liquidation contract
+let deficit = neutrinoSupply - convertWavesToNeutrino(reserve, currentPrice)
 let firstOrder = getStringByKey(FirstOrderKey)
-let lastOrder = getStringByKey(LastOrderKey)
 
-let currentMigrationOrderIndex = getNumberByKey(migrationOrderCurrentIndexKey)
-
-#-------------------Get functions------------------------
+#-------------------Get functions----------------------
+func getOrderPrice(id : String) = getNumberByKey(getOrderPriceKey(id))
 func getOrderTotal(id : String) = getNumberByKey(getOrderTotalKey(id))
 func getOrderOwner(id : String) = getStringByKey(getOrderOwnerKey(id))
 func getOrderStatus(id : String) = getStringByKey(getOrderStatusKey(id))
 func getOrderFilledTotal(id : String) = getNumberByKey(getOrderFilledTotalKey(id))
-func getOrderPrev(id: String) = getStringByKey(getOrderPrevKey(id))
-func getOrderNext(id: String) = getStringByKey(getOrderNextKey(id))
-func getOrderHeight(id: String) = getNumberByKey(getOrderHeightKey(id))
-func getLastOrderOwner(owner: String) = getStringByKey(getLastOrderOwnerKey(owner))
+func getPrevOrder(id: String) = getStringByKey(getPrevOrderKey(id))
+func getNextOrder(id: String) = getStringByKey(getNextOrderKey(id))
 
+
+let currentMigrationOrderIndex = getNumberByKey(MigrationOrderCurrentIndexKey)
+#-------------------Any functions----------------------
 
 #-------------------Callable---------------------------
-
-
 @Callable(i)
 func migrateOrder() = {
     let orderbook = getStringByKey("orderbook")
@@ -111,15 +119,19 @@ func migrateOrder() = {
         let owner = toString(i.caller)
         if(size(orders) <= currentMigrationOrderIndex)
             then throw("currentMigrationOrderIndex is out of orderbook size")
+        else if(orders[currentMigrationOrderIndex] == "")
+            then throw("empty order")
         else {
             let firstOldOrder = orders[currentMigrationOrderIndex]
+            let nextOldOrder = orders[currentMigrationOrderIndex+1]
+            let prevOldOrder = if currentMigrationOrderIndex == 0 then "" else orders[currentMigrationOrderIndex-1]
             WriteSet([
                 DataEntry(getLastOrderOwnerKey(owner), firstOldOrder),
-                DataEntry(getOrderPrevKey(firstOldOrder), lastOrder),
-                DataEntry(getOrderNextKey(lastOrder), if lastOrder == "" then "" else firstOldOrder),
+                DataEntry(getPrevOrderKey(firstOldOrder), prevOldOrder),
+                DataEntry(getNextOrderKey(firstOldOrder), nextOldOrder),
+
                 DataEntry(FirstOrderKey, if firstOrder == "" then firstOldOrder else firstOrder),
-                DataEntry(LastOrderKey, firstOldOrder),
-                DataEntry(migrationOrderCurrentIndexKey, currentMigrationOrderIndex + 1)
+                DataEntry(MigrationOrderCurrentIndexKey, currentMigrationOrderIndex + 1)
             ])
         }
     }

@@ -15,6 +15,12 @@ func getStringByKey(key: String) = {
             case _ => ""
     }
 }
+func getBoolByAddressAndKey(address: Address, key: String) = {
+     match getBoolean(address, key) {
+            case a:Boolean => a
+            case _ => false
+    }
+}
 func getStringByAddressAndKey(address: Address, key: String) = {
    match getString(address, key) {
             case a:String => a
@@ -78,6 +84,8 @@ let bondAssetId = fromBase58String(getStringByAddressAndKey(neutrinoContract, Bo
 let firstOrder = getStringByKey(FirstOrderKey)
 let lastOrder = getStringByKey(LastOrderKey)
 
+let isBlocked = getBoolByAddressAndKey(controlContract, "is_blocked")
+
 #-------------------Global vars deficit, locked & supply -------------------------
 let currentPrice = getNumberByAddressAndKey(controlContract, PriceKey) # The value from control.ride
 let neutrinoLockedBalance = getNumberByAddressAndKey(neutrinoContract, NeutrinoLockedBalanceKey) #locked balance from USDN -> WAVES swap
@@ -109,7 +117,9 @@ func addLiquidationOrder() = {
     let nextOrder = getOrderNext(lastOrder)
     let orderStatus = getOrderStatus(lastOrder)
     let owner = toString(i.caller)
-    if (pmt.assetId != bondAssetId) 
+    if (isBlocked) 
+        then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles")
+    else if (pmt.assetId != bondAssetId) 
         then throw("can use appropriate neutrino bonds tokens only")
     else if(getOrderOwner(newOrderId) != "")
         then throw("an order is already exists")
@@ -146,7 +156,9 @@ func cancelOrder(orderId : String) = {
     let nextOrder = getOrderNext(orderId)
     let prevOrder = getOrderPrev(orderId)
     
-    if(owner != toString(i.caller)) 
+    if (isBlocked) 
+        then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles")
+    else if(owner != toString(i.caller)) 
         then throw("permission denied")
     else if(getOrderStatus(orderId) != NEW)
         then throw("invalid order status")
@@ -178,7 +190,9 @@ func liquidateBond() = {
     let returnAmount = if(surplusPositive >= liquidationBalance) then 0 else liquidationBalance-surplusPositive
     let surplusBond = convertNeutrinoToBond(surplusPositive) #integer
   
-    if(returnAmount == 0 && liquidationBalance == 0)
+    if (isBlocked) 
+        then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles")
+    else if(returnAmount == 0 && liquidationBalance == 0)
         then throw("cannot liquidate order without neutrino on the smart contract")
     else if(returnAmount > 0) then {
         TransferSet([
