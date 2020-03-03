@@ -78,22 +78,14 @@ let isBlocked = match getBoolean(this, "is_blocked") {
 
 let percentPriceOffset = 7
 
-let oraclesList = [fromBase58String("9wo2tHwAG1KH3Cb4BLYWw5puhBBceodHP2knnTKLWzhP"),
-                   fromBase58String("9TECpQSnJRFzAVhTM4woEBzX5reGvWdzGKPyKe6QHwRH"),
-                   fromBase58String("Habp51FwHWFBrWhVgpEY2wpSLfCKtaJqhaNCoTHi7ix4"),
-                   fromBase58String("3Wte81zHrVKBDNVsCEreknVSNfGCVUzEurHBqwXWBC2P"),
-                   fromBase58String("3Mx9ThJMD4NbcD8VPfo1EFm6sVxBwWuafKH8qtEChLSU")]
-
-let bftCoefficientOracle = 3
 let pubKeyOracles = getStringByKey(OraclesKey)
 let pubKeyOraclesList = convertJsonArrayToList(pubKeyOracles)
+
+let bftCoefficientOracle = 3
 
 #-------------------Get func----------------------------
 
 #-------------------Other func--------------------------
-func isOracle(address: String) = {
-    isDefined(indexOf(pubKeyOracles, address))
-}
 
 
 func findPricesInRange(prices: List[Int]) = {
@@ -216,11 +208,11 @@ func finalizeCurrentPrice(price1: Int, sign1: ByteVector, price2: Int, sign2: By
     let priceProvidingCount = pricesInRange.size();
 
     if (priceProvidingCount < 3) then throw("Could not finalize price because of big variation: height=" + toString(height)
-             + "\n" + toBase58String(oraclesList[0]) + "=" + toString(prices[0])
-             + "\n" + toBase58String(oraclesList[1]) + "=" + toString(prices[1])
-             + "\n" + toBase58String(oraclesList[2]) + "=" + toString(prices[2])
-             + "\n" + toBase58String(oraclesList[3]) + "=" + toString(prices[3])
-             + "\n" + toBase58String(oraclesList[4]) + "=" + toString(prices[4])) else
+             + "\n" + pubKeyOraclesList[0]  + "=" + toString(prices[0])
+             + "\n" + pubKeyOraclesList[1] + "=" + toString(prices[1])
+             + "\n" + pubKeyOraclesList[2] + "=" + toString(prices[2])
+             + "\n" + pubKeyOraclesList[3] + "=" + toString(prices[3])
+             + "\n" + pubKeyOraclesList[4] + "=" + toString(prices[4])) else
 
     let sum1 = prices[pricesInRange[0]] + prices[pricesInRange[1]] + prices[pricesInRange[2]]
     let sum2 = if (priceProvidingCount >= 4) then sum1 + prices[pricesInRange[3]] else sum1
