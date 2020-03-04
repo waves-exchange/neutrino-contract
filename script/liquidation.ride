@@ -78,7 +78,7 @@ let neutrinoContract = addressFromStringValue(getStringByKey(NeutrinoContractKey
 let controlContract = addressFromStringValue(getStringByAddressAndKey(neutrinoContract, ControlContractKey)) ## The value from neutrino.ride
 let liquidationContract = this
 let neutrinoAssetId = fromBase58String(getStringByAddressAndKey(neutrinoContract, NeutrinoAssetIdKey)) # Assets ids. The value from neutrino.ride
-let bondAssetId = fromBase58String(getStringByAddressAndKey(neutrinoContract, BondAssetIdKey))
+let bondAssetId = fromBase58String("6nSpVyNH7yM69eg446wrQR94ipbbcmZMU1ENPwanC97g") # NSBT with 6 decimals as USDN does
 let firstOrder = getStringByKey(FirstOrderKey)
 let lastOrder = getStringByKey(LastOrderKey)
 
