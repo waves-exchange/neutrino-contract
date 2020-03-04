@@ -308,6 +308,8 @@ func migrationTransferToLiquidation() = {
         then throw("error: invalid order")
     else if (migrationStatus == finalStatus)
         then throw("error: order has already migrated")
+    else if (lastOrder == lastMigratedOrderId)
+        then throw("status ok: all order has already migrated or nothing to migrate")
     else ScriptResult(
         WriteSet([
             DataEntry(keyStatusLiquidationMigration, finalStatus),
