@@ -91,9 +91,7 @@ func getRPDProfitKey(count: Int) = "rpd_profit" + "_" + toString(count)
 #-------------------Convert functions-------------------
 func convertNeutrinoToWaves(amount: Int, price: Int) = fraction(fraction(amount, 100, price),WAVELET, PAULI)
 func convertWavesToNeutrino(amount: Int, price: Int) = fraction(fraction(amount, price, 100), PAULI, WAVELET)
-func convertNeutrinoToBond(amount: Int) = amount/PAULI 
-func convertBondToNeutrino(amount: Int) = amount*PAULI 
-func convertWavesToBond(amount: Int, price: Int) = convertNeutrinoToBond(convertWavesToNeutrino(amount, price))
+func convertWavesToBond(amount: Int, price: Int) = convertWavesToNeutrino(amount, price) # it's here to be more explicit with convertation
 func convertJsonArrayToList(jsonArray: String) = {
    jsonArray.split(",") #jsonArray.take(size(jsonArray)-1).drop(1).split(",")
 }
@@ -113,7 +111,7 @@ let balanceWavesLockInterval = getNumberByKey(BalanceWavesLockIntervalKey)
 let balanceNeutrinoLockInterval = getNumberByKey(BalanceNeutrinoLockIntervalKey)
 let minWavesSwapAmount = getNumberByKey(MinWavesSwapAmountKey)
 let minNeutrinoSwapAmount = getNumberByKey(MinNeutrinoSwapAmountKey)
-let bondAssetId = fromBase58String(getStringByKey(BondAssetIdKey))
+let bondAssetId = fromBase58String("6nSpVyNH7yM69eg446wrQR94ipbbcmZMU1ENPwanC97g") # NSBT with 6 decimals as USDN does
 
 let neutrinoContract = this
 #-------------------Global vars deficit, locked & supply -------------------------
@@ -246,16 +244,16 @@ func withdraw(account : String, index: Int) = {
 # [called by pacemaker oracles]
 @Callable(i)
 func transferToAuction() = {
-    let deficitBondAmount = convertNeutrinoToBond(deficit) - assetBalance(addressFromStringValue(auctionContract), bondAssetId)
-    let minDeficit = convertNeutrinoToBond(neutrinoSupply)*DEFICITOFFSET/100
+    let deficitBondAmount = deficit - assetBalance(addressFromStringValue(auctionContract), bondAssetId)
+    let minDeficit = fraction(neutrinoSupply, DEFICITOFFSET, 100)
 
-    let surplusWithLiquidation = (surplus - assetBalance(addressFromStringValue(liquidationContract), neutrinoAssetId))/PAULI
+    let surplusWithLiquidation = (surplus - assetBalance(addressFromStringValue(liquidationContract), neutrinoAssetId)) #in 6 decimals
     if(isBlocked)
         then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles") # see control.ride
     else if(deficitBondAmount >= minDeficit && deficitBondAmount > 0)
         then TransferSet([ScriptTransfer(addressFromStringValue(auctionContract), deficitBondAmount, bondAssetId)])
-    else if(surplusWithLiquidation >= 1)
-        then TransferSet([ScriptTransfer(addressFromStringValue(liquidationContract), surplusWithLiquidation*PAULI, neutrinoAssetId)])
+    else if(surplusWithLiquidation >= 1*PAULI)
+        then TransferSet([ScriptTransfer(addressFromStringValue(liquidationContract), surplusWithLiquidation, neutrinoAssetId)])
     else 
         throw("bond were generated or do not need it. Deficit:" + toString(deficitBondAmount) + "|" + toString(minDeficit) + ". Surplus:" + toString(surplusWithLiquidation) + "|" + toString(surplus))
 }
