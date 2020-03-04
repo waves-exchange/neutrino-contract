@@ -112,6 +112,7 @@ let balanceNeutrinoLockInterval = getNumberByKey(BalanceNeutrinoLockIntervalKey)
 let minWavesSwapAmount = getNumberByKey(MinWavesSwapAmountKey)
 let minNeutrinoSwapAmount = getNumberByKey(MinNeutrinoSwapAmountKey)
 let bondAssetId = fromBase58String("6nSpVyNH7yM69eg446wrQR94ipbbcmZMU1ENPwanC97g") # NSBT with 6 decimals as USDN does
+let deprecatedBondAssetId = fromBase58String("975akZBfnMj513U7MZaHKzQrmsEx5aE3wdWKTrHBhbjF") # USDNB with 0 decimals
 
 let neutrinoContract = this
 #-------------------Global vars deficit, locked & supply -------------------------
@@ -141,6 +142,28 @@ func getNeutrinoLockedBalance(owner: String) =  getNumberByKey(getNeutrinoLocked
 func getUnlockBalanceBlock(owner : String) = getNumberByKey(getBalanceUnlockBlockKey(owner))
 func getRPDProfit(count: Int) = getNumberByKey(getRPDProfitKey(count))
 #-------------------Callable----------------------
+
+#-------------------USDNB to NSBT migration vars ans funcs----------------------
+let CANCELED = "canceled"
+let NEW = "new"
+let FILLED = "filled"
+let FirstOrderKey = "order_first"
+let LastOrderKey = "order_last"
+let firstOrder = getStringByAddressAndKey(liquidationContract, FirstOrderKey)
+let lastOrder = getStringByAddressAndKey(liquidationContract, LastOrderKey)
+func getOrderPrevKey(orderId: String) = "order_prev_" + orderId
+func getOrderNextKey(orderId: String) = "order_next_" + orderId
+func getOrderTotalKey(orderId: String) = "order_total_" + orderId
+func getOrderOwnerKey(orderId: String) = "order_owner_" + orderId
+func getOrderStatusKey(orderId: String) = "order_status_" + orderId
+func getOrderFilledTotalKey(orderId: String) = "order_filled_total_" + orderId
+
+func getOrderTotal(id : String) = getNumberByAddressAndKey(liquidationContract, getOrderTotalKey(id))
+func getOrderOwner(id : String) = getStringByAddressAndKey(liquidationContract, getOrderOwnerKey(id))
+func getOrderStatus(id : String) = getStringByAddressAndKey(liquidationContract, getOrderStatusKey(id))
+func getOrderFilledTotal(id : String) = getNumberByAddressAndKey(liquidationContract, getOrderFilledTotalKey(id))
+func getOrderPrev(id: String) = getStringByAddressAndKey(liquidationContract, getOrderPrevKey(id))
+func getOrderNext(id: String) = getStringByAddressAndKey(liquidationContract, getOrderNextKey(id))
 
 # Instant swap of WAVES to Neutrino token at the current price on the smart contract
 # [called by user]
@@ -264,6 +287,46 @@ func transferToAuction() = {
 func transfer(account: String) = {
     let pmt = extract(i.payment)
     TransferSet([ScriptTransfer(addressFromStringValue(account), pmt.amount, pmt.assetId)])
+}
+
+# USDNB to NSBT liquidation orders migration method (temporary method)
+# [called by pacemaker]
+@Callable(i)
+func migrationTransferToLiquidation() = {
+    let keyLastMigratedOrder = "lastMigratedOrderId_migration_usdnb2nsbt"
+    let finalStatus = "migrated"
+    let isLastMigratedAsFirstOrder = getStringByKey(keyLastMigratedOrder) == ""
+    let lastMigratedOrderId = getStringByKey(keyLastMigratedOrder)
+    let currentOrderId = if(isLastMigratedAsFirstOrder) then firstOrder else getOrderNext(lastMigratedOrderId)
+    let keyStatusLiquidationMigration = "status_migration_usdnb2nsbt_" + currentOrderId
+    let orderAmount = getOrderTotal(currentOrderId) - getOrderFilledTotal(currentOrderId)
+    let orderOwner = addressFromStringValue(getOrderOwner(currentOrderId))
+    let orderStatus = getOrderStatus(currentOrderId)
+    let migrationStatus = getStringByKey(keyStatusLiquidationMigration)
+
+    if(orderAmount <= 0 || orderStatus != "NEW")
+        then throw("error: invalid order")
+    else if (migrationStatus == finalStatus)
+        then throw("error: order has already migrated")
+    else ScriptResult(
+        WriteSet([
+            DataEntry(keyStatusLiquidationMigration, finalStatus),
+            DataEntry(keyLastMigratedOrder, currentOrderId)
+        ]),
+        TransferSet([ScriptTransfer(orderOwner, orderAmount*PAULI, bondAssetId)])
+    )
+
+}
+
+# USDNB (0 decimals) to NSBT (6 decimals) liquidation orders migration method (temporary method)
+# [called by user]
+@Callable(i)
+func migrationUSDNB2NSBTSwap() = {
+    let pmt = extract(i.payment)
+    let account = i.caller
+    if (deprecatedBondAssetId != pmt.assetId)
+        then throw("error: attempt to swap not USDNB tokens")
+    else TransferSet([ScriptTransfer(account, pmt.amount*PAULI, bondAssetId)])
 }
 
 # LeaseCancelTransaction depends from swapNeutrinoToWaves() result i.e. waves amount is not enought for future swaps
