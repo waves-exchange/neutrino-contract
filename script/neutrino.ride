@@ -304,7 +304,7 @@ func migrationTransferToLiquidation() = {
     let orderStatus = getOrderStatus(currentOrderId)
     let migrationStatus = getStringByKey(keyStatusLiquidationMigration)
 
-    if(orderAmount <= 0 || orderStatus != "NEW")
+    if(orderAmount <= 0 || orderStatus != NEW)
         then throw("error: invalid order")
     else if (migrationStatus == finalStatus)
         then throw("error: order has already migrated")
