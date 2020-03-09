@@ -195,8 +195,10 @@ func finalizeCurrentPrice(price1: Int, sign1: ByteVector, price2: Int, sign2: By
             case a:Int => a
             case _ => 0} != 0)
     then throw("wait next block") else 
+    if (pubKeyOraclesList[height % 5] != toBase58String(i.callerPublicKey))
+    then throw("Out of turn finalization: " + toString(height) + " block should be finalize by " + pubKeyOraclesList[height % 5]) else
 
-    let prices = [ 
+    let prices = [
         if sigVerify(formattingPriceMsg(price1, height), sign1, fromBase58String(pubKeyOraclesList[0])) then price1 else 0,
         if sigVerify(formattingPriceMsg(price2, height), sign2, fromBase58String(pubKeyOraclesList[1])) then price2 else 0,
         if sigVerify(formattingPriceMsg(price3, height), sign3, fromBase58String(pubKeyOraclesList[2])) then price3 else 0,
