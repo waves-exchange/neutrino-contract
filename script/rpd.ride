@@ -92,6 +92,8 @@ func internallockNeutrino(i: Invocation, receiver: String, share: Int) = {
         then throw("can use usd only")
     else if (share > 100)
         then throw("staking rewards share cannot be higher than 100%")
+    else if (share < 1)
+        then throw("staking rewards share cannot be lower than 1%")
     else {
         let account = toString(i.caller)
         let assetIdString = toBase58String(value(pmt.assetId))
@@ -103,7 +105,7 @@ func internallockNeutrino(i: Invocation, receiver: String, share: Int) = {
         WriteSet([
             DataEntry(getContractBalanceKey(assetIdString), getContractBalance(assetIdString) + pmt.amount),
             DataEntry(getUserBalanceKey(account, assetIdString), getUserBalance(account, assetIdString) + pmt.amount),
-            DataEntry(getRewardsConfigStartKey(currentConfig, false), end),
+            DataEntry(getRewardsConfigStartKey(currentConfig, false), end), #if there is no current config it leads to dead state key
             DataEntry(getRewardsConfigStartKey(newCurrentConfig, true), start),
             DataEntry(getCurrentRewardsCongigKey(account), newCurrentConfig)
         ])
