@@ -127,6 +127,8 @@ func addLiquidationOrder() = {
         then throw("invalid last order")
     else if(firstOrder != "" && orderStatus != NEW)
         then throw("last order status is not new")
+    else if (pmt.amount < PAULI)
+        then throw("order amount must be higher than 1 NSBT")
     else {
         WriteSet([
             DataEntry(getLastOrderOwnerKey(owner), newOrderId),
