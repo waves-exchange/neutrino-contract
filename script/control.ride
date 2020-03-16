@@ -8,12 +8,59 @@
 #-------------------Functions----------------------
 func convertWavesToNeutrino(amount: Int, price: Int) = fraction(fraction(amount, price, 100), 1000000, 100000000)
 
+func getStringByKey(key: String) = {
+    match getString(this, key) {
+            case a:String => a
+            case _ => ""
+    }
+}
+func getNumberByAddressAndKey(address: String, key: String) = {
+    match getInteger(addressFromStringValue(address), key) {
+            case a:Int => a
+            case _ => 0
+    }
+}
+
 func getOracleProvideHeight(ownerPub: ByteVector, height: Int) = {
     match getInteger(addressFromPublicKey(ownerPub), "price_" + toString(height)) {
             case a:Int => a
             case _ => 0
     }
 }
+
+func getStringByAddressAndKey(address: Address, key: String) = {
+     match getString(address, key) {
+            case a:String => a
+            case _ => ""
+    }
+}
+
+func dropElementInJsonArray(array: String, element: String) = {
+    let splitedArray = array.split(element)
+    if(splitedArray[1].take(1) == ",") then
+        splitedArray[0] + splitedArray[1].drop(1)
+    else
+        splitedArray[0].dropRight(1) + splitedArray[1]
+}
+func convertJsonArrayToList(jsonArray: String) = {
+   jsonArray.split(",") #jsonArray.take(size(jsonArray)-1).drop(1).split(",")
+}
+
+#-------------------Constants---------------------------
+let BLOCK = "block"
+let UNBLOCK = "unblock"
+let UPDATE = "update"
+let SIGNPREFIX = "WAVESNEUTRINOPREFIX"
+
+#-------------------Constructor-------------------------
+let OraclesKey = "oracles"
+let PriceOffsetKey = "price_offset"
+
+#-------------------Keys---------------------------------
+#------This contract----------
+let PriceKey = "price"
+let IsBlockedKey = "is_blocked"
+let PriceIndexKey = "price_index"
 
 #-------------------Global vars-------------------------
 let price = match getInteger(this, "price") {
@@ -31,11 +78,15 @@ let isBlocked = match getBoolean(this, "is_blocked") {
 
 let percentPriceOffset = 7
 
-let oraclesList = [fromBase58String("9wo2tHwAG1KH3Cb4BLYWw5puhBBceodHP2knnTKLWzhP"),
-                   fromBase58String("9TECpQSnJRFzAVhTM4woEBzX5reGvWdzGKPyKe6QHwRH"),
-                   fromBase58String("Habp51FwHWFBrWhVgpEY2wpSLfCKtaJqhaNCoTHi7ix4"),
-                   fromBase58String("3Wte81zHrVKBDNVsCEreknVSNfGCVUzEurHBqwXWBC2P"),
-                   fromBase58String("3Mx9ThJMD4NbcD8VPfo1EFm6sVxBwWuafKH8qtEChLSU")]
+let pubKeyOracles = getStringByKey(OraclesKey)
+let pubKeyOraclesList = convertJsonArrayToList(pubKeyOracles)
+
+let bftCoefficientOracle = 4
+
+#-------------------Get func----------------------------
+
+#-------------------Other func--------------------------
+
 
 func findPricesInRange(prices: List[Int]) = {
     let minPercentBound = 90
@@ -115,6 +166,10 @@ func findPricesInRange(prices: List[Int]) = {
     }
 }
 
+func formattingPriceMsg(price: Int, height: Int) = {
+    toBytes(SIGNPREFIX + "_" + toString(height) + "_" + toString(price))
+}
+
 #-------------------Callable----------------------
 # [called by price oracles]
 # only price oracles can block smart contract untill another price oracle will unblock it
@@ -130,36 +185,36 @@ func callEmergencyShutdown(reason: String) = {
             DataEntry("is_blocked_caller", callerAddress),
             DataEntry("is_blocked_reason", reason)
         ])
-}
+} 
 
 # [called by price oracles]
 @Callable(i)
-func finalizeCurrentPrice() = {
-    if(isBlocked) then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles") else
-
-    # getPriceHistory(height)
-    if (match getInteger(this, "price_" + toString(height)) {
+func finalizeCurrentPrice(price1: Int, sign1: ByteVector, price2: Int, sign2: ByteVector, price3: Int, sign3: ByteVector, price4: Int, sign4: ByteVector, price5: Int, sign5: ByteVector) = {
+    if(isBlocked) then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles") 
+    else if (match getInteger(this, "price_" + toString(height)) {
             case a:Int => a
             case _ => 0} != 0)
-    then throw("wait next block") else
+    then throw("wait next block") else 
+    if (pubKeyOraclesList[height % 5] != toBase58String(i.callerPublicKey))
+    then throw("Out of turn finalization: " + toString(height) + " block should be finalize by " + pubKeyOraclesList[height % 5]) else
 
     let prices = [
-        getOracleProvideHeight(oraclesList[0], height),
-        getOracleProvideHeight(oraclesList[1], height),
-        getOracleProvideHeight(oraclesList[2], height),
-        getOracleProvideHeight(oraclesList[3], height),
-        getOracleProvideHeight(oraclesList[4], height)
+        if sigVerify(formattingPriceMsg(price1, height), sign1, fromBase58String(pubKeyOraclesList[0])) then price1 else 0,
+        if sigVerify(formattingPriceMsg(price2, height), sign2, fromBase58String(pubKeyOraclesList[1])) then price2 else 0,
+        if sigVerify(formattingPriceMsg(price3, height), sign3, fromBase58String(pubKeyOraclesList[2])) then price3 else 0,
+        if sigVerify(formattingPriceMsg(price4, height), sign4, fromBase58String(pubKeyOraclesList[3])) then price4 else 0,
+        if sigVerify(formattingPriceMsg(price5, height), sign5, fromBase58String(pubKeyOraclesList[4])) then price5 else 0
     ]
 
     let pricesInRange = findPricesInRange(prices)
     let priceProvidingCount = pricesInRange.size();
 
     if (priceProvidingCount < 3) then throw("Could not finalize price because of big variation: height=" + toString(height)
-             + "\n" + toBase58String(oraclesList[0]) + "=" + toString(prices[0])
-             + "\n" + toBase58String(oraclesList[1]) + "=" + toString(prices[1])
-             + "\n" + toBase58String(oraclesList[2]) + "=" + toString(prices[2])
-             + "\n" + toBase58String(oraclesList[3]) + "=" + toString(prices[3])
-             + "\n" + toBase58String(oraclesList[4]) + "=" + toString(prices[4])) else
+             + "\n" + pubKeyOraclesList[0]  + "=" + toString(prices[0])
+             + "\n" + pubKeyOraclesList[1] + "=" + toString(prices[1])
+             + "\n" + pubKeyOraclesList[2] + "=" + toString(prices[2])
+             + "\n" + pubKeyOraclesList[3] + "=" + toString(prices[3])
+             + "\n" + pubKeyOraclesList[4] + "=" + toString(prices[4])) else
 
     let sum1 = prices[pricesInRange[0]] + prices[pricesInRange[1]] + prices[pricesInRange[2]]
     let sum2 = if (priceProvidingCount >= 4) then sum1 + prices[pricesInRange[3]] else sum1
