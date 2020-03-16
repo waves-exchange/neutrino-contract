@@ -79,7 +79,7 @@ func getVote(owner: String, hash: String) = getStringByKey(getVoteKey(owner, has
 func getRewardsConfigKey(owner : String, share: Int, receiver: String) = {
     "stakingconfig_" + owner + "_" + toString(share) +  "_" + receiver
 }
-func getCurrentRewardsCongigKey(owner : String) = {
+func getCurrentRewardsConfigKey(owner : String) = {
     "stakingconfig_current_" + owner
 }
 func getRewardsConfigStartKey(configKey : String, isStart: Boolean) = {
@@ -97,7 +97,7 @@ func internallockNeutrino(i: Invocation, receiver: String, share: Int) = {
     else {
         let account = toString(i.caller)
         let assetIdString = toBase58String(value(pmt.assetId))
-        let currentConfig = getStringByKey(getCurrentRewardsCongigKey(account))
+        let currentConfig = getStringByKey(getCurrentRewardsConfigKey(account))
         let newCurrentConfig = getRewardsConfigKey(account, share, receiver)
         let isNewConfig = !(currentConfig == newCurrentConfig)
         let end = if isNewConfig then height else 0
@@ -107,7 +107,7 @@ func internallockNeutrino(i: Invocation, receiver: String, share: Int) = {
             DataEntry(getUserBalanceKey(account, assetIdString), getUserBalance(account, assetIdString) + pmt.amount),
             DataEntry(getRewardsConfigStartKey(currentConfig, false), end), #if there is no current config it leads to dead state key
             DataEntry(getRewardsConfigStartKey(newCurrentConfig, true), start),
-            DataEntry(getCurrentRewardsCongigKey(account), newCurrentConfig)
+            DataEntry(getCurrentRewardsConfigKey(account), newCurrentConfig)
         ])
     }
 }
