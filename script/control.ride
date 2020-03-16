@@ -81,7 +81,7 @@ let percentPriceOffset = 7
 let pubKeyOracles = getStringByKey(OraclesKey)
 let pubKeyOraclesList = convertJsonArrayToList(pubKeyOracles)
 
-let bftCoefficientOracle = 3
+let bftCoefficientOracle = 4
 
 #-------------------Get func----------------------------
 
