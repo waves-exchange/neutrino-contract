@@ -228,36 +228,6 @@ func liquidateBond() = {
     }
 }
 
-# USDNB to NSBT liquidation orders migration method (temporary method)
-# [called by pacemaker]
-@Callable(i)
-func migrationOrdersUSDNB2NSBT() = {
-    let keyLastMigratedOrder = "lastMigratedOrderId_migration_usdnb2nsbt"
-    let finalStatus = "migrated"
-    let isLastMigratedAsFirstOrder = getStringByKey(keyLastMigratedOrder) == ""
-    let lastMigratedOrderId = getStringByKey(keyLastMigratedOrder)
-    let currentOrderId = if(isLastMigratedAsFirstOrder) then firstOrder else getOrderNext(lastMigratedOrderId)
-    let keyStatusLiquidationMigration = "status_migration_usdnb2nsbt_" + currentOrderId
-    let orderAmount = getOrderTotal(currentOrderId) - getOrderFilledTotal(currentOrderId)
-    let orderOwner = addressFromStringValue(getOrderOwner(currentOrderId))
-    let orderStatus = getOrderStatus(currentOrderId)
-    let migrationStatus = getStringByKey(keyStatusLiquidationMigration)
-    if(orderAmount <= 0 || orderStatus != NEW)
-        then throw("error: invalid order")
-    else if (migrationStatus == finalStatus)
-        then throw("error: order has already migrated" )
-    else if (getStringByAddressAndKey(neutrinoContract, keyStatusLiquidationMigration) != finalStatus)
-        then throw("error: order has not migrated in neutrino sc")
-    else if (lastOrder == lastMigratedOrderId)
-        then throw("status ok: all order has already migrated or nothing to migrate")
-    else WriteSet([
-            DataEntry(keyStatusLiquidationMigration, finalStatus),
-            DataEntry(keyLastMigratedOrder, currentOrderId),
-            DataEntry(getOrderFilledTotalKey(currentOrderId), getOrderFilledTotal(currentOrderId)*PAULI),
-            DataEntry(getOrderTotalKey(currentOrderId), getOrderTotal(currentOrderId)*PAULI)
-        ])
-}
-
 @Verifier(tx)
 func verify() = {
     let pubKeyAdminsList = [
