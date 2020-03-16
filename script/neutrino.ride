@@ -289,36 +289,6 @@ func transfer(account: String) = {
     TransferSet([ScriptTransfer(addressFromStringValue(account), pmt.amount, pmt.assetId)])
 }
 
-# USDNB to NSBT liquidation orders migration method (temporary method)
-# [called by pacemaker]
-@Callable(i)
-func migrationTransferToLiquidation() = {
-    let keyLastMigratedOrder = "lastMigratedOrderId_migration_usdnb2nsbt"
-    let finalStatus = "migrated"
-    let isLastMigratedAsFirstOrder = getStringByKey(keyLastMigratedOrder) == ""
-    let lastMigratedOrderId = getStringByKey(keyLastMigratedOrder)
-    let currentOrderId = if(isLastMigratedAsFirstOrder) then firstOrder else getOrderNext(lastMigratedOrderId)
-    let keyStatusLiquidationMigration = "status_migration_usdnb2nsbt_" + currentOrderId
-    let orderAmount = getOrderTotal(currentOrderId) - getOrderFilledTotal(currentOrderId)
-    let orderOwner = addressFromStringValue(getOrderOwner(currentOrderId))
-    let orderStatus = getOrderStatus(currentOrderId)
-    let migrationStatus = getStringByKey(keyStatusLiquidationMigration)
-
-    if(orderAmount <= 0 || orderStatus != NEW)
-        then throw("error: invalid order")
-    else if (migrationStatus == finalStatus)
-        then throw("error: order has already migrated")
-    else if (lastOrder == lastMigratedOrderId)
-        then throw("status ok: all order has already migrated or nothing to migrate")
-    else ScriptResult(
-        WriteSet([
-            DataEntry(keyStatusLiquidationMigration, finalStatus),
-            DataEntry(keyLastMigratedOrder, currentOrderId)
-        ]),
-        TransferSet([ScriptTransfer(addressFromStringValue(liquidationContract), orderAmount*PAULI, bondAssetId)])
-    )
-
-}
 
 # USDNB (0 decimals) to NSBT (6 decimals) liquidation orders migration method (temporary method)
 # [called by user]
