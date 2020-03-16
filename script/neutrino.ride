@@ -273,7 +273,7 @@ func transferToAuction() = {
     let surplusWithLiquidation = (surplus - assetBalance(addressFromStringValue(liquidationContract), neutrinoAssetId)) #in 6 decimals
     if(isBlocked)
         then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles") # see control.ride
-    else if(deficitBondAmount >= minDeficit && deficitBondAmount > 0)
+    else if(deficitBondAmount > minDeficit && deficitBondAmount > 0)
         then TransferSet([ScriptTransfer(addressFromStringValue(auctionContract), deficitBondAmount, bondAssetId)])
     else if(surplusWithLiquidation >= 1*PAULI)
         then TransferSet([ScriptTransfer(addressFromStringValue(liquidationContract), surplusWithLiquidation, neutrinoAssetId)])
@@ -315,7 +315,7 @@ func migrationTransferToLiquidation() = {
             DataEntry(keyStatusLiquidationMigration, finalStatus),
             DataEntry(keyLastMigratedOrder, currentOrderId)
         ]),
-        TransferSet([ScriptTransfer(orderOwner, orderAmount*PAULI, bondAssetId)])
+        TransferSet([ScriptTransfer(addressFromStringValue(liquidationContract), orderAmount*PAULI, bondAssetId)])
     )
 
 }
