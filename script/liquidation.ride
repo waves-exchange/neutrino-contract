@@ -110,7 +110,7 @@ func getLastOrderOwner(owner: String) = getStringByKey(getLastOrderOwnerKey(owne
 # set 'bonds liquidation order' (bond -> neutrino 1:1 exchange) to the liquidation queue
 # [called by user]
 @Callable(i)
-func addLiquidationOrder() = {
+func addLiquidationOrder(price : Int, prevOrder: String) = {
     let pmt = extract(i.payment);
     let newOrderId = toBase58String(keccak256(toBytes(pmt.amount) + i.caller.bytes + toBytes(height) + i.transactionId))
     
@@ -127,22 +127,29 @@ func addLiquidationOrder() = {
         then throw("nextOrder is not last. Info:" + nextOrder)
     else if(firstOrder != "" && lastOrder == "")
         then throw("invalid last order")
-    else if(firstOrder != "" && orderStatus != NEW)
-        then throw("last order status is not new")
+    else if(prevOrder != "" && getOrderStatus(prevOrder) != NEW)
+        then throw("prev order status is not new")
     else {
-        WriteSet([
-            DataEntry(getLastOrderOwnerKey(owner), newOrderId),
-            DataEntry(getOrderPrevKey(newOrderId), lastOrder),
-            DataEntry(getOrderNextKey(lastOrder), if lastOrder == "" then "" else newOrderId),
+        let nextOrderPrice = getNumberByKey("getPriceByOrderIdKey(nextOrder)")
+        let isNextOrderError = if(nextOrder != "" && price >= nextOrderPrice) then true else false;
+        let prevOrderPrice = getNumberByKey("getPriceByOrderIdKey(prevOrder)")
+        let isPrevOrderError = if(prevOrder != "" && price < prevOrderPrice) then true else false;
+        if (isNextOrderError || isPrevOrderError)
+            then throw("invalid order isPrevOrderError:" + toString(isPrevOrderError) + " isNextOrderError:" + toString(isNextOrderError))
+        else 
+            WriteSet([
+                DataEntry(getLastOrderOwnerKey(owner), newOrderId),
+                DataEntry(getOrderPrevKey(newOrderId), lastOrder),
+                DataEntry(getOrderNextKey(lastOrder), if lastOrder == "" then "" else newOrderId),
 
-            DataEntry(FirstOrderKey, if firstOrder == "" then newOrderId else firstOrder),
-            DataEntry(LastOrderKey, newOrderId),
+                DataEntry(FirstOrderKey, if firstOrder == "" then newOrderId else firstOrder),
+                DataEntry(LastOrderKey, newOrderId),
 
-            DataEntry(getOrderTotalKey(newOrderId), pmt.amount),
-            DataEntry(getOrderOwnerKey(newOrderId), owner),
-            DataEntry(getOrderHeightKey(newOrderId), height),
-            DataEntry(getOrderStatusKey(newOrderId), NEW)
-        ])
+                DataEntry(getOrderTotalKey(newOrderId), pmt.amount),
+                DataEntry(getOrderOwnerKey(newOrderId), owner),
+                DataEntry(getOrderHeightKey(newOrderId), height),
+                DataEntry(getOrderStatusKey(newOrderId), NEW)
+            ])
     }
 }
 
