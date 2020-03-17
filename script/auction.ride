@@ -44,7 +44,7 @@ let WAVELET = 100000000
 let PAULI = 1000000
 let PERCENTACCURACY = 1000
 let MINORDERTOTAL = 10*WAVELET
-let MAXROI = 100
+let MAXROI = 95
 #------Order statuses------
 let CANCELED = "canceled"
 let NEW = "new"
@@ -128,14 +128,12 @@ func addBuyBondOrder(price : Int, prevOrder: String) = {
 
     if (isBlocked)
         then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles")
-    else if (deficit <= 0)
-        then throw("there is no ability to add order during proficit")
     else if(pmt.amount < MINORDERTOTAL)
         then throw("min order total equals " + toString(MINORDERTOTAL))
     else if (roi > MAXROI)
-        then throw("max setOrder ROI is 100%")
-    else if (roi <= 0)
-        then throw("min setOrder ROI is more than 0%")
+        then throw("max setOrder ROI is 95%")
+    else if (roi == 0)
+        then throw("roi should not be equal to 0")
     else if (isDefined(pmt.assetId))
         then throw("can use waves only")
     else if(price <= 0)
@@ -217,11 +215,9 @@ func sellBond() = {
     let bondBalance = assetBalance(this, bondAssetId) #integers (dollars)
     let deficitPositive = if(deficit <= 0) then 0 else deficit/PAULI #paulis to integers (dollars)
     let bondAmount = if(deficitPositive >= bondBalance) then bondBalance else deficitPositive # possible bond amount for selling; scale: integers (dollars)
-    let returnAmount = if(deficitPositive >= bondBalance) then 0 else bondBalance-deficitPositive #scale: integers (dollars); send bonds back if there is remaining bonds on the main contract
+    let returnAmount = bondBalance - (neutrinoSupply/PAULI) #TODO: check pauli
 
-    if(deficitPositive == 0 && bondBalance == 0)
-        then throw("without deficit")
-    else if (bondBalance == 0)
+    if (bondBalance == 0)
         then throw("without bonds to sell")
     else if(returnAmount > 0) then {
         # return bonds back if there is more bonds than deficit  
@@ -245,9 +241,12 @@ func sellBond() = {
         let fillableOrderAmount = if(fillOrderCondition) then amountToExecuteOrder else bondAmount #scale: bonds (integers/dollars) то, сколько бондов можно продать в эту итерацию
 
         let totalOrderWaveletesRequired = convertBondToWaves(fillableOrderAmount, priceWavesByBondCents) # expected in wavelets
+        let nbTokensSellCondition = if (deficit > 0) 
+            then fraction(deficit, 100, neutrinoSupply) > roi 
+            else fraction(deficit, 100, neutrinoSupply) < roi # it's working for both: deficit & profict as well (15% > 10% and -15% < -10%)
 
-        if ( fraction(deficit, 100, neutrinoSupply) < roi || deficitPositive <= 0)
-            then throw("deficit should be higther or equal than roi: " + toString(roi))
+        if (!nbTokensSellCondition)
+            then throw("innapropriate roi: " + toString(roi))
         else if (amountToExecuteOrder == 0) then
             # this code is executing if there is not enough amount of waves to sell integer number of bonds, but there is still remaining waves amount in the order
             ScriptResult(
