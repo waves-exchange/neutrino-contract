@@ -47,20 +47,11 @@ func convertJsonArrayToList(jsonArray: String) = {
 }
 
 #-------------------Constants---------------------------
-let BLOCK = "block"
-let UNBLOCK = "unblock"
-let UPDATE = "update"
-let SIGNPREFIX = "WAVESNEUTRINOPREFIX"
 
 #-------------------Constructor-------------------------
-let OraclesKey = "oracles"
-let PriceOffsetKey = "price_offset"
 
 #-------------------Keys---------------------------------
 #------This contract----------
-let PriceKey = "price"
-let IsBlockedKey = "is_blocked"
-let PriceIndexKey = "price_index"
 
 #-------------------Global vars-------------------------
 let price = match getInteger(this, "price") {
@@ -78,7 +69,7 @@ let isBlocked = match getBoolean(this, "is_blocked") {
 
 let percentPriceOffset = 7
 
-let pubKeyOracles = getStringByKey(OraclesKey)
+let pubKeyOracles = getStringByKey("oracles")
 let pubKeyOraclesList = convertJsonArrayToList(pubKeyOracles)
 
 let bftCoefficientOracle = 4
@@ -187,7 +178,7 @@ func findPricesInRange(prices: List[Int]) = {
 }
 
 func formattingPriceMsg(price: Int, height: Int) = {
-    toBytes(SIGNPREFIX + "_" + toString(height) + "_" + toString(price))
+    toBytes("WAVESNEUTRINOPREFIX" + "_" + toString(height) + "_" + toString(price))
 }
 
 #-------------------Callable----------------------
@@ -205,16 +196,16 @@ func callEmergencyShutdown(reason: String) = {
             DataEntry("is_blocked_caller", callerAddress),
             DataEntry("is_blocked_reason", reason)
         ])
-} 
+}
 
 # [called by price oracles]
 @Callable(i)
 func finalizeCurrentPrice(price1: Int, sign1: ByteVector, price2: Int, sign2: ByteVector, price3: Int, sign3: ByteVector, price4: Int, sign4: ByteVector, price5: Int, sign5: ByteVector) = {
-    if(isBlocked) then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles") 
+    if(isBlocked) then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles")
     else if (match getInteger(this, "price_" + toString(height)) {
             case a:Int => a
             case _ => 0} != 0)
-    then throw("wait next block") else 
+    then throw("wait next block") else
     if (pubKeyOraclesList[height % 5] != toBase58String(i.callerPublicKey))
     then throw("Out of turn finalization: " + toString(height) + " block should be finalize by " + pubKeyOraclesList[height % 5]) else
 
@@ -257,7 +248,8 @@ func finalizeCurrentPrice(price1: Int, sign1: ByteVector, price2: Int, sign2: By
             DataEntry("price_index", newPriceIndex),
             DataEntry("price_index_" + toString(newPriceIndex), height),
             DataEntry("deficit_" + toString(height), deficit),
-            DataEntry("neutrinoSupply_" + toString(height), neutrinoSupply)
+            DataEntry("neutrinoSupply_" + toString(height), neutrinoSupply),
+            DataEntry("deficit_percent_" + toString(height), if (neutrinoSupply != 0) then deficit * 100 / neutrinoSupply else 0)
         ])
     }
 }
