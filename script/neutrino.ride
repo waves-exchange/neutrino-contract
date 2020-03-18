@@ -143,28 +143,6 @@ func getUnlockBalanceBlock(owner : String) = getNumberByKey(getBalanceUnlockBloc
 func getRPDProfit(count: Int) = getNumberByKey(getRPDProfitKey(count))
 #-------------------Callable----------------------
 
-#-------------------USDNB to NSBT migration vars ans funcs----------------------
-let CANCELED = "canceled"
-let NEW = "new"
-let FILLED = "filled"
-let FirstOrderKey = "order_first"
-let LastOrderKey = "order_last"
-let firstOrder = getStringByAddressAndKey(liquidationContract, FirstOrderKey)
-let lastOrder = getStringByAddressAndKey(liquidationContract, LastOrderKey)
-func getOrderPrevKey(orderId: String) = "order_prev_" + orderId
-func getOrderNextKey(orderId: String) = "order_next_" + orderId
-func getOrderTotalKey(orderId: String) = "order_total_" + orderId
-func getOrderOwnerKey(orderId: String) = "order_owner_" + orderId
-func getOrderStatusKey(orderId: String) = "order_status_" + orderId
-func getOrderFilledTotalKey(orderId: String) = "order_filled_total_" + orderId
-
-func getOrderTotal(id : String) = getNumberByAddressAndKey(liquidationContract, getOrderTotalKey(id))
-func getOrderOwner(id : String) = getStringByAddressAndKey(liquidationContract, getOrderOwnerKey(id))
-func getOrderStatus(id : String) = getStringByAddressAndKey(liquidationContract, getOrderStatusKey(id))
-func getOrderFilledTotal(id : String) = getNumberByAddressAndKey(liquidationContract, getOrderFilledTotalKey(id))
-func getOrderPrev(id: String) = getStringByAddressAndKey(liquidationContract, getOrderPrevKey(id))
-func getOrderNext(id: String) = getStringByAddressAndKey(liquidationContract, getOrderNextKey(id))
-
 # Instant swap of WAVES to Neutrino token at the current price on the smart contract
 # [called by user]
 @Callable(i)
