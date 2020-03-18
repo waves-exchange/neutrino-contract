@@ -143,140 +143,57 @@ func getUnlockBalanceBlock(owner : String) = getNumberByKey(getBalanceUnlockBloc
 func getRPDProfit(count: Int) = getNumberByKey(getRPDProfitKey(count))
 #-------------------Callable----------------------
 
-# Instant swap of WAVES to Neutrino token at the current price on the smart contract
-# [called by user]
+#-------------------USDNB to NSBT migration vars ans funcs----------------------
+let CANCELED = "canceled"
+let NEW = "new"
+let FILLED = "filled"
+let FirstOrderKey = "order_first"
+let LastOrderKey = "order_last"
+let firstOrder = getStringByAddressAndKey(liquidationContract, FirstOrderKey)
+let lastOrder = getStringByAddressAndKey(liquidationContract, LastOrderKey)
+func getOrderPrevKey(orderId: String) = "order_prev_" + orderId
+func getOrderNextKey(orderId: String) = "order_next_" + orderId
+func getOrderTotalKey(orderId: String) = "order_total_" + orderId
+func getOrderOwnerKey(orderId: String) = "order_owner_" + orderId
+func getOrderStatusKey(orderId: String) = "order_status_" + orderId
+func getOrderFilledTotalKey(orderId: String) = "order_filled_total_" + orderId
+
+func getOrderTotal(id : String) = getNumberByAddressAndKey(liquidationContract, getOrderTotalKey(id))
+func getOrderOwner(id : String) = getStringByAddressAndKey(liquidationContract, getOrderOwnerKey(id))
+func getOrderStatus(id : String) = getStringByAddressAndKey(liquidationContract, getOrderStatusKey(id))
+func getOrderFilledTotal(id : String) = getNumberByAddressAndKey(liquidationContract, getOrderFilledTotalKey(id))
+func getOrderPrev(id: String) = getStringByAddressAndKey(liquidationContract, getOrderPrevKey(id))
+func getOrderNext(id: String) = getStringByAddressAndKey(liquidationContract, getOrderNextKey(id))
+
+# USDNB to NSBT liquidation orders migration method (temporary method)
+# [called by pacemaker]
 @Callable(i)
-func swapWavesToNeutrino() = {
-    let pmt = extract(i.payment)
-    let account = toString(i.caller)
-    
-    if (pmt.amount < minWavesSwapAmount)
-        then throw("The specified Waves amount is less than the required minimum of " + toString(minWavesSwapAmount) + " wavelets.")
-    else if (isDefined(pmt.assetId))
-        then throw("Only Waves token is allowed for swapping.")
-    else if(isBlocked)
-        then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles") # see control.ride
-    else if(getUnlockBalanceBlock(account) > height)
-        then throw("await " + toString(getUnlockBalanceBlock(account) - height) + " blocks")
-    else if (getNeutrinoLockedBalance(account) != 0 || getWavesLockedBalance(account) != 0)
-        then throw("please withdraw locked funds first")
-    else {
+func migrationTransferToLiquidation() = {
+    let keyLastMigratedOrder = "lastMigratedOrderId_migration_usdnb2nsbt"
+    let finalStatus = "migrated"
+    let isLastMigratedAsFirstOrder = getStringByKey(keyLastMigratedOrder) == ""
+    let lastMigratedOrderId = getStringByKey(keyLastMigratedOrder)
+    let currentOrderId = if(isLastMigratedAsFirstOrder) then firstOrder else getOrderNext(lastMigratedOrderId)
+    let keyStatusLiquidationMigration = "status_migration_usdnb2nsbt_" + currentOrderId
+    let orderAmount = getOrderTotal(currentOrderId) - getOrderFilledTotal(currentOrderId)
+    let orderOwner = addressFromStringValue(getOrderOwner(currentOrderId))
+    let orderStatus = getOrderStatus(currentOrderId)
+    let migrationStatus = getStringByKey(keyStatusLiquidationMigration)
+
+    if(orderAmount <= 0 || orderStatus != NEW)
+        then throw("error: invalid order")
+    else if (migrationStatus == finalStatus)
+        then throw("error: order has already migrated")
+    else if (lastOrder == lastMigratedOrderId)
+        then throw("status ok: all order has already migrated or nothing to migrate")
+    else ScriptResult(
         WriteSet([
-            DataEntry(getWavesLockedBalanceKey(account), pmt.amount),
-            DataEntry(getBalanceUnlockBlockKey(account), height + balanceWavesLockInterval),
-            DataEntry(WavesLockedBalanceKey, wavesLockedBalance + pmt.amount)
-        ])
-    }
-}
+            DataEntry(keyStatusLiquidationMigration, finalStatus),
+            DataEntry(keyLastMigratedOrder, currentOrderId)
+        ]),
+        TransferSet([ScriptTransfer(addressFromStringValue(liquidationContract), orderAmount*PAULI, bondAssetId)])
+    )
 
-# Swap request of Neutrino to WAVES. After {balanceLockInterval} blocks, WAVES tokens will be available for withdrawal
-# via {withdraw(account : String)} method at the price that is current at the time when {balanceLockInterval} is reached
-# [called by user]
-@Callable(i)
-func swapNeutrinoToWaves() = {
-    let pmt = extract(i.payment)
-    let account = toString(i.caller)
-    if (pmt.amount < minNeutrinoSwapAmount)
-        then throw("The specified Neutrino amount is less than the required minimum of " + toString(minNeutrinoSwapAmount) + " Neutrino cents.")
-    else if(isBlocked)
-        then throw("The contract is blocked by EMERGENCY SHUTDOWN. Please wait for reactivation by emergency oracles.") # see control.ride
-    else if (pmt.assetId != neutrinoAssetId)
-        then throw("Only appropriate Neutrino tokens are allowed for swapping.")
-    else if(getUnlockBalanceBlock(account) > height)
-        then throw("await " + toString(getUnlockBalanceBlock(account) - height) + " blocks")
-    else if (getNeutrinoLockedBalance(account) != 0 || getWavesLockedBalance(account) != 0)
-        then throw("please withdraw locked funds first")
-    else {
-        WriteSet([
-            DataEntry(getNeutrinoLockedBalanceKey(account), pmt.amount),
-            DataEntry(getBalanceUnlockBlockKey(account), height + balanceNeutrinoLockInterval),
-            DataEntry(NeutrinoLockedBalanceKey, neutrinoLockedBalance + pmt.amount)
-        ])
-    }
-}
-
-# Withdraw WAVES from smart contract after {swapNeutrinoToWaves()} request has reached {balanceLockInterval} height
-# at the price that is current at the time when {balanceLockInterval} is reached
-# [called by user]
-@Callable(i)
-func withdraw(account : String, index: Int) = {
-    let unlockHeight = getUnlockBalanceBlock(account)
-    let userWavesLockedBalance = getWavesLockedBalance(account)
-    let userNeutrinoLockedBalance = getNeutrinoLockedBalance(account)
-
-    let indexHeight = getHeightPriceByIndex(index)
-    let prevIndexHeight = getHeightPriceByIndex(index-1)
-    let priceByIndex = getPriceHistory(indexHeight)
-
-    let neutrinoAmount = convertWavesToNeutrino(userWavesLockedBalance, priceByIndex)
-    let wavesAmount = convertNeutrinoToWaves(userNeutrinoLockedBalance, priceByIndex)
-            
-    if(isBlocked)
-        then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles") # see control.ride
-    else if(unlockHeight > height)
-        then throw("please wait for: " + toString(unlockHeight) + " block height to withdraw WAVES funds")
-    else if(index > priceIndex  || indexHeight < unlockHeight || (prevIndexHeight != 0 && unlockHeight <= prevIndexHeight))
-        then throw("invalid price history index: index=" + toString(index)
-                + " priceIndex=" + toString(priceIndex)
-                + " indexHeight=" + toString(indexHeight)
-                + " unlockHeight=" + toString(unlockHeight)
-                + " prevIndexHeight=" + toString(prevIndexHeight))
-    else if(neutrinoAmount <= 0 && wavesAmount <= 0)
-        then throw("balance equals zero")
-    else {   
-        ScriptResult(
-            WriteSet([
-                DataEntry(getWavesLockedBalanceKey(account), 0),
-                DataEntry(getNeutrinoLockedBalanceKey(account), 0),
-
-                DataEntry(WavesLockedBalanceKey, wavesLockedBalance - userWavesLockedBalance),
-                DataEntry(NeutrinoLockedBalanceKey, neutrinoLockedBalance - userNeutrinoLockedBalance)
-            ]),
-            TransferSet([
-                ScriptTransfer(addressFromStringValue(account), wavesAmount, unit),
-                ScriptTransfer(addressFromStringValue(account), neutrinoAmount, neutrinoAssetId)
-            ])
-        )
-    }
-}
-
-# Transfers bonds from neutrino.ride to auction.ride to fulfill 'buy bonds' orders
-# Is called n-times during the deficit stage until all pending orders on auction.ride are fulfilled
-# [called by pacemaker oracles]
-@Callable(i)
-func transferToAuction() = {
-    let deficitBondAmount = deficit - assetBalance(addressFromStringValue(auctionContract), bondAssetId)
-    let minDeficit = fraction(neutrinoSupply, DEFICITOFFSET, 100)
-
-    let surplusWithLiquidation = (surplus - assetBalance(addressFromStringValue(liquidationContract), neutrinoAssetId)) #in 6 decimals
-    if(isBlocked)
-        then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles") # see control.ride
-    else if(deficitBondAmount > minDeficit && deficitBondAmount > 0)
-        then TransferSet([ScriptTransfer(addressFromStringValue(auctionContract), deficitBondAmount, bondAssetId)])
-    else if(surplusWithLiquidation >= 1*PAULI)
-        then TransferSet([ScriptTransfer(addressFromStringValue(liquidationContract), surplusWithLiquidation, neutrinoAssetId)])
-    else 
-        throw("bond were generated or do not need it. Deficit:" + toString(deficitBondAmount) + "|" + toString(minDeficit) + ". Surplus:" + toString(surplusWithLiquidation) + "|" + toString(surplus))
-}
-
-# Transfers tokens from one address to another via smart contact
-# [called by user]
-@Callable(i)
-func transfer(account: String) = {
-    let pmt = extract(i.payment)
-    TransferSet([ScriptTransfer(addressFromStringValue(account), pmt.amount, pmt.assetId)])
-}
-
-
-# USDNB (0 decimals) to NSBT (6 decimals) liquidation orders migration method (temporary method)
-# [called by user]
-@Callable(i)
-func migrationUSDNB2NSBTSwap() = {
-    let pmt = extract(i.payment)
-    let account = i.caller
-    if (deprecatedBondAssetId != pmt.assetId)
-        then throw("error: attempt to swap not USDNB tokens")
-    else TransferSet([ScriptTransfer(account, pmt.amount*PAULI, bondAssetId)])
 }
 
 # LeaseCancelTransaction depends from swapNeutrinoToWaves() result i.e. waves amount is not enought for future swaps

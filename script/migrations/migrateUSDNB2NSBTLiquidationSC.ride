@@ -105,127 +105,34 @@ func getLastOrderOwner(owner: String) = getStringByKey(getLastOrderOwnerKey(owne
 
 #-------------------Callable---------------------------
 
-# set 'bonds liquidation order' (bond -> neutrino 1:1 exchange) to the liquidation queue
-# [called by user]
+# USDNB to NSBT liquidation orders migration method (temporary method)
+# [called by pacemaker]
 @Callable(i)
-func addLiquidationOrder() = {
-    let pmt = extract(i.payment);
-    let newOrderId = toBase58String(keccak256(toBytes(pmt.amount) + i.caller.bytes + toBytes(height) + i.transactionId))
-    
-    let nextOrder = getOrderNext(lastOrder)
-    let orderStatus = getOrderStatus(lastOrder)
-    let owner = toString(i.caller)
-    if (isBlocked) 
-        then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles")
-    else if (pmt.assetId != bondAssetId) 
-        then throw("can use appropriate neutrino bonds tokens only")
-    else if(getOrderOwner(newOrderId) != "")
-        then throw("an order is already exists")
-    else if(nextOrder != "")
-        then throw("nextOrder is not last. Info:" + nextOrder)
-    else if(firstOrder != "" && lastOrder == "")
-        then throw("invalid last order")
-    else if(firstOrder != "" && orderStatus != NEW)
-        then throw("last order status is not new")
-    else if (pmt.amount < PAULI)
-        then throw("order amount must be higher than 1 NSBT")
-    else {
-        WriteSet([
-            DataEntry(getLastOrderOwnerKey(owner), newOrderId),
-            DataEntry(getOrderPrevKey(newOrderId), lastOrder),
-            DataEntry(getOrderNextKey(lastOrder), if lastOrder == "" then "" else newOrderId),
-
-            DataEntry(FirstOrderKey, if firstOrder == "" then newOrderId else firstOrder),
-            DataEntry(LastOrderKey, newOrderId),
-
-            DataEntry(getOrderTotalKey(newOrderId), pmt.amount),
-            DataEntry(getOrderOwnerKey(newOrderId), owner),
-            DataEntry(getOrderHeightKey(newOrderId), height),
-            DataEntry(getOrderStatusKey(newOrderId), NEW)
+func migrationOrdersUSDNB2NSBT() = {
+    let keyLastMigratedOrder = "lastMigratedOrderId_migration_usdnb2nsbt"
+    let finalStatus = "migrated"
+    let isLastMigratedAsFirstOrder = getStringByKey(keyLastMigratedOrder) == ""
+    let lastMigratedOrderId = getStringByKey(keyLastMigratedOrder)
+    let currentOrderId = if(isLastMigratedAsFirstOrder) then firstOrder else getOrderNext(lastMigratedOrderId)
+    let keyStatusLiquidationMigration = "status_migration_usdnb2nsbt_" + currentOrderId
+    let orderAmount = getOrderTotal(currentOrderId) - getOrderFilledTotal(currentOrderId)
+    let orderOwner = addressFromStringValue(getOrderOwner(currentOrderId))
+    let orderStatus = getOrderStatus(currentOrderId)
+    let migrationStatus = getStringByKey(keyStatusLiquidationMigration)
+    if(orderAmount <= 0 || orderStatus != NEW)
+        then throw("error: invalid order")
+    else if (migrationStatus == finalStatus)
+        then throw("error: order has already migrated" )
+    else if (getStringByAddressAndKey(neutrinoContract, keyStatusLiquidationMigration) != finalStatus)
+        then throw("error: order has not migrated in neutrino sc")
+    else if (lastOrder == lastMigratedOrderId)
+        then throw("status ok: all order has already migrated or nothing to migrate")
+    else WriteSet([
+            DataEntry(keyStatusLiquidationMigration, finalStatus),
+            DataEntry(keyLastMigratedOrder, currentOrderId),
+            DataEntry(getOrderFilledTotalKey(currentOrderId), getOrderFilledTotal(currentOrderId)*PAULI),
+            DataEntry(getOrderTotalKey(currentOrderId), getOrderTotal(currentOrderId)*PAULI)
         ])
-    }
-}
-
-# cancel buy bonds order or liquidation order
-# [called by user]
-@Callable(i)
-func cancelOrder(orderId : String) = {
-    let owner = getOrderOwner(orderId)
-    let amount = getOrderTotal(orderId) - getOrderFilledTotal(orderId)
-    
-    let nextOrder = getOrderNext(orderId)
-    let prevOrder = getOrderPrev(orderId)
-    
-    if (isBlocked) 
-        then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles")
-    else if(owner != toString(i.caller)) 
-        then throw("permission denied")
-    else if(getOrderStatus(orderId) != NEW)
-        then throw("invalid order status")
-    else {
-        ScriptResult(
-            WriteSet([
-                DataEntry(FirstOrderKey, if firstOrder == orderId then nextOrder else firstOrder),
-                DataEntry(LastOrderKey, if lastOrder == orderId then prevOrder else lastOrder),
-
-                DataEntry(getOrderNextKey(prevOrder), nextOrder),
-                DataEntry(getOrderPrevKey(nextOrder), prevOrder),
-
-                DataEntry(getOrderStatusKey(orderId), CANCELED)
-            ]), 
-            TransferSet([
-                ScriptTransfer(i.caller, amount, bondAssetId)
-            ])
-        )
-    }
-}
-
-# executing bond -> neutrino 1:1 exchange from the liquidation queue if SC has reached proficit in collateral cap
-# it's calling n-times untill all orders from the liquidation queue will be executed during proficit stage
-# [called by pacemaker oracles]
-@Callable(i)
-func liquidateBond() = {
-    let surplusPositive = if(surplus <= 0) then 0 else surplus
-    let liquidationBalance = assetBalance(this, neutrinoAssetId) #paulis
-    let returnAmount = if(surplusPositive >= liquidationBalance) then 0 else liquidationBalance-surplusPositive
-    let surplusBond = surplusPositive #integer
-  
-    if (isBlocked) 
-        then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles")
-    else if(returnAmount == 0 && liquidationBalance == 0)
-        then throw("cannot liquidate order without neutrino on the smart contract")
-    else if(returnAmount > 0) then {
-        TransferSet([
-            ScriptTransfer(neutrinoContract, returnAmount, neutrinoAssetId)
-        ])
-    }
-    else if(surplusBond <= 0)
-        then throw("there is no proficit on the smart contract now")
-    else if(firstOrder == "")
-        then throw("empty orderbook")
-    else {
-        let nextOrder = getOrderNext(firstOrder)
-        let orderTotal = getOrderTotal(firstOrder)
-        let orderOwner = getOrderOwner(firstOrder)
-        let filledTotal = getOrderFilledTotal(firstOrder)
-
-        let amount = orderTotal-filledTotal;
-        let newStatus = if(surplusBond >= amount) then FILLED else NEW
-        let fillableOrderAmount = if(surplusBond >= amount) then amount else surplusBond
-
-        ScriptResult(
-            WriteSet([
-                DataEntry(getOrderPrevKey(nextOrder), if(newStatus == FILLED) then "" else firstOrder), #if current first order has new status filled so, his prev order is now empty
-                DataEntry(FirstOrderKey, if(newStatus == FILLED) then nextOrder else firstOrder),
-                DataEntry(LastOrderKey, if(newStatus == FILLED && firstOrder == lastOrder) then "" else lastOrder),
-                DataEntry(getOrderFilledTotalKey(firstOrder), filledTotal + fillableOrderAmount),
-                DataEntry(getOrderStatusKey(firstOrder), newStatus)
-            ]), 
-            TransferSet([
-                ScriptTransfer(addressFromStringValue(orderOwner), fillableOrderAmount, neutrinoAssetId)
-            ])
-        )
-    }
 }
 
 @Verifier(tx)
