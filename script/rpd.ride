@@ -88,7 +88,9 @@ func getRewardsConfigStartKey(configKey : String, isStart: Boolean) = {
 
 func internallockNeutrino(i: Invocation, receiver: String, share: Int) = {
     let pmt = extract(i.payment)
-    if (pmt.assetId != neutrinoAssetId)
+    if (!isDefined(addressFromString(receiver))) 
+        then throw("Invalid address format " + receiver)
+    else if (pmt.assetId != neutrinoAssetId)
         then throw("can use usd only")
     else if (share > 100)
         then throw("staking rewards share cannot be higher than 100%")
