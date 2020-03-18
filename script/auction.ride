@@ -79,17 +79,15 @@ func getNextOrderKey(orderId: String) = "order_next_" + orderId
 func convertNeutrinoToWaves(amount: Int, price: Int) = fraction(fraction(amount, 100, price),WAVELET, PAULI)
 func convertWavesToNeutrino(amount: Int, price: Int) = fraction(fraction(amount, price, 100), PAULI, WAVELET)
 
-func convertNeutrinoToBond(amount: Int) = amount/PAULI 
-func convertBondToNeutrino(amount: Int) = amount*PAULI 
-func convertWavesToBond(amount: Int, price: Int) = convertNeutrinoToBond(convertWavesToNeutrino(amount, price))
-func convertBondToWaves(amount: Int, price: Int) = convertNeutrinoToWaves(convertBondToNeutrino(amount), price)
+func convertWavesToBond(amount: Int, price: Int) = convertWavesToNeutrino(amount, price)
+func convertBondToWaves(amount: Int, price: Int) = convertNeutrinoToWaves(amount, price)
 
 #-------------------Global vars-------------------------
 let neutrinoContract = addressFromStringValue("3PC9BfRwJWWiw9AREE2B3eWzCks3CYtg4yo")
 let controlContract = addressFromStringValue("3P5Bfd58PPfNvBM2Hy8QfbcDqMeNtzg7KfP") ## The value from neutrino.ride
 let liquidationContract = addressFromStringValue("3P4PCxsJqMzQBALo8zANHtBDZRRquobHQp7")
 let neutrinoAssetId = fromBase58String("DG2xFkPdDwKUoBkzGAhQtLpSGzfXLiCYPEzeKH2Ad24p") # Assets ids. The value from neutrino.ride
-let bondAssetId = fromBase58String("975akZBfnMj513U7MZaHKzQrmsEx5aE3wdWKTrHBhbjF")
+let bondAssetId = fromBase58String("6nSpVyNH7yM69eg446wrQR94ipbbcmZMU1ENPwanC97g") # NSBT with 6 decimals as USDN does
 
 let isBlocked = getBoolByAddressAndKey(controlContract, "is_blocked")
 
@@ -215,7 +213,7 @@ func cancelOrder(orderId : String) = {
 @Callable(i)
 func sellBond() = {
     let bondBalance = assetBalance(this, bondAssetId) #integers (dollars)
-    let deficitPositive = if(deficit <= 0) then 0 else deficit/PAULI #paulis to integers (dollars)
+    let deficitPositive = if(deficit <= 0) then 0 else deficit #paulis to 6-decimals (pauli)
     let bondAmount = if(deficitPositive >= bondBalance) then bondBalance else deficitPositive # possible bond amount for selling; scale: integers (dollars)
     let returnAmount = if(deficitPositive >= bondBalance) then 0 else bondBalance-deficitPositive #scale: integers (dollars); send bonds back if there is remaining bonds on the main contract
 
