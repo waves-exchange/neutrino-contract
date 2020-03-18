@@ -75,24 +75,57 @@ func getOwnerProposal(hash: String) = getStringByKey(getOwnerProposalKey(hash))
 func getArgumentsProposal(hash: String) = getStringByKey(getArgumentsProposalKey(hash))
 func getVote(owner: String, hash: String) = getStringByKey(getVoteKey(owner, hash))
 
+#----split protocol-------------------------------
+func getRewardsConfigKey(owner : String, share: Int, receiver: String) = {
+    "stakingconfig_" + owner + "_" + toString(share) +  "_" + receiver
+}
+func getCurrentRewardsConfigKey(owner : String) = {
+    "stakingconfig_current_" + owner
+}
+func getRewardsConfigStartKey(configKey : String, isStart: Boolean) = {
+    configKey + (if isStart then "_start" else "_end")
+}
+
+func internallockNeutrino(i: Invocation, receiver: String, share: Int) = {
+    let pmt = extract(i.payment)
+    if (!isDefined(addressFromString(receiver))) 
+        then throw("Invalid address format " + receiver)
+    else if (pmt.assetId != neutrinoAssetId)
+        then throw("can use usd only")
+    else if (share > 100)
+        then throw("staking rewards share cannot be higher than 100%")
+    else if (share < 1)
+        then throw("staking rewards share cannot be lower than 1%")
+    else {
+        let account = toString(i.caller)
+        let assetIdString = toBase58String(value(pmt.assetId))
+        let currentConfig = getStringByKey(getCurrentRewardsConfigKey(account))
+        let newCurrentConfig = getRewardsConfigKey(account, share, receiver)
+        let isNewConfig = !(currentConfig == newCurrentConfig)
+        let end = if isNewConfig then height else 0
+        let start = if isNewConfig then height else getNumberByKey(getRewardsConfigStartKey(newCurrentConfig, true))
+        WriteSet([
+            DataEntry(getContractBalanceKey(assetIdString), getContractBalance(assetIdString) + pmt.amount),
+            DataEntry(getUserBalanceKey(account, assetIdString), getUserBalance(account, assetIdString) + pmt.amount),
+            DataEntry(getRewardsConfigStartKey(currentConfig, false), end), #if there is no current config it leads to dead state key
+            DataEntry(getRewardsConfigStartKey(newCurrentConfig, true), start),
+            DataEntry(getCurrentRewardsConfigKey(account), newCurrentConfig)
+        ])
+    }
+}
 #-------------------Callable----------------------
 # start neutrino staking
 # [called by user]
 @Callable(i)
-func lockNeutrino() = {
-    let pmt = extract(i.payment)
-    if (pmt.assetId != neutrinoAssetId)
-        then throw("can use neutrino")
-    else {
-        let account = toString(i.caller)
-        let assetIdString = toBase58String(value(pmt.assetId))
-
-        WriteSet([
-            DataEntry(getContractBalanceKey(assetIdString), getContractBalance(assetIdString) + pmt.amount),
-            DataEntry(getUserBalanceKey(account, assetIdString), getUserBalance(account, assetIdString) + pmt.amount)
-        ])
-    }
+func lockNeutrinoSP(receiver: String, share: Int) = {
+    internallockNeutrino(i, receiver, share)
 }
+
+@Callable(i)
+func lockNeutrino() = {
+    internallockNeutrino(i, toString(i.caller), 100)
+}
+
 
 # cancel neutrino staking
 # [called by user]
