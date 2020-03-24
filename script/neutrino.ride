@@ -65,7 +65,17 @@ let MinWavesSwapAmountKey = "min_waves_swap_amount"
 let MinNeutrinoSwapAmountKey = "min_neutrino_swap_amount"
 let NodeOracleProviderPubKeyKey = "node_oracle_provider"
 
+let LowerBound = 50
+let UpperBound = 100
+let MINTRANSFERFEE = 100000 #wavelets
+let NEW = "new"
+let OK = "ok"
 #-------------------Keys---------------------------------
+let currentConfigId = "current_config_id"
+func getFeePriceKey(id: String) = "price_fee_" + id
+func getMinFeeKey(id: String) = "minfee_fee_" + id
+func getConfigStatusKey(id: String) = "fee_config_status_" + id
+
 #------Common----------------
 let RPDBalanceKey = "rpd_balance"
 #------RPD contract----------
@@ -279,6 +289,33 @@ func migrationUSDNB2NSBTSwap() = {
     else TransferSet([ScriptTransfer(account, pmt.amount*PAULI, bondAssetId)])
 }
 
+# pacemaker oracle (anyone) is able to call it
+@Callable(i)
+func setFeeConfig() = {
+    let realNeutrinoFee = convertWavesToNeutrino(MINTRANSFERFEE, currentPrice) #in paulis
+    let config = getStringByKey(currentConfigId)
+    let feePriceCurrentConfig = getFeePriceKey(config)
+    let currentFeeSCProfit = fraction(convertWavesToNeutrino(MINTRANSFERFEE, feePriceCurrentConfig) - realNeutrinoFee, 100, realNeutrinoFee) #in %
+    let changeCondition = currentFeeSCProfit >= UpperBound || currentFeeSCProfit <= LowerBound
+    let currentMinFee = getNumberByKey(getMinFeeKey(config))
+    let ai = assetInfo(toBytes(neutrinoAssetId))
+    if (!changeCondition && getStringByKey(getConfigStatusKey(config)) == OK)
+        then throw("min fee is ok for current price, no changes needed")
+    else if (getStringByKey(getConfigStatusKey(config)) == NEW && ai.minSponsoredAssetFee == currentMinFee) #it means that SponsorFeeTransaction was ok 
+        then WriteSet(DataEntry(getConfigStatusKey(config), OK))
+    else if (changeCondition) {
+        let newConfig = = toBase58String(keccak256(toBytes(currentPrice) + i.caller.bytes + toBytes(config) + i.transactionId))
+        WriteSet([
+                DataEntry(getFeePriceKey(newConfig), currentPrice),
+                DataEntry(getMinFeeKey(newConfig), realNeutrinoFee 
+                    + (fraction(realNeutrinoFee, UpperBound, 100) + fraction(realNeutrinoFee, LowerBound, 100))/2),
+                DataEntry(currentConfigId, newConfig),
+                DataEntry(getConfigStatusKey(newConfig), NEW)
+        ])
+    }
+    else throw("wrong parameters")
+}
+
 # LeaseCancelTransaction depends from swapNeutrinoToWaves() result i.e. waves amount is not enought for future swaps
 # or end of leasing time
 @Verifier(tx)
@@ -287,6 +324,10 @@ func migrationUSDNB2NSBTSwap() = {
     match tx {
         case leasingTx: LeaseTransaction | LeaseCancelTransaction =>
             sigVerify(tx.bodyBytes, tx.proofs[0], nodeOracleProviderPubKey)
+        case sponsorTx: SponsorFeeTransaction =>
+            sigVerify(tx.bodyBytes, tx.proofs[0], nodeOracleProviderPubKey) 
+                && getStringByKey(getConfigStatusKey(config)) == NEW
+                && sponsorTx.minSponsoredAssetFee == getNumberByKey(getMinFeeKey(getStringByKey(currentConfigId)))
         case _ => {
             let pubKeyAdminsList = [
                 "BLEoguzPVKVTfXxxT3W7Rqf8aUm2ggC9Vemd2MQawM2G",
