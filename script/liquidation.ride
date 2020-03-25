@@ -71,16 +71,14 @@ func getLastOrderOwnerKey(owner: String) = "last_order_owner_" + owner
 #-------------------Convert functions-------------------
 func convertNeutrinoToWaves(amount: Int, price: Int) = fraction(fraction(amount, 100, price),WAVELET, PAULI)
 func convertWavesToNeutrino(amount: Int, price: Int) = fraction(fraction(amount, price, 100), PAULI, WAVELET)
-func convertNeutrinoToBond(amount: Int) = amount/PAULI 
-func convertBondToNeutrino(amount: Int) = amount*PAULI 
-func convertWavesToBond(amount: Int, price: Int) = convertNeutrinoToBond(convertWavesToNeutrino(amount, price))
+func convertWavesToBond(amount: Int, price: Int) = convertWavesToNeutrino(amount, price)
 
 #-------------------Global vars -------------------------
 let neutrinoContract = addressFromStringValue(getStringByKey(NeutrinoContractKey))
 let controlContract = addressFromStringValue(getStringByAddressAndKey(neutrinoContract, ControlContractKey)) ## The value from neutrino.ride
 let liquidationContract = this
 let neutrinoAssetId = fromBase58String(getStringByAddressAndKey(neutrinoContract, NeutrinoAssetIdKey)) # Assets ids. The value from neutrino.ride
-let bondAssetId = fromBase58String(getStringByAddressAndKey(neutrinoContract, BondAssetIdKey))
+let bondAssetId = fromBase58String("6nSpVyNH7yM69eg446wrQR94ipbbcmZMU1ENPwanC97g") # NSBT with 6 decimals as USDN does
 let firstOrder = getStringByKey(FirstOrderKey)
 let lastOrder = getStringByKey(LastOrderKey)
 
@@ -129,6 +127,8 @@ func addLiquidationOrder(price : Int, prevOrder: String) = {
         then throw("invalid last order")
     else if(prevOrder != "" && getOrderStatus(prevOrder) != NEW)
         then throw("prev order status is not new")
+    else if (pmt.amount < PAULI)
+        then throw("order amount must be higher than 1 NSBT")
     else {
         let nextOrderPrice = getNumberByKey("getPriceByOrderIdKey(nextOrder)")
         let isNextOrderError = if(nextOrder != "" && price >= nextOrderPrice) then true else false;
@@ -195,7 +195,7 @@ func liquidateBond() = {
     let surplusPositive = if(surplus <= 0) then 0 else surplus
     let liquidationBalance = assetBalance(this, neutrinoAssetId) #paulis
     let returnAmount = if(surplusPositive >= liquidationBalance) then 0 else liquidationBalance-surplusPositive
-    let surplusBond = convertNeutrinoToBond(surplusPositive) #integer
+    let surplusBond = surplusPositive #integer
   
     if (isBlocked) 
         then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles")
@@ -229,7 +229,7 @@ func liquidateBond() = {
                 DataEntry(getOrderStatusKey(firstOrder), newStatus)
             ]), 
             TransferSet([
-                ScriptTransfer(addressFromStringValue(orderOwner), convertBondToNeutrino(fillableOrderAmount), neutrinoAssetId)
+                ScriptTransfer(addressFromStringValue(orderOwner), fillableOrderAmount, neutrinoAssetId)
             ])
         )
     }
