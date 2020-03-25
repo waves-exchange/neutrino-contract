@@ -215,7 +215,7 @@ func sellBond() = {
     let bondBalance = assetBalance(this, bondAssetId) #integers (dollars)
     let deficitPositive = if(deficit <= 0) then 0 else deficit/PAULI #paulis to integers (dollars)
     let bondAmount = if(deficitPositive >= bondBalance) then bondBalance else deficitPositive # possible bond amount for selling; scale: integers (dollars)
-    let returnAmount = bondBalance - (neutrinoSupply/PAULI) #TODO: check pauli
+    let returnAmount = bondBalance - neutrinoSupply
 
     if (bondBalance == 0)
         then throw("without bonds to sell")
