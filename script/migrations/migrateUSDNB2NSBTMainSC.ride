@@ -1,0 +1,223 @@
+{-# STDLIB_VERSION 3 #-}
+{-# CONTENT_TYPE DAPP #-}
+{-# SCRIPT_TYPE ACCOUNT #-}
+#
+# Main Smart Contract of Neutrino Protocol
+# Implemented actions: Swap, Bond Liquidation, Leasing
+#
+
+#-------------------Base functions----------------------
+func getNumberByKey(key: String) = {
+    match getInteger(this, key) {
+            case a:Int => a
+            case _ => 0
+    }
+}
+func getStringByKey(key: String) = {
+    match getString(this, key) {
+            case a:String => a
+            case _ => ""
+    }
+}
+func getBoolByKey(key: String) = {
+    match getBoolean(this, key) {
+            case a:Boolean => a
+            case _ => false
+    }
+}
+func getNumberByAddressAndKey(address: String, key: String) = {
+    match getInteger(addressFromStringValue(address), key) {
+            case a:Int => a
+            case _ => 0
+    }
+}
+func getStringByAddressAndKey(address: String, key: String) = {
+     match getString(addressFromStringValue(address), key) {
+            case a:String => a
+            case _ => ""
+    }
+}
+func getBoolByAddressAndKey(address: String, key: String) = {
+     match getBoolean(addressFromStringValue(address), key) {
+            case a:Boolean => a
+            case _ => false
+    }
+}
+
+#-------------------Constants---------------------------
+let SENDTXEXPIRE = 30
+let LISTSPLITSYMBOL = "_"
+let LISTDATASYMBOL = "+"
+let WAVELET = 100000000
+let PAULI = 1000000
+let DEFICITOFFSET = 5
+
+#-------------------Constructor-------------------------
+let NeutrinoAssetIdKey = "neutrino_asset_id"
+let BondAssetIdKey = "bond_asset_id"
+let AuctionContractKey = "auction_contract"
+let LiquidationContractKey = "liquidation_contract"
+let RPDContractKey = "rpd_contract"
+let ContolContractKey = "control_contract"
+let BalanceWavesLockIntervalKey = "balance_waves_lock_interval"
+let BalanceNeutrinoLockIntervalKey = "balance_neutrino_lock_interval"
+let MinWavesSwapAmountKey = "min_waves_swap_amount"
+let MinNeutrinoSwapAmountKey = "min_neutrino_swap_amount"
+let NodeOracleProviderPubKeyKey = "node_oracle_provider"
+
+#-------------------Keys---------------------------------
+#------Common----------------
+let RPDBalanceKey = "rpd_balance"
+#------RPD contract----------
+func getRPDContractBalanceKey(assetId: ByteVector) = RPDBalanceKey + "_" + toBase58String(assetId)
+#------Control contract-------
+let PriceKey = "price"
+let PriceIndexKey = "price_index"
+let IsBlockedKey = "is_blocked"
+func getPriceHistoryKey(block: Int) = PriceKey + "_" + toString(block)
+func getHeightPriceByIndexKey(index: Int) = PriceIndexKey + "_" + toString(index)
+#------This contract----------
+let BalanceLockedkKey = "balance_lock_"
+let WavesLockedBalanceKey = BalanceLockedkKey + "waves"
+let NeutrinoLockedBalanceKey = BalanceLockedkKey + "neutrino"
+
+func getRPDSnapshotContractBalanceKey(count: Int, assetId: ByteVector) = RPDBalanceKey + "_" + toBase58String(assetId) + "_" + toString(count)
+func getCancelLeaseTxReserveFeeKey(hash: String) = "cancel_lease_tx_reserve_fee" + "_" + hash
+func getWavesLockedBalanceKey(owner: String) = WavesLockedBalanceKey + "_" + owner
+func getNeutrinoLockedBalanceKey(owner: String) = NeutrinoLockedBalanceKey + "_" + owner
+func getBalanceUnlockBlockKey(owner: String) = "balance_unlock_block_" + owner
+func getRPDProfitKey(count: Int) = "rpd_profit" + "_" + toString(count)
+
+#-------------------Convert functions-------------------
+func convertNeutrinoToWaves(amount: Int, price: Int) = fraction(fraction(amount, 100, price),WAVELET, PAULI)
+func convertWavesToNeutrino(amount: Int, price: Int) = fraction(fraction(amount, price, 100), PAULI, WAVELET)
+func convertWavesToBond(amount: Int, price: Int) = convertWavesToNeutrino(amount, price) # it's here to be more explicit with convertation
+func convertJsonArrayToList(jsonArray: String) = {
+   jsonArray.split(",") #jsonArray.take(size(jsonArray)-1).drop(1).split(",")
+}
+
+#-------------------Global vars-------------------------
+
+let liquidationContract = getStringByKey(LiquidationContractKey)
+let neutrinoAssetIdString = getStringByKey(NeutrinoAssetIdKey)
+let neutrinoAssetId = fromBase58String(neutrinoAssetIdString)
+let auctionContract = getStringByKey(AuctionContractKey)
+let rpdContract = getStringByKey(RPDContractKey)
+let controlContract = getStringByKey(ContolContractKey)
+let priceIndex = getNumberByAddressAndKey(controlContract, PriceIndexKey) # Last price history iterator from control.ride
+let isBlocked = getBoolByAddressAndKey(controlContract,IsBlockedKey) # Checks for contract locks that might happen after attacks.  The var is read from control contract
+let nodeOracleProviderPubKey = fromBase58String(getStringByKey(NodeOracleProviderPubKeyKey))
+let balanceWavesLockInterval = getNumberByKey(BalanceWavesLockIntervalKey)
+let balanceNeutrinoLockInterval = getNumberByKey(BalanceNeutrinoLockIntervalKey)
+let minWavesSwapAmount = getNumberByKey(MinWavesSwapAmountKey)
+let minNeutrinoSwapAmount = getNumberByKey(MinNeutrinoSwapAmountKey)
+let bondAssetId = fromBase58String("6nSpVyNH7yM69eg446wrQR94ipbbcmZMU1ENPwanC97g") # NSBT with 6 decimals as USDN does
+let deprecatedBondAssetId = fromBase58String("975akZBfnMj513U7MZaHKzQrmsEx5aE3wdWKTrHBhbjF") # USDNB with 0 decimals
+
+let neutrinoContract = this
+#-------------------Global vars deficit, locked & supply -------------------------
+let currentPrice = getNumberByAddressAndKey(controlContract, PriceKey) # The value from control.ride
+let neutrinoLockedBalance = getNumberByKey(NeutrinoLockedBalanceKey) #locked balance from USDN -> WAVES swap
+let wavesLockedBalance = getNumberByKey(WavesLockedBalanceKey) #locked balance from WAVES -> USDN swap
+let reserve = wavesBalance(neutrinoContract) - wavesLockedBalance #waves reserves to cover USDN supply
+let neutrinoSupply = neutrinoLockedBalance + extract(assetInfo(neutrinoAssetId)).quantity - assetBalance(neutrinoContract, neutrinoAssetId) 
+    - assetBalance(addressFromStringValue(liquidationContract), neutrinoAssetId) # supply outside main sc or liquidation contract
+let surplus = convertWavesToNeutrino(reserve, currentPrice) - neutrinoSupply
+let deficit = neutrinoSupply - convertWavesToNeutrino(reserve, currentPrice)
+
+
+#-------------------Get functions----------------------
+#------RPD contract---------
+# The func is reading balances from rpd.ride
+func getRPDContractBalance(assetId: ByteVector) = getNumberByAddressAndKey(rpdContract, getRPDContractBalanceKey(assetId))
+#------Control contract------
+# The func is reading price from control.ride price history
+func getPriceHistory(block: Int) = getNumberByAddressAndKey(controlContract, getPriceHistoryKey(block))
+# The func is reading from control.ride price history heights
+func getHeightPriceByIndex(index: Int) = getNumberByAddressAndKey(controlContract, getHeightPriceByIndexKey(index))
+#------This contract---------
+func getCancelLeaseTxReserveFee(hash: String) = getNumberByKey(getCancelLeaseTxReserveFeeKey(hash))
+func getWavesLockedBalance(owner: String) =  getNumberByKey(getWavesLockedBalanceKey(owner))
+func getNeutrinoLockedBalance(owner: String) =  getNumberByKey(getNeutrinoLockedBalanceKey(owner))
+func getUnlockBalanceBlock(owner : String) = getNumberByKey(getBalanceUnlockBlockKey(owner))
+func getRPDProfit(count: Int) = getNumberByKey(getRPDProfitKey(count))
+#-------------------Callable----------------------
+
+#-------------------USDNB to NSBT migration vars ans funcs----------------------
+let CANCELED = "canceled"
+let NEW = "new"
+let FILLED = "filled"
+let FirstOrderKey = "order_first"
+let LastOrderKey = "order_last"
+let firstOrder = getStringByAddressAndKey(liquidationContract, FirstOrderKey)
+let lastOrder = getStringByAddressAndKey(liquidationContract, LastOrderKey)
+func getOrderPrevKey(orderId: String) = "order_prev_" + orderId
+func getOrderNextKey(orderId: String) = "order_next_" + orderId
+func getOrderTotalKey(orderId: String) = "order_total_" + orderId
+func getOrderOwnerKey(orderId: String) = "order_owner_" + orderId
+func getOrderStatusKey(orderId: String) = "order_status_" + orderId
+func getOrderFilledTotalKey(orderId: String) = "order_filled_total_" + orderId
+
+func getOrderTotal(id : String) = getNumberByAddressAndKey(liquidationContract, getOrderTotalKey(id))
+func getOrderOwner(id : String) = getStringByAddressAndKey(liquidationContract, getOrderOwnerKey(id))
+func getOrderStatus(id : String) = getStringByAddressAndKey(liquidationContract, getOrderStatusKey(id))
+func getOrderFilledTotal(id : String) = getNumberByAddressAndKey(liquidationContract, getOrderFilledTotalKey(id))
+func getOrderPrev(id: String) = getStringByAddressAndKey(liquidationContract, getOrderPrevKey(id))
+func getOrderNext(id: String) = getStringByAddressAndKey(liquidationContract, getOrderNextKey(id))
+
+# USDNB to NSBT liquidation orders migration method (temporary method)
+# [called by pacemaker]
+@Callable(i)
+func migrationTransferToLiquidation() = {
+    let keyLastMigratedOrder = "lastMigratedOrderId_migration_usdnb2nsbt"
+    let finalStatus = "migrated"
+    let isLastMigratedAsFirstOrder = getStringByKey(keyLastMigratedOrder) == ""
+    let lastMigratedOrderId = getStringByKey(keyLastMigratedOrder)
+    let currentOrderId = if(isLastMigratedAsFirstOrder) then firstOrder else getOrderNext(lastMigratedOrderId)
+    let keyStatusLiquidationMigration = "status_migration_usdnb2nsbt_" + currentOrderId
+    let orderAmount = getOrderTotal(currentOrderId) - getOrderFilledTotal(currentOrderId)
+    let orderOwner = addressFromStringValue(getOrderOwner(currentOrderId))
+    let orderStatus = getOrderStatus(currentOrderId)
+    let migrationStatus = getStringByKey(keyStatusLiquidationMigration)
+
+    if(orderAmount <= 0 || orderStatus != NEW)
+        then throw("error: invalid order")
+    else if (migrationStatus == finalStatus)
+        then throw("error: order has already migrated")
+    else if (lastOrder == lastMigratedOrderId)
+        then throw("status ok: all order has already migrated or nothing to migrate")
+    else ScriptResult(
+        WriteSet([
+            DataEntry(keyStatusLiquidationMigration, finalStatus),
+            DataEntry(keyLastMigratedOrder, currentOrderId)
+        ]),
+        TransferSet([ScriptTransfer(addressFromStringValue(liquidationContract), orderAmount*PAULI, bondAssetId)])
+    )
+
+}
+
+# LeaseCancelTransaction depends from swapNeutrinoToWaves() result i.e. waves amount is not enought for future swaps
+# or end of leasing time
+@Verifier(tx)
+ func verify() = {
+    let id = toBase58String(tx.id)
+    match tx {
+        case leasingTx: LeaseTransaction | LeaseCancelTransaction =>
+            sigVerify(tx.bodyBytes, tx.proofs[0], nodeOracleProviderPubKey)
+        case _ => {
+            let pubKeyAdminsList = [
+                "BLEoguzPVKVTfXxxT3W7Rqf8aUm2ggC9Vemd2MQawM2G",
+                "FWVffYr2ALmHMejZm3WqeLz6Sdym3gLFGtJn4KTwyU5x",
+                "3Wh2LaWcb5gg7K2pPcW3Ep6EAuRBzYkAgrdpt43jTDFa",
+                "5WRXFSjwcTbNfKcJs8ZqXmSSWYsSVJUtMvMqZj5hH4Nc"
+            ]
+            let count =
+                (if(sigVerify(tx.bodyBytes, tx.proofs[0], fromBase58String(pubKeyAdminsList[0]))) then 1 else 0) +
+                (if(sigVerify(tx.bodyBytes, tx.proofs[1], fromBase58String(pubKeyAdminsList[1]))) then 1 else 0) +
+                (if(sigVerify(tx.bodyBytes, tx.proofs[2], fromBase58String(pubKeyAdminsList[2]))) then 1 else 0) +
+                (if(sigVerify(tx.bodyBytes, tx.proofs[3], fromBase58String(pubKeyAdminsList[3]))) then 2 else 0)
+
+            count >= 3
+        }
+    }
+}
