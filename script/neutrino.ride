@@ -303,8 +303,8 @@ func setFeeConfig() = {
         then throw("min fee is ok for current price, no changes needed")
     else if (getStringByKey(getConfigStatusKey(config)) == NEW && ai.minSponsoredAssetFee == currentMinFee) #it means that SponsorFeeTransaction was ok 
         then WriteSet(DataEntry(getConfigStatusKey(config), OK))
-    else if (changeCondition) {
-        let newConfig = = toBase58String(keccak256(toBytes(currentPrice) + i.caller.bytes + toBytes(config) + i.transactionId))
+    else if (changeCondition) then
+        let newConfig = toBase58String(keccak256(toBytes(currentPrice) + i.caller.bytes + toBytes(config) + i.transactionId))
         WriteSet([
                 DataEntry(getFeePriceKey(newConfig), currentPrice),
                 DataEntry(getMinFeeKey(newConfig), realNeutrinoFee 
@@ -312,7 +312,6 @@ func setFeeConfig() = {
                 DataEntry(currentConfigId, newConfig),
                 DataEntry(getConfigStatusKey(newConfig), NEW)
         ])
-    }
     else throw("wrong parameters")
 }
 
