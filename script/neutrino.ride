@@ -151,7 +151,8 @@ func setFeeConfig(tx: SponsorFeeTransaction) = {
         realNeutrinoFee
     ) #in %
 
-    currentFeeSCProfit >= UpperBound && currentFeeSCProfit <= LowerBound
+    let needsChange = currentFeeSCProfit >= UpperBound || currentFeeSCProfit <= LowerBound
+    needsChange
 }
 
 #-------------------Get functions----------------------
