@@ -71,11 +71,11 @@ let MinWavesSwapAmountKey = "min_waves_swap_amount"
 let MinNeutrinoSwapAmountKey = "min_neutrino_swap_amount"
 let NodeOracleProviderPubKeyKey = "node_oracle_provider"
 
-let LowerBound = 50
-let UpperBound = 100
+let SponsoredFeeLowerBound = 50
+let SponsoredFeeUpperBound = 100
 let MINTRANSFERFEE = 100000 #wavelets
-let NEW = "new"
-let OK = "ok"
+# let NEW = "new"
+# let OK = "ok"
 #-------------------Keys---------------------------------
 let currentConfigId = "current_config_id"
 func getFeePriceKey(id: String) = "price_fee_" + id
@@ -143,16 +143,11 @@ let deficit = neutrinoSupply - convertWavesToNeutrino(reserve, currentPrice)
 
 
 #-------------------Verifier Functions----------------------
-func setFeeConfig(tx: SponsorFeeTransaction) = {
-    let realNeutrinoFee = convertWavesToNeutrino(MINTRANSFERFEE, currentPrice) #in paulis
-    let currentFeeSCProfit = fraction(
-        convertWavesToNeutrino(MINTRANSFERFEE, getNumberFromOptional(tx.minSponsoredAssetFee) - realNeutrinoFee),
-        100, 
-        realNeutrinoFee
-    ) #in %
-
-    let needsChange = currentFeeSCProfit >= UpperBound || currentFeeSCProfit <= LowerBound
-    needsChange
+func checkIsValidMinSponsoredFee(tx: SponsorFeeTransaction) = {
+    let realNeutrinoFee = convertWavesToNeutrino(MINTRANSFERFEE, currentPrice) # in paulis
+    let exactFee = fraction(realNeutrinoFee, SponsoredFeeUpperBound, 100) + fraction(realNeutrinoFee, SponsoredFeeLowerBound, 100)
+    
+    exactFee == tx.minSponsoredAssetFee
 }
 
 #-------------------Get functions----------------------
@@ -320,7 +315,7 @@ func migrationUSDNB2NSBTSwap() = {
         case leasingTx: LeaseTransaction | LeaseCancelTransaction =>
             sigVerify(tx.bodyBytes, tx.proofs[0], nodeOracleProviderPubKey)
         case sponsorTx: SponsorFeeTransaction =>
-            sigVerify(tx.bodyBytes, tx.proofs[0], nodeOracleProviderPubKey) && setFeeConfig(sponsorTx)
+            sigVerify(tx.bodyBytes, tx.proofs[0], nodeOracleProviderPubKey) && checkIsValidMinSponsoredFee(sponsorTx)
                 # && getStringByKey(getConfigStatusKey(config)) == NEW
                 # && sponsorTx.minSponsoredAssetFee == getNumberByKey(getMinFeeKey(getStringByKey(currentConfigId)))
         case _ => {
