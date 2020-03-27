@@ -295,14 +295,16 @@ func setFeeConfig() = {
     let realNeutrinoFee = convertWavesToNeutrino(MINTRANSFERFEE, currentPrice) #in paulis
     let config = getStringByKey(currentConfigId)
     let feePriceCurrentConfig = getFeePriceKey(config)
-    let currentFeeSCProfit = fraction(convertWavesToNeutrino(MINTRANSFERFEE, feePriceCurrentConfig) - realNeutrinoFee, 100, realNeutrinoFee) #in %
+    let currentFeeSCProfit = fraction(convertWavesToNeutrino(MINTRANSFERFEE, getNumberByKey(feePriceCurrentConfig)) - realNeutrinoFee, 100, realNeutrinoFee) #in %
     let changeCondition = currentFeeSCProfit >= UpperBound || currentFeeSCProfit <= LowerBound
     let currentMinFee = getNumberByKey(getMinFeeKey(config))
-    let ai = assetInfo(toBytes(neutrinoAssetId))
-    if (!changeCondition && getStringByKey(getConfigStatusKey(config)) == OK)
-        then throw("min fee is ok for current price, no changes needed")
-    else if (getStringByKey(getConfigStatusKey(config)) == NEW && ai.minSponsoredAssetFee == currentMinFee) #it means that SponsorFeeTransaction was ok 
-        then WriteSet(DataEntry(getConfigStatusKey(config), OK))
+    let ai = assetInfo(neutrinoAssetId)
+
+    if (!changeCondition && getStringByKey(getConfigStatusKey(config)) == OK) then 
+        throw("min fee is ok for current price, no changes needed")
+    else if (getStringByKey(getConfigStatusKey(config)) == NEW && ai.minSponsoredAssetFee == currentMinFee) then 
+        #it means that SponsorFeeTransaction was ok
+        WriteSet(DataEntry(getConfigStatusKey(config), OK))
     else if (changeCondition) then
         let newConfig = toBase58String(keccak256(toBytes(currentPrice) + i.caller.bytes + toBytes(config) + i.transactionId))
         WriteSet([
