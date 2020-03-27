@@ -71,16 +71,11 @@ let MinWavesSwapAmountKey = "min_waves_swap_amount"
 let MinNeutrinoSwapAmountKey = "min_neutrino_swap_amount"
 let NodeOracleProviderPubKeyKey = "node_oracle_provider"
 
-let SponsoredFeeLowerBound = 50
+# let SponsoredFeeLowerBound = 50
 let SponsoredFeeUpperBound = 100
 let MINTRANSFERFEE = 100000 #wavelets
 # let NEW = "new"
 # let OK = "ok"
-#-------------------Keys---------------------------------
-let currentConfigId = "current_config_id"
-func getFeePriceKey(id: String) = "price_fee_" + id
-func getMinFeeKey(id: String) = "minfee_fee_" + id
-func getConfigStatusKey(id: String) = "fee_config_status_" + id
 
 #------Common----------------
 let RPDBalanceKey = "rpd_balance"
@@ -145,9 +140,10 @@ let deficit = neutrinoSupply - convertWavesToNeutrino(reserve, currentPrice)
 #-------------------Verifier Functions----------------------
 func checkIsValidMinSponsoredFee(tx: SponsorFeeTransaction) = {
     let realNeutrinoFee = convertWavesToNeutrino(MINTRANSFERFEE, currentPrice) # in paulis
-    let exactFee = fraction(realNeutrinoFee, SponsoredFeeUpperBound, 100) + fraction(realNeutrinoFee, SponsoredFeeLowerBound, 100)
+
+    let exactFee = realNeutrinoFee + fraction(realNeutrinoFee, SponsoredFeeUpperBound, 100)
     
-    exactFee == tx.minSponsoredAssetFee
+    getNumberFromOptional(tx.minSponsoredAssetFee) == exactFee
 }
 
 #-------------------Get functions----------------------
