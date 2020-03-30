@@ -145,6 +145,7 @@ func checkIsValidMinSponsoredFee(tx: SponsorFeeTransaction) = {
     let exactFee = realNeutrinoFee + fraction(realNeutrinoFee, SponsoredFeeUpperBound, 100)
     let actual = getNumberFromOptional(tx.minSponsoredAssetFee)
 
+    # if tx.assetId == neutrinoAssetId
     if actual == exactFee then
         true
     else
