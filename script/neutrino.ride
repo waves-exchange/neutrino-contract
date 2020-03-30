@@ -72,7 +72,7 @@ let MinNeutrinoSwapAmountKey = "min_neutrino_swap_amount"
 let NodeOracleProviderPubKeyKey = "node_oracle_provider"
 
 # let SponsoredFeeLowerBound = 50
-let SponsoredFeeUpperBound = 100
+let SponsoredFeeUpperBound = 75
 let MINTRANSFERFEE = 100000 #wavelets
 # let NEW = "new"
 # let OK = "ok"
@@ -143,8 +143,12 @@ func checkIsValidMinSponsoredFee(tx: SponsorFeeTransaction) = {
     let realNeutrinoFee = convertWavesToNeutrino(MINTRANSFERFEE, mockedCurrentPrice) # in paulis
 
     let exactFee = realNeutrinoFee + fraction(realNeutrinoFee, SponsoredFeeUpperBound, 100)
-    
-    getNumberFromOptional(tx.minSponsoredAssetFee) == exactFee
+    let actual = getNumberFromOptional(tx.minSponsoredAssetFee)
+
+    if actual == exactFee then
+        true
+    else
+        throw("Error. Exact: " + toString(exactFee) + ". Passed: " + toString(actual))
 }
 
 #-------------------Get functions----------------------
@@ -312,7 +316,7 @@ func migrationUSDNB2NSBTSwap() = {
         case leasingTx: LeaseTransaction | LeaseCancelTransaction =>
             sigVerify(tx.bodyBytes, tx.proofs[0], nodeOracleProviderPubKey)
         case sponsorTx: SponsorFeeTransaction =>
-            sigVerify(tx.bodyBytes, tx.proofs[0], nodeOracleProviderPubKey) && checkIsValidMinSponsoredFee(sponsorTx)
+            checkIsValidMinSponsoredFee(sponsorTx)
                 # && getStringByKey(getConfigStatusKey(config)) == NEW
                 # && sponsorTx.minSponsoredAssetFee == getNumberByKey(getMinFeeKey(getStringByKey(currentConfigId)))
         case _ => {
