@@ -55,6 +55,7 @@ let WavesLockedBalanceKey = BalanceLockedkKey + "waves"
 let NeutrinoLockedBalanceKey = BalanceLockedkKey + "neutrino"
 let FirstOrderKey = "order_first"
 let LastOrderKey = "order_last"
+let CurrentDefaultOrderKey = "order_default"
 
 func getRoiByOrderIdKey(orderId: String) = "debug_order_roi_" + orderId
 
@@ -106,6 +107,8 @@ func getLastOrderOwner(owner: String) = getStringByKey(getLastOrderOwnerKey(owne
 func getPrevOrder(id: String) = getStringByKey(getPrevOrderKey(id))
 func getNextOrder(id: String) = getStringByKey(getNextOrderKey(id))
 
+func getCurrentDefaultOrder() = getStringByKey(getOrderStatusKey(CurrentDefaultOrderKey))
+
 #-------------------Liquidation---------------------------
 func internalAddLiquidationOrder(i: Invocation, price: Int, prevOrder: String) = {
     # price - means how SC will execute orders. USDN/NSBT, example: 15 neutrinos / 10 basetokens;
@@ -113,47 +116,48 @@ func internalAddLiquidationOrder(i: Invocation, price: Int, prevOrder: String) =
     # the behaviour of this price is same as roi within auction SC, so almost no changes in the orderbook logic
     let pmt = extract(i.payment);
     let newOrderId = toBase58String(keccak256(toBytes(pmt.amount) + i.caller.bytes + toBytes(height) + i.transactionId))
-    
-    let nextOrder = getNextOrder(lastOrder)
-    let orderStatus = getOrderStatus(lastOrder)
-    let owner = toString(i.caller)
 
     if (isBlocked) 
         then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles")
-    else if (pmt.assetId != bondAssetId) 
-        then throw("can use appropriate neutrino bonds tokens only")
-    else if(getOrderOwner(newOrderId) != "")
-        then throw("an order is already exists")
-    else if(nextOrder != "")
-        then throw("nextOrder is not last. Info:" + nextOrder)
-    else if(firstOrder != "" && lastOrder == "")
-        then throw("invalid last order")
-    else if(prevOrder != "" && getOrderStatus(prevOrder) != NEW)
-        then throw("prev order status is not new")
     else if (pmt.amount < PAULI)
         then throw("order amount must be higher than 1 NSBT")
+    else if (price < 100) 
+        then throw("price should be equal or higher than 1 nsbt for 1 usdn. i.e. >= 100; price: " + toString(price))
+    else if (pmt.assetId != bondAssetId) 
+        then throw("can use appropriate neutrino base tokens (nsbt) only")
+    else if(getOrderOwner(newOrderId) != "")
+        then throw("an order is already exists")
+    else if(prevOrder != "" && getOrderStatus(prevOrder) != NEW)
+        then throw("prev order status is not new")
     else {
-        let nextOrderPrice = getNumberByKey("getPriceByOrderIdKey(nextOrder)")
+        let owner = toString(i.caller)
+        let nextOrder = if prevOrder == "" then firstOrder else getNextOrder(prevOrder)
+        let nextOrderPrice = getNumberByKey(getOrderPriceKey(nextOrder))
         let isNextOrderError = if(nextOrder != "" && price >= nextOrderPrice) then true else false;
-        let prevOrderPrice = getNumberByKey("getPriceByOrderIdKey(prevOrder)")
+
+        let prevOrderPrice = getNumberByKey(getRoiByOrderIdKey(prevOrder))
         let isPrevOrderError = if(prevOrder != "" && price < prevOrderPrice) then true else false;
+
         if (isNextOrderError || isPrevOrderError)
             then throw("invalid order isPrevOrderError:" + toString(isPrevOrderError) + " isNextOrderError:" + toString(isNextOrderError))
         else 
             WriteSet([
-                DataEntry(getLastOrderOwnerKey(owner), newOrderId),
-                DataEntry(getPrevOrderKey(newOrderId), lastOrder),
-                DataEntry(getNextOrderKey(lastOrder), if lastOrder == "" then "" else newOrderId),
+                DataEntry(getPrevOrderKey(newOrderId), prevOrder),
+                DataEntry(getNextOrderKey(newOrderId), nextOrder),
 
-                DataEntry(FirstOrderKey, if firstOrder == "" then newOrderId else firstOrder),
-                DataEntry(LastOrderKey, newOrderId),
+                DataEntry(getNextOrderKey(prevOrder), if prevOrder == "" then "" else newOrderId),
+                DataEntry(getPrevOrderKey(nextOrder), if nextOrder == "" then "" else newOrderId),
 
+                DataEntry(FirstOrderKey, if firstOrder == "" || firstOrder == nextOrder then newOrderId else firstOrder),
+
+                DataEntry(getOrderPriceKey(newOrderId), price),
                 DataEntry(getOrderTotalKey(newOrderId), pmt.amount),
                 DataEntry(getOrderOwnerKey(newOrderId), owner),
                 DataEntry(getOrderHeightKey(newOrderId), height),
                 DataEntry(getOrderStatusKey(newOrderId), NEW),
-                DataEntry(getRoiByOrderIdKey(newOrderId), roi)
-
+                DataEntry("debug_order_currentPrice_" + newOrderId, currentPrice),
+                
+                DataEntry(CurrentDefaultOrderKey, if price == 100 then newOrderId else getCurrentDefaultOrder())
             ])
     }
 }
@@ -169,7 +173,8 @@ func addLiquidationOrderWithPrice(price: Int, prevOrder: String) = {
 
 @Callable(i)
 func addLiquidationOrder() = {
-    internalAddLiquidationOrder(i, 1, lastOrder)
+    let prevOrder = getCurrentDefaultOrder()
+    internalAddLiquidationOrder(i, 100, prevOrder)
 }
 
 # cancel buy bonds order or liquidation order
