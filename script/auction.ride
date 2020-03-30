@@ -118,7 +118,7 @@ func getNextOrder(id: String) = getStringByKey(getNextOrderKey(id))
 @Callable(i)
 func addBuyBondOrder(price : Int, prevOrder: String) = {
     let pmt = extract(i.payment);
-    let orderId = toBase58String(keccak256(toBytes(price) + toBytes(pmt.amount) + i.caller.bytes + toBytes(height) + i.transactionId))
+    let newOrderId = toBase58String(keccak256(toBytes(price) + toBytes(pmt.amount) + i.caller.bytes + toBytes(height) + i.transactionId))
     # price = 100*usdnb/waves, but we have to work with price with another scale: priceWavesByBondCents = 100*waves/usdnb, so priceWavesByBondCents = 100*1/(price/100)
     let priceWavesByBondCents = fraction(100, 100, price)
     let roi = fraction(priceWavesByBondCents - currentPrice, 100, currentPrice) # Example: 1.2 WAVES/USDNB (1.2 bonds for 1 waves) and 0.8 WAVES/USD (0.8 usd for 1 waves) gives 100*(1.2-0.8/0.8) 50% ROI
@@ -135,7 +135,7 @@ func addBuyBondOrder(price : Int, prevOrder: String) = {
         then throw("can use waves only")
     else if(price <= 0)
         then throw("price less zero")
-    else if(getOrderOwner(orderId) != "")
+    else if(getOrderOwner(newOrderId) != "")
         then throw("order exists")
     else if(prevOrder != "" && getOrderStatus(prevOrder) != NEW)
         then throw("prev order status is not new")
@@ -152,21 +152,21 @@ func addBuyBondOrder(price : Int, prevOrder: String) = {
             then throw("invalid order isPrevOrderError:" + toString(isPrevOrderError) + " isNextOrderError:" + toString(isNextOrderError))
         else
             WriteSet([
-                DataEntry(getPrevOrderKey(orderId), prevOrder),
-                DataEntry(getNextOrderKey(orderId), nextOrder),
+                DataEntry(getPrevOrderKey(newOrderId), prevOrder),
+                DataEntry(getNextOrderKey(newOrderId), nextOrder),
 
-                DataEntry(getNextOrderKey(prevOrder), if prevOrder == "" then "" else orderId),
-                DataEntry(getPrevOrderKey(nextOrder), if nextOrder == "" then "" else orderId),
+                DataEntry(getNextOrderKey(prevOrder), if prevOrder == "" then "" else newOrderId),
+                DataEntry(getPrevOrderKey(nextOrder), if nextOrder == "" then "" else newOrderId),
 
-                DataEntry(FirstOrderKey, if firstOrder == "" || firstOrder == nextOrder then orderId else firstOrder),
+                DataEntry(FirstOrderKey, if firstOrder == "" || firstOrder == nextOrder then newOrderId else firstOrder),
 
-                DataEntry(getOrderPriceKey(orderId), price),
-                DataEntry(getOrderTotalKey(orderId), pmt.amount),
-                DataEntry(getOrderOwnerKey(orderId), owner),
-                DataEntry(getOrderHeightKey(orderId), height),
-                DataEntry(getOrderStatusKey(orderId), NEW),
-                DataEntry("debug_order_currentPrice_" + orderId, currentPrice),
-                DataEntry(getRoiByOrderIdKey(orderId), roi)
+                DataEntry(getOrderPriceKey(newOrderId), price),
+                DataEntry(getOrderTotalKey(newOrderId), pmt.amount),
+                DataEntry(getOrderOwnerKey(newOrderId), owner),
+                DataEntry(getOrderHeightKey(newOrderId), height),
+                DataEntry(getOrderStatusKey(newOrderId), NEW),
+                DataEntry("debug_order_currentPrice_" + newOrderId, currentPrice),
+                DataEntry(getRoiByOrderIdKey(newOrderId), roi)
             ])
     }
 }

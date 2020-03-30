@@ -58,6 +58,7 @@ let LastOrderKey = "order_last"
 
 func getRoiByOrderIdKey(orderId: String) = "debug_order_roi_" + orderId
 
+func getOrderPriceKey(orderId: String) = "order_price_" + orderId
 func getOrderTotalKey(orderId: String) = "order_total_" + orderId
 func getOrderOwnerKey(orderId: String) = "order_owner_" + orderId
 func getOrderHeightKey(orderId: String) = "order_height_" + orderId
@@ -95,6 +96,7 @@ let surplus = convertWavesToNeutrino(reserve, currentPrice) - neutrinoSupply
 
 
 #-------------------Get functions------------------------
+func getOrderPrice(id : String) = getNumberByKey(getOrderPriceKey(id))
 func getOrderTotal(id : String) = getNumberByKey(getOrderTotalKey(id))
 func getOrderOwner(id : String) = getStringByKey(getOrderOwnerKey(id))
 func getOrderStatus(id : String) = getStringByKey(getOrderStatusKey(id))
@@ -201,7 +203,7 @@ func cancelOrder(orderId : String) = {
     }
 }
 
-# executing bond -> neutrino 1:1 exchange from the liquidation queue if SC has reached proficit in collateral cap
+# executing nsbt -> neutrino 1:1 exchange from the liquidation queue if SC has reached proficit in collateral cap
 # it's calling n-times untill all orders from the liquidation queue will be executed during proficit stage
 # [called by pacemaker oracles]
 @Callable(i)
@@ -210,44 +212,56 @@ func liquidateBond() = {
     let surplusPositive = if(surplus <= 0) then 0 else surplus
     let returnAmount = if(surplusPositive >= liquidationBalance) then 0 else liquidationBalance-surplusPositive
     let surplusBond = surplusPositive #integer
-  
+
     if (isBlocked) 
         then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles")
-    else if(returnAmount == 0 && liquidationBalance == 0)
-        then throw("cannot liquidate order without neutrino on the smart contract")
-    else if(returnAmount > 0) then {
+    else if (liquidationBalance == 0)
+        then throw("without bonds to liquidate")
+    else if(surplusBond > 0) then {
         TransferSet([
-            ScriptTransfer(neutrinoContract, returnAmount, neutrinoAssetId)
+            ScriptTransfer(neutrinoContract, returnAmount, bondAssetId)
         ])
     }
-    else if(surplusBond <= 0)
-        then throw("there is no proficit on the smart contract now")
     else if(firstOrder == "")
         then throw("empty orderbook")
     else {
         let nextOrder = getNextOrder(firstOrder)
+        let filledTotal = getOrderFilledTotal(firstOrder)
+        let orderPrice = getOrderPrice(firstOrder)
+        let priceWavesByBondCents = fraction(100, 100, orderPrice)
+        let roi = getNumberByKey(getRoiByOrderIdKey(firstOrder))
+
         let orderTotal = getOrderTotal(firstOrder)
         let orderOwner = getOrderOwner(firstOrder)
-        let filledTotal = getOrderFilledTotal(firstOrder)
 
         let amount = orderTotal-filledTotal;
-        let newStatus = if(surplusBond >= amount) then FILLED else NEW
         let fillableOrderAmount = if(surplusBond >= amount) then amount else surplusBond
 
-        ScriptResult(
-            WriteSet([
-                DataEntry(getPrevOrderKey(nextOrder), if(newStatus == FILLED) then "" else firstOrder), #if current first order has new status filled so, his prev order is now empty
-                DataEntry(FirstOrderKey, if(newStatus == FILLED) then nextOrder else firstOrder),
-                DataEntry(LastOrderKey, if(newStatus == FILLED && firstOrder == lastOrder) then "" else lastOrder),
-                DataEntry(getOrderFilledTotalKey(firstOrder), filledTotal + fillableOrderAmount),
-                DataEntry(getOrderStatusKey(firstOrder), newStatus)
-            ]), 
-            TransferSet([
-                ScriptTransfer(addressFromStringValue(orderOwner), fillableOrderAmount, neutrinoAssetId)
-            ])
-        )
+        let nbTokensLiquidateCondition = if (surplus > 0) 
+            then fraction(surplus, 100, neutrinoSupply) > roi 
+            else fraction(surplus, 100, neutrinoSupply) < roi 
+
+        if (!nbTokensLiquidateCondition)
+            then throw("innapropriate roi: " + toString(roi))
+        else {
+            let newStatus = if(surplusBond >= amount) then FILLED else NEW
+            ScriptResult(
+                WriteSet([
+                    DataEntry(getPrevOrderKey(nextOrder), if(newStatus == FILLED) then "" else firstOrder), #if current first order has new status filled so, his prev order is now empty
+                    DataEntry(FirstOrderKey, if(newStatus == FILLED) then nextOrder else firstOrder),
+                    DataEntry(LastOrderKey, if(newStatus == FILLED && firstOrder == lastOrder) then "" else lastOrder),
+                    DataEntry(getOrderFilledTotalKey(firstOrder), filledTotal + fillableOrderAmount),
+                    DataEntry(getOrderStatusKey(firstOrder), newStatus)
+                ]), 
+                TransferSet([
+                    ScriptTransfer(addressFromStringValue(orderOwner), fillableOrderAmount, neutrinoAssetId)
+                ])
+            )
+        }
     }
 }
+
+
 
 @Verifier(tx)
 func verify() = {
