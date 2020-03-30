@@ -42,7 +42,6 @@ func getNumberByAddressAndKey(address: Address, key: String) = {
 #-------------------Constants---------------------------
 let WAVELET = 100000000
 let PAULI = 1000000
-let PERCENTACCURACY = 1000
 let MINORDERTOTAL = 10*WAVELET
 let MAXROI = 95
 #------Order statuses------
@@ -125,7 +124,7 @@ func addBuyBondOrder(price : Int, prevOrder: String) = {
     let roi = fraction(priceWavesByBondCents - currentPrice, 100, currentPrice) # Example: 1.2 WAVES/USDNB (1.2 bonds for 1 waves) and 0.8 WAVES/USD (0.8 usd for 1 waves) gives 100*(1.2-0.8/0.8) 50% ROI
 
     if (isBlocked)
-        then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles")
+        then throw("contract is blocked by EMERGENCY SHUTDOWN actions until reactivation by emergency oracles")
     else if(pmt.amount < MINORDERTOTAL)
         then throw("min order total equals " + toString(MINORDERTOTAL))
     else if (roi > MAXROI)
@@ -172,6 +171,7 @@ func addBuyBondOrder(price : Int, prevOrder: String) = {
     }
 }
 
+
 # cancel buy bonds order or liquidation order
 # [called by user]
 @Callable(i)
@@ -215,7 +215,9 @@ func sellBond() = {
     let bondAmount = if(deficitPositive >= bondBalance) then bondBalance else deficitPositive # possible bond amount for selling; scale: integers (dollars)
     let returnAmount = bondBalance - neutrinoSupply
 
-    if (bondBalance == 0)
+    if (isBlocked) 
+        then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles")
+    else if (bondBalance == 0)
         then throw("without bonds to sell")
     else if(returnAmount > 0) then {
         # return bonds back if there is more bonds than deficit  

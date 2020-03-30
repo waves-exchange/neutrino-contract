@@ -36,10 +36,7 @@ func getNumberByAddressAndKey(address: Address, key: String) = {
 
 #-------------------Constants---------------------------
 let WAVELET = 100000000
-let ORDERSPLITSYMBOL = "_"
 let PAULI = 1000000
-let PERCENTACCURACY = 1000
-let MAXDISCOUNT = 50
 #------Order statuses------
 let CANCELED = "canceled"
 let NEW = "new"
@@ -59,14 +56,18 @@ let NeutrinoLockedBalanceKey = BalanceLockedkKey + "neutrino"
 let FirstOrderKey = "order_first"
 let LastOrderKey = "order_last"
 
-func getOrderPrevKey(orderId: String) = "order_prev_" + orderId
-func getOrderNextKey(orderId: String) = "order_next_" + orderId
+func getRoiByOrderIdKey(orderId: String) = "debug_order_roi_" + orderId
+
 func getOrderTotalKey(orderId: String) = "order_total_" + orderId
 func getOrderOwnerKey(orderId: String) = "order_owner_" + orderId
 func getOrderHeightKey(orderId: String) = "order_height_" + orderId
 func getOrderStatusKey(orderId: String) = "order_status_" + orderId
 func getOrderFilledTotalKey(orderId: String) = "order_filled_total_" + orderId
 func getLastOrderOwnerKey(owner: String) = "last_order_owner_" + owner
+
+func getPrevOrderKey(orderId: String) = "order_prev_" + orderId
+func getNextOrderKey(orderId: String) = "order_next_" + orderId
+
 
 #-------------------Convert functions-------------------
 func convertNeutrinoToWaves(amount: Int, price: Int) = fraction(fraction(amount, 100, price),WAVELET, PAULI)
@@ -98,23 +99,21 @@ func getOrderTotal(id : String) = getNumberByKey(getOrderTotalKey(id))
 func getOrderOwner(id : String) = getStringByKey(getOrderOwnerKey(id))
 func getOrderStatus(id : String) = getStringByKey(getOrderStatusKey(id))
 func getOrderFilledTotal(id : String) = getNumberByKey(getOrderFilledTotalKey(id))
-func getOrderPrev(id: String) = getStringByKey(getOrderPrevKey(id))
-func getOrderNext(id: String) = getStringByKey(getOrderNextKey(id))
 func getOrderHeight(id: String) = getNumberByKey(getOrderHeightKey(id))
 func getLastOrderOwner(owner: String) = getStringByKey(getLastOrderOwnerKey(owner))
+func getPrevOrder(id: String) = getStringByKey(getPrevOrderKey(id))
+func getNextOrder(id: String) = getStringByKey(getNextOrderKey(id))
 
-#-------------------Callable---------------------------
-
-# set 'bonds liquidation order' (bond -> neutrino 1:1 exchange) to the liquidation queue
-# [called by user]
-@Callable(i)
-func addLiquidationOrder(price : Int, prevOrder: String) = {
+#-------------------Liquidation---------------------------
+func internalAddLiquidationOrder(i: Invocation, price: Int, prevOrder: String) = {
     let pmt = extract(i.payment);
     let newOrderId = toBase58String(keccak256(toBytes(pmt.amount) + i.caller.bytes + toBytes(height) + i.transactionId))
+    let roi = fraction(price, 100, price) #todo
     
-    let nextOrder = getOrderNext(lastOrder)
+    let nextOrder = getNextOrder(lastOrder)
     let orderStatus = getOrderStatus(lastOrder)
     let owner = toString(i.caller)
+
     if (isBlocked) 
         then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles")
     else if (pmt.assetId != bondAssetId) 
@@ -139,8 +138,8 @@ func addLiquidationOrder(price : Int, prevOrder: String) = {
         else 
             WriteSet([
                 DataEntry(getLastOrderOwnerKey(owner), newOrderId),
-                DataEntry(getOrderPrevKey(newOrderId), lastOrder),
-                DataEntry(getOrderNextKey(lastOrder), if lastOrder == "" then "" else newOrderId),
+                DataEntry(getPrevOrderKey(newOrderId), lastOrder),
+                DataEntry(getNextOrderKey(lastOrder), if lastOrder == "" then "" else newOrderId),
 
                 DataEntry(FirstOrderKey, if firstOrder == "" then newOrderId else firstOrder),
                 DataEntry(LastOrderKey, newOrderId),
@@ -148,9 +147,25 @@ func addLiquidationOrder(price : Int, prevOrder: String) = {
                 DataEntry(getOrderTotalKey(newOrderId), pmt.amount),
                 DataEntry(getOrderOwnerKey(newOrderId), owner),
                 DataEntry(getOrderHeightKey(newOrderId), height),
-                DataEntry(getOrderStatusKey(newOrderId), NEW)
+                DataEntry(getOrderStatusKey(newOrderId), NEW),
+                DataEntry(getRoiByOrderIdKey(newOrderId), roi)
+
             ])
     }
+}
+
+
+#-------------------Callable---------------------------
+# set 'bonds liquidation order' (bond -> neutrino 1:1 exchange) to the liquidation queue
+# [called by user]
+@Callable(i)
+func addLiquidationOrderWithPrice(price: Int, prevOrder: String) = {
+    internalAddLiquidationOrder(i, price, prevOrder)
+}
+
+@Callable(i)
+func addLiquidationOrder() = {
+    internalAddLiquidationOrder(i, 1, lastOrder)
 }
 
 # cancel buy bonds order or liquidation order
@@ -160,8 +175,8 @@ func cancelOrder(orderId : String) = {
     let owner = getOrderOwner(orderId)
     let amount = getOrderTotal(orderId) - getOrderFilledTotal(orderId)
     
-    let nextOrder = getOrderNext(orderId)
-    let prevOrder = getOrderPrev(orderId)
+    let nextOrder = getNextOrder(orderId)
+    let prevOrder = getPrevOrder(orderId)
     
     if (isBlocked) 
         then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles")
@@ -175,9 +190,8 @@ func cancelOrder(orderId : String) = {
                 DataEntry(FirstOrderKey, if firstOrder == orderId then nextOrder else firstOrder),
                 DataEntry(LastOrderKey, if lastOrder == orderId then prevOrder else lastOrder),
 
-                DataEntry(getOrderNextKey(prevOrder), nextOrder),
-                DataEntry(getOrderPrevKey(nextOrder), prevOrder),
-
+                DataEntry(getNextOrderKey(prevOrder), nextOrder),
+                DataEntry(getPrevOrderKey(nextOrder), prevOrder),
                 DataEntry(getOrderStatusKey(orderId), CANCELED)
             ]), 
             TransferSet([
@@ -192,8 +206,8 @@ func cancelOrder(orderId : String) = {
 # [called by pacemaker oracles]
 @Callable(i)
 func liquidateBond() = {
-    let surplusPositive = if(surplus <= 0) then 0 else surplus
     let liquidationBalance = assetBalance(this, neutrinoAssetId) #paulis
+    let surplusPositive = if(surplus <= 0) then 0 else surplus
     let returnAmount = if(surplusPositive >= liquidationBalance) then 0 else liquidationBalance-surplusPositive
     let surplusBond = surplusPositive #integer
   
@@ -211,7 +225,7 @@ func liquidateBond() = {
     else if(firstOrder == "")
         then throw("empty orderbook")
     else {
-        let nextOrder = getOrderNext(firstOrder)
+        let nextOrder = getNextOrder(firstOrder)
         let orderTotal = getOrderTotal(firstOrder)
         let orderOwner = getOrderOwner(firstOrder)
         let filledTotal = getOrderFilledTotal(firstOrder)
@@ -222,7 +236,7 @@ func liquidateBond() = {
 
         ScriptResult(
             WriteSet([
-                DataEntry(getOrderPrevKey(nextOrder), if(newStatus == FILLED) then "" else firstOrder), #if current first order has new status filled so, his prev order is now empty
+                DataEntry(getPrevOrderKey(nextOrder), if(newStatus == FILLED) then "" else firstOrder), #if current first order has new status filled so, his prev order is now empty
                 DataEntry(FirstOrderKey, if(newStatus == FILLED) then nextOrder else firstOrder),
                 DataEntry(LastOrderKey, if(newStatus == FILLED && firstOrder == lastOrder) then "" else lastOrder),
                 DataEntry(getOrderFilledTotalKey(firstOrder), filledTotal + fillableOrderAmount),
