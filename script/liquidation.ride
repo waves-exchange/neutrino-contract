@@ -219,7 +219,7 @@ func liquidateBond() = {
         then throw("without bonds to liquidate")
     else if(surplusBond > 0) then {
         TransferSet([
-            ScriptTransfer(neutrinoContract, returnAmount, bondAssetId)
+            ScriptTransfer(neutrinoContract, returnAmount, neutrinoAssetId)
         ])
     }
     else if(firstOrder == "")
