@@ -108,9 +108,11 @@ func getNextOrder(id: String) = getStringByKey(getNextOrderKey(id))
 
 #-------------------Liquidation---------------------------
 func internalAddLiquidationOrder(i: Invocation, price: Int, prevOrder: String) = {
+    # price - means how SC will execute orders. USDN/NSBT, example: 15 neutrinos / 10 basetokens;
+    # i.e. SC is going to buy 10 basetokens for 15 usdn tokens; price = 150 (1.5 * 100)
+    # the behaviour of this price is same as roi within auction SC, so almost no changes in the orderbook logic
     let pmt = extract(i.payment);
     let newOrderId = toBase58String(keccak256(toBytes(pmt.amount) + i.caller.bytes + toBytes(height) + i.transactionId))
-    let roi = fraction(price, 100, price) #todo
     
     let nextOrder = getNextOrder(lastOrder)
     let orderStatus = getOrderStatus(lastOrder)
