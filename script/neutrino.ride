@@ -135,7 +135,7 @@ let deficit = neutrinoSupply - convertWavesToNeutrino(reserve, currentPrice)
 #-------------------Verifier Functions----------------------
 func checkIsValidMinSponsoredFee(tx: SponsorFeeTransaction) = {
     let SponsoredFeeUpperBound = 100 # % of fee profits higther than real fee for transfer
-    let MINTRANSFERFEE = 5*100000 #wavelets (to support smart assets)
+    let MINTRANSFERFEE = 100000 #wavelets (to support smart assets)
 
     let realNeutrinoFee = convertWavesToNeutrino(MINTRANSFERFEE, currentPrice) # in paulis
 
