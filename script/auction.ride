@@ -218,7 +218,7 @@ func sellBond() = {
     if (isBlocked) 
         then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles")
     else if (bondBalance == 0)
-        then throw("without bonds to sell")
+        then throw("without base tokens to sell")
     else if(returnAmount > 0) then {
         # return bonds back if there is more bonds than deficit  
         TransferSet([
