@@ -43,12 +43,6 @@ func getBoolByAddressAndKey(address: String, key: String) = {
             case _ => false
     }
 }
-func getNumberFromOptional(value: Int|Unit) = {
-    match value {
-        case a: Int => a
-        case _ => 0
-    }
-}
 
 let pubKeyAdminsList = [
     "BLEoguzPVKVTfXxxT3W7Rqf8aUm2ggC9Vemd2MQawM2G",	
@@ -146,7 +140,7 @@ func checkIsValidMinSponsoredFee(tx: SponsorFeeTransaction) = {
     let realNeutrinoFee = convertWavesToNeutrino(MINTRANSFERFEE, currentPrice) # in paulis
 
     let exactFee = realNeutrinoFee + fraction(realNeutrinoFee, SponsoredFeeUpperBound, 100)
-    let actual = getNumberFromOptional(tx.minSponsoredAssetFee)
+    let actual = extract(tx.minSponsoredAssetFee)
     if actual == exactFee && tx.assetId == neutrinoAssetId
         then true
     else
@@ -320,7 +314,8 @@ func migrationUSDNB2NSBTSwap() = {
         case leasingTx: LeaseTransaction | LeaseCancelTransaction =>
             sigVerify(tx.bodyBytes, tx.proofs[0], nodeOracleProviderPubKey)
         case sponsorTx: SponsorFeeTransaction =>
-            checkIsValidMinSponsoredFee(sponsorTx) && count >= 1
+            sigVerify(tx.bodyBytes, tx.proofs[0], nodeOracleProviderPubKey) && 
+                checkIsValidMinSponsoredFee(sponsorTx) && count >= 1
         case _ => {	
             count >= 3
         }
