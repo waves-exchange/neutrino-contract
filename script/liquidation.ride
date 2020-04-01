@@ -47,17 +47,14 @@ let NeutrinoContractKey = "neutrino_contract"
 
 #-------------------Keys--------------------------------
 let PriceKey = "price"
-let BondAssetIdKey = "bond_asset_id"
+let BondAssetIdKey = "bond_asset_id" 
 let NeutrinoAssetIdKey = "neutrino_asset_id"
 let ControlContractKey = "control_contract"
 let BalanceLockedkKey = "balance_lock_"
 let WavesLockedBalanceKey = BalanceLockedkKey + "waves"
 let NeutrinoLockedBalanceKey = BalanceLockedkKey + "neutrino"
 let FirstOrderKey = "order_first"
-let LastOrderKey = "order_last"
 let CurrentDefaultOrderKey = "order_default"
-
-func getRoiByOrderIdKey(orderId: String) = "debug_order_roi_" + orderId
 
 func getOrderPriceKey(orderId: String) = "order_price_" + orderId
 func getOrderTotalKey(orderId: String) = "order_total_" + orderId
@@ -65,7 +62,6 @@ func getOrderOwnerKey(orderId: String) = "order_owner_" + orderId
 func getOrderHeightKey(orderId: String) = "order_height_" + orderId
 func getOrderStatusKey(orderId: String) = "order_status_" + orderId
 func getOrderFilledTotalKey(orderId: String) = "order_filled_total_" + orderId
-func getLastOrderOwnerKey(owner: String) = "last_order_owner_" + owner
 
 func getPrevOrderKey(orderId: String) = "order_prev_" + orderId
 func getNextOrderKey(orderId: String) = "order_next_" + orderId
@@ -83,7 +79,6 @@ let liquidationContract = this
 let neutrinoAssetId = fromBase58String(getStringByAddressAndKey(neutrinoContract, NeutrinoAssetIdKey)) # Assets ids. The value from neutrino.ride
 let bondAssetId = fromBase58String("6nSpVyNH7yM69eg446wrQR94ipbbcmZMU1ENPwanC97g") # NSBT with 6 decimals as USDN does
 let firstOrder = getStringByKey(FirstOrderKey)
-let lastOrder = getStringByKey(LastOrderKey)
 
 let isBlocked = getBoolByAddressAndKey(controlContract, "is_blocked")
 
@@ -103,7 +98,6 @@ func getOrderOwner(id : String) = getStringByKey(getOrderOwnerKey(id))
 func getOrderStatus(id : String) = getStringByKey(getOrderStatusKey(id))
 func getOrderFilledTotal(id : String) = getNumberByKey(getOrderFilledTotalKey(id))
 func getOrderHeight(id: String) = getNumberByKey(getOrderHeightKey(id))
-func getLastOrderOwner(owner: String) = getStringByKey(getLastOrderOwnerKey(owner))
 func getPrevOrder(id: String) = getStringByKey(getPrevOrderKey(id))
 func getNextOrder(id: String) = getStringByKey(getNextOrderKey(id))
 
@@ -118,7 +112,7 @@ func internalAddLiquidationOrder(i: Invocation, price: Int, prevOrder: String) =
     let newOrderId = toBase58String(keccak256(toBytes(pmt.amount) + i.caller.bytes + toBytes(height) + i.transactionId))
 
     if (isBlocked) 
-        then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles")
+        then throw("contract is blocked by EMERGENCY SHUTDOWN actions until reactivation by emergency oracles")
     else if (pmt.amount < PAULI)
         then throw("order amount must be higher than 1 NSBT")
     else if (price < 100) 
@@ -135,7 +129,7 @@ func internalAddLiquidationOrder(i: Invocation, price: Int, prevOrder: String) =
         let nextOrderPrice = getNumberByKey(getOrderPriceKey(nextOrder))
         let isNextOrderError = if(nextOrder != "" && price >= nextOrderPrice) then true else false;
 
-        let prevOrderPrice = getNumberByKey(getRoiByOrderIdKey(prevOrder))
+        let prevOrderPrice = getNumberByKey(getOrderPriceKey(prevOrder))
         let isPrevOrderError = if(prevOrder != "" && price < prevOrderPrice) then true else false;
 
         if (isNextOrderError || isPrevOrderError)
@@ -198,7 +192,7 @@ func cancelOrder(orderId : String) = {
     let prevOrder = getPrevOrder(orderId)
     
     if (isBlocked) 
-        then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles")
+        then throw("contract is blocked by EMERGENCY SHUTDOWN actions until reactivation by emergency oracles")
     else if(owner != caller)
         then throw("permission denied")
     else if(getOrderStatus(orderId) != NEW)
@@ -222,7 +216,7 @@ func cancelOrder(orderId : String) = {
 }
 
 # executing nsbt -> neutrino 1:1 exchange from the liquidation queue if SC has reached proficit in collateral cap
-# it's calling n-times untill all orders from the liquidation queue will be executed during proficit stage
+# it's calling n-times until all orders from the liquidation queue will be executed during proficit stage
 # [called by pacemaker oracles]
 @Callable(i)
 func liquidateBond() = {
@@ -232,7 +226,7 @@ func liquidateBond() = {
     let returnAmount = if(surplusPositive >= liquidationBalance) then 0 else liquidationBalance-surplusPositive
 
     if (isBlocked) 
-        then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles")
+        then throw("contract is blocked by EMERGENCY SHUTDOWN actions until reactivation by emergency oracles")
     else if (liquidationBalance == 0)
         then throw("without base tokens to liquidate")
     else if(returnAmount > 0) then {
