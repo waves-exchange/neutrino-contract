@@ -36,9 +36,7 @@ func getNumberByAddressAndKey(address: Address, key: String) = {
 
 #-------------------Constants---------------------------
 let WAVELET = 100000000
-let ORDERSPLITSYMBOL = "_"
 let PAULI = 1000000
-let PERCENTACCURACY = 1000
 let MAXDISCOUNT = 50
 #------Order statuses------
 let CANCELED = "canceled"
@@ -50,7 +48,6 @@ let NeutrinoContractKey = "neutrino_contract"
 
 #-------------------Keys--------------------------------
 let PriceKey = "price"
-let BondAssetIdKey = "bond_asset_id"
 let NeutrinoAssetIdKey = "neutrino_asset_id"
 let ControlContractKey = "control_contract"
 let BalanceLockedkKey = "balance_lock_"
@@ -60,62 +57,37 @@ let FirstOrderKey = "order_first"
 let LastOrderKey = "order_last"
 
 func getOrderPriceKey(orderId: String) = "order_price_" + orderId
-func getOrderPrevKey(orderId: String) = "order_prev_" + orderId
 func getOrderNextKey(orderId: String) = "order_next_" + orderId
 func getOrderTotalKey(orderId: String) = "order_total_" + orderId
 func getOrderOwnerKey(orderId: String) = "order_owner_" + orderId
-func getOrderHeightKey(orderId: String) = "order_height_" + orderId
 func getOrderStatusKey(orderId: String) = "order_status_" + orderId
 func getOrderFilledTotalKey(orderId: String) = "order_filled_total_" + orderId
-func getLastOrderOwnerKey(owner: String) = "last_order_owner_" + owner
-
-#-------------------Convert functions-------------------
-func convertNeutrinoToWaves(amount: Int, price: Int) = fraction(fraction(amount, 100, price),WAVELET, PAULI)
-func convertWavesToNeutrino(amount: Int, price: Int) = fraction(fraction(amount, price, 100), PAULI, WAVELET)
-func convertWavesToBond(amount: Int, price: Int) = convertWavesToNeutrino(amount, price)
 
 #-------------------Global vars -------------------------
 let neutrinoContract = addressFromStringValue(getStringByKey(NeutrinoContractKey))
-let controlContract = addressFromStringValue(getStringByAddressAndKey(neutrinoContract, ControlContractKey)) ## The value from neutrino.ride
-let liquidationContract = this
-let neutrinoAssetId = fromBase58String(getStringByAddressAndKey(neutrinoContract, NeutrinoAssetIdKey)) # Assets ids. The value from neutrino.ride
-let bondAssetId = fromBase58String("6nSpVyNH7yM69eg446wrQR94ipbbcmZMU1ENPwanC97g") # NSBT with 6 decimals as USDN does
 let firstOrder = getStringByKey(FirstOrderKey)
 let lastOrder = getStringByKey(LastOrderKey)
 
-let isBlocked = getBoolByAddressAndKey(controlContract, "is_blocked")
-
-#-------------------Global vars deficit, locked & supply -------------------------
-let currentPrice = getNumberByAddressAndKey(controlContract, PriceKey) # The value from control.ride
-let neutrinoLockedBalance = getNumberByAddressAndKey(neutrinoContract, NeutrinoLockedBalanceKey) #locked balance from USDN -> WAVES swap
-let wavesLockedBalance = getNumberByAddressAndKey(neutrinoContract, WavesLockedBalanceKey) #locked balance from WAVES -> USDN swap
-let reserve = wavesBalance(neutrinoContract) - wavesLockedBalance #waves reserves to cover USDN supply
-let neutrinoSupply = neutrinoLockedBalance + extract(assetInfo(neutrinoAssetId)).quantity - assetBalance(neutrinoContract, neutrinoAssetId) - assetBalance(liquidationContract, neutrinoAssetId) # supply outside main sc or liquidation contract
-let surplus = convertWavesToNeutrino(reserve, currentPrice) - neutrinoSupply
-
-
 #-------------------Get functions------------------------
+func getOrderNext(id: String) = getStringByKey(getOrderNextKey(id))
 func getOrderTotal(id : String) = getNumberByKey(getOrderTotalKey(id))
 func getOrderOwner(id : String) = getStringByKey(getOrderOwnerKey(id))
 func getOrderStatus(id : String) = getStringByKey(getOrderStatusKey(id))
 func getOrderFilledTotal(id : String) = getNumberByKey(getOrderFilledTotalKey(id))
-func getOrderPrev(id: String) = getStringByKey(getOrderPrevKey(id))
-func getOrderNext(id: String) = getStringByKey(getOrderNextKey(id))
-func getOrderHeight(id: String) = getNumberByKey(getOrderHeightKey(id))
-func getLastOrderOwner(owner: String) = getStringByKey(getLastOrderOwnerKey(owner))
+
 
 #-------------------Callable---------------------------
 
-# USDNB to NSBT liquidation orders migration method (temporary method)
+# NSBT to SON liquidation orders migration method (temporary method)
 # [called by pacemaker]
 @Callable(i)
 func migrationOrdersNSBTtoSON() = {
-    let keyLastMigratedOrder = "lastMigratedOrderId_migration_usdnb2nsbt"
-    let finalStatus = "migrated"
+    let keyLastMigratedOrder = "lastMigratedOrderId_migration_SON"
+    let finalStatus = "migrated_to_SON"
     let isLastMigratedAsFirstOrder = getStringByKey(keyLastMigratedOrder) == ""
     let lastMigratedOrderId = getStringByKey(keyLastMigratedOrder)
     let currentOrderId = if(isLastMigratedAsFirstOrder) then firstOrder else getOrderNext(lastMigratedOrderId)
-    let keyStatusLiquidationMigration = "status_migration_usdnb2nsbt_" + currentOrderId
+    let keyStatusLiquidationMigration = "status_migration_SON_" + currentOrderId
     let orderAmount = getOrderTotal(currentOrderId) - getOrderFilledTotal(currentOrderId)
     let orderOwner = addressFromStringValue(getOrderOwner(currentOrderId))
     let orderStatus = getOrderStatus(currentOrderId)
