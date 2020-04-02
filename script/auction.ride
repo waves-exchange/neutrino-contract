@@ -211,8 +211,6 @@ func cancelOrder(orderId : String) = {
 @Callable(i)
 func sellBond() = {
     let bondBalance = assetBalance(this, bondAssetId) #integers (dollars)
-    let deficitPositive = if(deficit <= 0) then 0 else deficit #paulis to 6-decimals (pauli)
-    let bondAmount = if(deficitPositive >= bondBalance) then bondBalance else deficitPositive # possible bond amount for selling; scale: integers (dollars)
     let returnAmount = bondBalance - neutrinoSupply
 
     if (isBlocked) 
@@ -237,8 +235,8 @@ func sellBond() = {
         let remainedTotal = getOrderTotal(firstOrder) - filledTotal #waveletes
         let amountToExecuteOrder = convertWavesToBond(remainedTotal, priceWavesByBondCents); # expected price format 100*waves/usd; return scale: bonds (integers/dollars)
     
-        let fillOrderCondition = bondAmount >= amountToExecuteOrder
-        let fillableOrderAmount = if(fillOrderCondition) then amountToExecuteOrder else bondAmount #scale: bonds (integers/dollars) то, сколько бондов можно продать в эту итерацию
+        let fillOrderCondition = bondBalance >= amountToExecuteOrder
+        let fillableOrderAmount = if(fillOrderCondition) then amountToExecuteOrder else bondBalance #scale: bonds (integers/dollars) то, сколько бондов можно продать в эту итерацию
 
         let totalOrderWaveletesRequired = convertBondToWaves(fillableOrderAmount, priceWavesByBondCents) # expected in wavelets
         let nbTokensSellCondition = if (deficit > 0) 
