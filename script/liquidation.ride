@@ -127,10 +127,10 @@ func internalAddLiquidationOrder(i: Invocation, price: Int, prevOrder: String) =
         let owner = toString(i.caller)
         let nextOrder = if prevOrder == "" then firstOrder else getNextOrder(prevOrder)
         let nextOrderPrice = getNumberByKey(getOrderPriceKey(nextOrder))
-        let isNextOrderError = if(nextOrder != "" && price >= nextOrderPrice) then true else false;
+        let isNextOrderError = if(nextOrder != "" && price > nextOrderPrice) then true else false;
 
         let prevOrderPrice = getNumberByKey(getOrderPriceKey(prevOrder))
-        let isPrevOrderError = if(prevOrder != "" && price < prevOrderPrice) then true else false;
+        let isPrevOrderError = if(prevOrder != "" && price <= prevOrderPrice) then true else false;
 
         if (isNextOrderError || isPrevOrderError)
             then throw("invalid order isPrevOrderError:" + toString(isPrevOrderError) + " isNextOrderError:" + toString(isNextOrderError))
