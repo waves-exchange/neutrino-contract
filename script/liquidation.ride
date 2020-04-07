@@ -268,6 +268,7 @@ func liquidateBond() = {
             then throw("innapropriate surplus: " + toString(surplus))
         else {
             let newStatus = if(fillOrderCondition && remainedTotal == 0) then FILLED else NEW
+            ScriptResult(
                 WriteSet([
                     DataEntry(getPrevOrderKey(nextOrder), if(newStatus == FILLED) then "" else firstOrder), #if current first order has new status filled so, his prev order is now empty
                     DataEntry(FirstOrderKey, if(newStatus == FILLED) then nextOrder else firstOrder),
@@ -276,7 +277,12 @@ func liquidateBond() = {
                     DataEntry(getOrderStatusKey(firstOrder), newStatus),
 
                     DataEntry(CurrentDefaultOrderKey, computeCurrentDefaultOrder(firstOrder))
+                ]),
+                TransferSet([
+                    ScriptTransfer(addressFromStringValue(getOrderOwner(firstOrder)), fillableOrderAmount, neutrinoAssetId),
+                    ScriptTransfer(neutrinoContract, fillableOrderAmount, bondAssetId)
                 ])
+            )
         }
     }
 }
