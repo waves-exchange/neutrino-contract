@@ -137,18 +137,20 @@ func internalAddLiquidationOrder(i: Invocation, price: Int, prevOrder: String) =
     let isEmptyPrevOrder = prevOrder == ""
     let isEmptyFirstOrder = firstOrder == ""
 
-    if (pmt.amount < PAULI)
-        then throw("order amount must be higher than 1 NSBT")
+    if (isBlocked)
+            then throw("contract is blocked by EMERGENCY SHUTDOWN actions until reactivation by emergency oracles")
+    else if (pmt.amount < PAULI)
+        then throw("order amount should be higher than 1 NSBT")
     else if (price < 100)
         then throw("price should be equal or higher than 1 nsbt for 1 usdn. i.e. >= 100; price: " + toString(price))
     else if (pmt.assetId != bondAssetId) 
         then throw("can use appropriate neutrino base tokens (nsbt) only")
     else if(getOrderOwner(newOrderId) != "")
-        then throw("an order is already exists")
+        then throw("the order already exists")
     else if(!isEmptyPrevOrder && getOrderStatus(prevOrder) != NEW)
         then throw("prev order status is not new")
     else if(isEmptyFirstOrder && !isEmptyPrevOrder)
-        then throw("wrong prev order parametr")
+        then throw("wrong prev order parameter")
     else {
 
         let nextOrder = if isEmptyPrevOrder then firstOrder else getNextOrder(prevOrder)
