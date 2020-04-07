@@ -161,7 +161,7 @@ func computeCurrentDefaultOrder(id : String) = {
     if id != currentDefaultOrder 
         then currentDefaultOrder
     else {
-        getPrevOrderKey(id)
+        getPrevOrder(id)
     }
 }
 
