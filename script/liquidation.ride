@@ -236,13 +236,20 @@ func cancelOrder(orderId : String) = {
 # [called by pacemaker oracles]
 @Callable(i)
 func liquidateBond() = {
-    let liquidationBalance = surplus
+    let liquidationBalance = assetBalance(this, neutrinoAssetId) #paulis
     let surplusPositive = if(surplus <= 0) then 0 else surplus
     let usdnAmount = if(surplusPositive >= liquidationBalance) then liquidationBalance else surplusPositive
+    let returnAmount = if(surplusPositive >= liquidationBalance) then 0 else liquidationBalance-surplusPositive
+
     if (isBlocked) 
         then throw("contract is blocked by EMERGENCY SHUTDOWN actions until reactivation by emergency oracles")
     else if (liquidationBalance == 0)
         then throw("without base tokens to liquidate")
+    else if(returnAmount > 0) then {
+        TransferSet([
+            ScriptTransfer(neutrinoContract, returnAmount, neutrinoAssetId)
+        ])
+    }
     else if(firstOrder == "")
         then throw("empty orderbook")
     else {
