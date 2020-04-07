@@ -101,7 +101,7 @@ func getOrderHeight(id: String) = getNumberByKey(getOrderHeightKey(id))
 func getPrevOrder(id: String) = getStringByKey(getPrevOrderKey(id))
 func getNextOrder(id: String) = getStringByKey(getNextOrderKey(id))
 
-func getCurrentDefaultOrder() = getStringByKey(getOrderStatusKey(CurrentDefaultOrderKey))
+func getCurrentDefaultOrder() = getStringByKey(CurrentDefaultOrderKey)
 
 #-------------------Liquidation---------------------------
 func internalAddLiquidationOrder(i: Invocation, price: Int, prevOrder: String) = {
