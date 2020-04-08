@@ -239,9 +239,7 @@ func sellBond() = {
         let fillableOrderAmount = if(fillOrderCondition) then amountToExecuteOrder else bondBalance #scale: bonds (integers/dollars) то, сколько бондов можно продать в эту итерацию
 
         let totalOrderWaveletesRequired = convertBondToWaves(fillableOrderAmount, priceWavesByBondCents) # expected in wavelets
-        let nbTokensSellCondition = if (deficit > 0) 
-            then fraction(deficit, 100, neutrinoSupply) > roi 
-            else fraction(deficit, 100, neutrinoSupply) < roi # it's working for both: deficit & profict as well (15% > 10% and -15% < -10%)
+        let nbTokensSellCondition = fraction(deficit, 100, neutrinoSupply) >= roi # it's working for both: deficit & profict as well (15% > 10% and -15% < -10%)
 
         if (!nbTokensSellCondition)
             then throw("innapropriate roi: " + toString(roi))
