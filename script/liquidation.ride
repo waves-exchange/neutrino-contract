@@ -184,7 +184,7 @@ func computeCurrentDefaultOrder(id : String) = {
 
 #-------------------Callable---------------------------
 
-# set 'bonds liquidation order' (bond -> neutrino 1:1 exchange) to the liquidation queue
+# set 'nsbt liquidation order' (nsbt -> neutrino exchange) to the liquidation queue
 # [called by user]
 @Callable(i)
 func addLiquidationOrderWithPrice(price: Int, prevOrder: String) = {
@@ -196,7 +196,7 @@ func addLiquidationOrder() = {
     internalAddLiquidationOrder(i, 100, currentDefaultOrder)
 }
 
-# cancel buy bonds order or liquidation order
+# cancel buy nsbt order or liquidation order
 # [called by user]
 @Callable(i)
 func cancelOrder(orderId : String) = {
@@ -257,10 +257,12 @@ func liquidateBond() = {
         let filledTotal = getOrderFilledTotal(firstOrder)
         let orderPrice = getOrderPrice(firstOrder)
 
-        let remainedTotal = getOrderTotal(firstOrder) - filledTotal
+        let remainedTotal = fraction(getOrderTotal(firstOrder),orderPrice,100) - filledTotal
 
         let fillOrderCondition = usdnAmount >= remainedTotal
         let fillableOrderAmount = if(fillOrderCondition) then remainedTotal else usdnAmount
+
+        let totalOrderNSBTRequired = fraction(fillableOrderAmount,100,orderPrice)
 
         let nbTokensLiquidateCondition = fraction(surplus + neutrinoSupply, 100, neutrinoSupply) >= orderPrice
 
@@ -270,7 +272,7 @@ func liquidateBond() = {
             let newStatus = if(fillOrderCondition && ( remainedTotal == 0 || remainedTotal == fillableOrderAmount)) then FILLED else NEW
             ScriptResult(
                 WriteSet([
-                    DataEntry(getPrevOrderKey(nextOrder), if(newStatus == FILLED) then "" else firstOrder), #if current first order has new status filled so, his prev order is now empty
+                    DataEntry(getPrevOrderKey(nextOrder), if(newStatus == FILLED) then "" else firstOrder), 
                     DataEntry(FirstOrderKey, if(newStatus == FILLED) then nextOrder else firstOrder),
 
                     DataEntry(getOrderFilledTotalKey(firstOrder), filledTotal + fillableOrderAmount),
@@ -280,7 +282,7 @@ func liquidateBond() = {
                 ]),
                 TransferSet([
                     ScriptTransfer(addressFromStringValue(getOrderOwner(firstOrder)), fillableOrderAmount, neutrinoAssetId),
-                    ScriptTransfer(neutrinoContract, fillableOrderAmount, bondAssetId)
+                    ScriptTransfer(neutrinoContract, totalOrderNSBTRequired, bondAssetId)
                 ])
             )
         }
