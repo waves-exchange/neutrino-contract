@@ -260,7 +260,7 @@ func sellBond() = {
         else if(totalOrderWaveletesRequired == 0) then
             throw("cannot fill order at the moment") #if not enough nsbt to fill the order by order price
         else {
-            let newStatus = if(fillOrderCondition && remainedTotal == 0) then FILLED else NEW
+            let newStatus = if(fillOrderCondition && (remainedTotal == 0 || remainedTotal == fillableOrderAmount)) then FILLED else NEW
             ScriptResult(
                 WriteSet([
                     DataEntry(getPrevOrderKey(nextOrder), if(newStatus == FILLED) then "" else firstOrder), #if current first order has new status filled so, his prev order is now empty
