@@ -229,12 +229,13 @@ func sellBond() = {
         let nextOrder = getNextOrder(firstOrder)
         let filledTotal = getOrderFilledTotal(firstOrder) #waveletes; returns 0 if there is no records
         let orderPrice = getOrderPrice(firstOrder) #100*nsbt/waves
-        let priceWavesByBondCents = fraction(100, 100, orderPrice)
         let roi = getNumberByKey(getRoiByOrderIdKey(firstOrder))
 
+        let priceWavesByBondCents = fraction(100+roi, currentPrice, 100)
+
+
         let remainedTotal = getOrderTotal(firstOrder) - filledTotal #waveletes
-        #let amountToExecuteOrder = convertWavesToBond(remainedTotal, priceWavesByBondCents); # expected price format 100*waves/usd; return scale: nsbt (integers/dollars)
-        let amountToExecuteOrder = fraction(roi + 100, 1, 100)*fraction(currentPrice, remainedTotal, 100*WAVELET)*PAULI
+        let amountToExecuteOrder = convertWavesToBond(remainedTotal, priceWavesByBondCents); # expected price format 100*waves/usd; return scale: nsbt (integers/dollars)
     
         let fillOrderCondition = bondBalance >= amountToExecuteOrder
         let fillableOrderAmount = if(fillOrderCondition) then amountToExecuteOrder else bondBalance #scale: nsbt (integers/dollars) то, сколько бондов можно продать в эту итерацию
