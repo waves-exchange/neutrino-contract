@@ -181,7 +181,6 @@ func computeCurrentDefaultOrder(id : String) = {
     }
 }
 
-
 #-------------------Callable---------------------------
 
 # set 'nsbt liquidation order' (nsbt -> neutrino exchange) to the liquidation queue
@@ -206,6 +205,15 @@ func cancelOrder(orderId : String) = {
     
     let nextOrder = getNextOrder(orderId)
     let prevOrder = getPrevOrder(orderId)
+
+    let isDefaultOrder = orderId == currentDefaultOrder
+    let isPrevCanBecomeDefault = getOrderStatus(prevOrder) == NEW
+    let newDefaultOrder = if isDefaultOrder 
+        then 
+            (if isPrevCanBecomeDefault 
+                then prevOrder 
+                else "")
+        else currentDefaultOrder
     
     if (isBlocked) 
         then throw("contract is blocked by EMERGENCY SHUTDOWN actions until reactivation by emergency oracles")
@@ -216,7 +224,7 @@ func cancelOrder(orderId : String) = {
     else {
         ScriptResult(
             WriteSet([
-                DataEntry(CurrentDefaultOrderKey, computeCurrentDefaultOrder(orderId)),
+                DataEntry(CurrentDefaultOrderKey, newDefaultOrder),
 
                 DataEntry(FirstOrderKey, if firstOrder == orderId then nextOrder else firstOrder),
 
