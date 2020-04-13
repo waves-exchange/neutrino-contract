@@ -98,12 +98,11 @@ func migrationOrdersNSBTtoSON() = {
     let orderOwner = addressFromStringValue(getOrderOwner(currentOrderId))
     let orderStatus = getOrderStatus(currentOrderId)
     let migrationStatus = getStringByKey(keyStatusLiquidationMigration)
-    if(orderAmount <= 0 || orderStatus != NEW)
+
+    if(orderStatus != NEW)
         then throw("error: invalid order")
     else if (migrationStatus == finalStatus)
         then throw("error: order has already migrated" )
-    else if (getStringByAddressAndKey(neutrinoContract, keyStatusLiquidationMigration) == finalStatus)
-        then throw("error: order has not migrated in neutrino sc")
     else if (lastOrder == lastMigratedOrderId)
         then throw("status ok: all order has already migrated or nothing to migrate")
     else WriteSet([
