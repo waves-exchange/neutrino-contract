@@ -99,17 +99,20 @@ func migrationOrdersNSBTtoSON() = {
     let orderStatus = getOrderStatus(currentOrderId)
     let migrationStatus = getStringByKey(keyStatusLiquidationMigration)
 
-    if(orderStatus != NEW)
-        then throw("error: invalid order")
-    else if (migrationStatus == finalStatus)
+    if (migrationStatus == finalStatus)
         then throw("error: order has already migrated" )
     else if (lastOrder == lastMigratedOrderId)
         then throw("status ok: all order has already migrated or nothing to migrate")
+    else if (orderStatus != NEW) 
+        then WriteSet([
+                DataEntry(keyStatusLiquidationMigration, finalStatus),
+                DataEntry(keyLastMigratedOrder, currentOrderId)
+            ])
     else WriteSet([
-            DataEntry(keyStatusLiquidationMigration, finalStatus),
-            DataEntry(keyLastMigratedOrder, currentOrderId),
-            DataEntry(getOrderPriceKey(currentOrderId), 100)
-        ])
+                DataEntry(keyStatusLiquidationMigration, finalStatus),
+                DataEntry(keyLastMigratedOrder, currentOrderId),
+                DataEntry(getOrderPriceKey(currentOrderId), 100)
+            ])
 }
 
 @Verifier(tx)
