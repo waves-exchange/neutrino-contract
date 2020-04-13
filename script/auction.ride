@@ -129,6 +129,8 @@ func addBuyBondOrder(price : Int, prevOrder: String) = {
         then throw("min order total equals " + toString(MINORDERTOTAL))
     else if (roi > MAXROI)
         then throw("max setOrder ROI is 95%")
+    else if (roi < -MAXROI)
+        then throw("min setOrder ROI is -95%")
     else if (roi == 0)
         then throw("roi should not be equal to 0")
     else if (isDefined(pmt.assetId))
@@ -232,7 +234,6 @@ func sellBond() = {
         let roi = getNumberByKey(getRoiByOrderIdKey(firstOrder))
 
         let priceWavesByBondCents = fraction(100+roi, currentPrice, 100)
-
 
         let remainedTotal = getOrderTotal(firstOrder) - filledTotal #waveletes
         let amountToExecuteOrder = convertWavesToBond(remainedTotal, priceWavesByBondCents); # expected price format 100*waves/usd; return scale: nsbt (integers/dollars)
