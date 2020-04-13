@@ -250,9 +250,7 @@ func sellBond() = {
             ScriptResult(
                 WriteSet([
                     DataEntry(FirstOrderKey, nextOrder),
-
                     DataEntry(getPrevOrderKey(nextOrder), ""), #if current first order has new status filled so, his prev order is now empty
-                    DataEntry(FirstOrderKey, nextOrder),
                     DataEntry(getOrderStatusKey(firstOrder), FILLED)
                ]),
                TransferSet([
