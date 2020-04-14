@@ -235,8 +235,11 @@ func finalizeCurrentPrice(price1: Int, sign1: ByteVector, price2: Int, sign2: By
     let newPrice = priceSum/priceProvidingCount
 
     if(newPrice >= (price + price*percentPriceOffset/100) || newPrice <= (price - price*percentPriceOffset/100)) then {
+        let reason = "automatic emergency shutdown because of large price variability"
         WriteSet([
             DataEntry("is_blocked", true),
+            DataEntry("is_blocked_caller", toString(this)),
+            DataEntry("is_blocked_reason", reason),
             DataEntry("black_swarm_price" + "_" + toString(height), newPrice)
         ])
     }
