@@ -271,7 +271,7 @@ func liquidateBond() = {
         let filledTotal = getOrderFilledTotal(firstOrder)
         let orderPrice = getOrderPrice(firstOrder)
 
-        let remainedTotal = fraction(getOrderTotal(firstOrder),orderPrice,100) - filledTotal
+        let remainedTotal = getOrderTotal(firstOrder) - filledTotal
 
         let isOrderFullyFilable = usdnAmount >= remainedTotal
         let fillableOrderAmount = if(isOrderFullyFilable) then remainedTotal else usdnAmount
@@ -284,14 +284,14 @@ func liquidateBond() = {
             then throw("innapropriate surplus: " + toString(surplus))
         else {
             let isNothingToFillNow = remainedTotal == 0
-            let isNothingToFillAtAll = (filledTotal + fillableOrderAmount) == getOrderTotal(firstOrder)
+            let isNothingToFillAtAll = (filledTotal + totalOrderNSBTRequired) == getOrderTotal(firstOrder)
             let newStatus = if(isOrderFullyFilable && ( isNothingToFillNow || isNothingToFillAtAll)) then FILLED else NEW
             ScriptResult(
                 WriteSet([
                     DataEntry(getPrevOrderKey(nextOrder), if(newStatus == FILLED) then "" else firstOrder), 
                     DataEntry(FirstOrderKey, if(newStatus == FILLED) then nextOrder else firstOrder),
 
-                    DataEntry(getOrderFilledTotalKey(firstOrder), filledTotal + fillableOrderAmount),
+                    DataEntry(getOrderFilledTotalKey(firstOrder), filledTotal + totalOrderNSBTRequired),
                     DataEntry(getOrderStatusKey(firstOrder), newStatus),
 
                     DataEntry(CurrentDefaultOrderKey, computeCurrentDefaultOrder(firstOrder))
