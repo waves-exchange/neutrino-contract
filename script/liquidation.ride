@@ -267,8 +267,8 @@ func liquidateBond() = {
 
         let remainedTotal = fraction(getOrderTotal(firstOrder),orderPrice,100) - filledTotal
 
-        let fillOrderCondition = usdnAmount >= remainedTotal
-        let fillableOrderAmount = if(fillOrderCondition) then remainedTotal else usdnAmount
+        let isOrderFullyFilable = usdnAmount >= remainedTotal
+        let fillableOrderAmount = if(isOrderFullyFilable) then remainedTotal else usdnAmount
 
         let totalOrderNSBTRequired = fraction(fillableOrderAmount,100,orderPrice)
 
@@ -277,7 +277,9 @@ func liquidateBond() = {
         if (!nbTokensLiquidateCondition)
             then throw("innapropriate surplus: " + toString(surplus))
         else {
-            let newStatus = if(fillOrderCondition && ( remainedTotal == 0 || remainedTotal == fillableOrderAmount)) then FILLED else NEW
+            let isNothingToFillNow = remainedTotal == 0
+            let isNothingToFillAtAll = (filledTotal + fillableOrderAmount) == getOrderTotal(firstOrder)
+            let newStatus = if(isOrderFullyFilable && ( isNothingToFillNow || isNothingToFillAtAll)) then FILLED else NEW
             ScriptResult(
                 WriteSet([
                     DataEntry(getPrevOrderKey(nextOrder), if(newStatus == FILLED) then "" else firstOrder), 
