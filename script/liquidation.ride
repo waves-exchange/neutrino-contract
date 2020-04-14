@@ -106,6 +106,12 @@ let currentDefaultOrder = getStringByKey(CurrentDefaultOrderKey)
 func generateDataEntryToAddOrder(price: Int, newOrderId: String, i: Invocation, prevOrder: String, nextOrder: String, firstOrder: String) = {
     let amount = extract(i.payment).amount;
     let isOneForOneOrder = price == 100
+
+    let isFirstOrderEmty = firstOrder == ""
+    let isNewOrderPriceLowerThanCurrentFirstOrder = price < getOrderPrice(firstOrder)
+    let newFirstOrder = if isFirstOrderEmty 
+        then newOrderId 
+        else ( if isNewOrderPriceLowerThanCurrentFirstOrder then newOrderId else firstOrder)
     [
         DataEntry(getPrevOrderKey(newOrderId), prevOrder),
         DataEntry(getNextOrderKey(newOrderId), nextOrder),
@@ -113,7 +119,7 @@ func generateDataEntryToAddOrder(price: Int, newOrderId: String, i: Invocation, 
         DataEntry(getNextOrderKey(prevOrder), if prevOrder == "" then prevOrder else newOrderId),
         DataEntry(getPrevOrderKey(nextOrder), if nextOrder == "" then nextOrder else newOrderId),
 
-        DataEntry(FirstOrderKey, if firstOrder == "" then newOrderId else firstOrder),
+        DataEntry(FirstOrderKey, newFirstOrder),
 
         DataEntry(getOrderPriceKey(newOrderId), price),
         DataEntry(getOrderTotalKey(newOrderId), amount),
