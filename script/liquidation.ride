@@ -271,12 +271,13 @@ func liquidateBond() = {
         let filledTotal = getOrderFilledTotal(firstOrder)
         let orderPrice = getOrderPrice(firstOrder)
 
-        let remainedTotal = getOrderTotal(firstOrder) - filledTotal
+        let remainedTotal = getOrderTotal(firstOrder) - filledTotal #bt value
 
-        let isOrderFullyFilable = usdnAmount >= remainedTotal
-        let fillableOrderAmount = if(isOrderFullyFilable) then remainedTotal else usdnAmount
+        let totalUSDNRequiredToFillOrder = fraction(remainedTotal, orderPrice, 100) #usdn value
+        let isOrderFullyFilable = usdnAmount >= totalUSDNRequiredToFillOrder
+        let fillableOrderAmount = if(isOrderFullyFilable) then totalUSDNRequiredToFillOrder else usdnAmount #usdn value
 
-        let totalOrderNSBTRequired = fraction(fillableOrderAmount,100,orderPrice)
+        let finalNBTFillable = fraction(fillableOrderAmount, 100, orderPrice) #bt value
 
         let nbTokensLiquidateCondition = fraction(surplus + neutrinoSupply, 100, neutrinoSupply) >= orderPrice
 
@@ -284,21 +285,21 @@ func liquidateBond() = {
             then throw("innapropriate surplus: " + toString(surplus))
         else {
             let isNothingToFillNow = remainedTotal == 0
-            let isNothingToFillAtAll = (filledTotal + totalOrderNSBTRequired) == getOrderTotal(firstOrder)
+            let isNothingToFillAtAll = (filledTotal + finalNBTFillable) == getOrderTotal(firstOrder)
             let newStatus = if(isOrderFullyFilable && ( isNothingToFillNow || isNothingToFillAtAll)) then FILLED else NEW
             ScriptResult(
                 WriteSet([
                     DataEntry(getPrevOrderKey(nextOrder), if(newStatus == FILLED) then "" else firstOrder), 
                     DataEntry(FirstOrderKey, if(newStatus == FILLED) then nextOrder else firstOrder),
 
-                    DataEntry(getOrderFilledTotalKey(firstOrder), filledTotal + totalOrderNSBTRequired),
+                    DataEntry(getOrderFilledTotalKey(firstOrder), filledTotal + finalNBTFillable),
                     DataEntry(getOrderStatusKey(firstOrder), newStatus),
 
                     DataEntry(CurrentDefaultOrderKey, computeCurrentDefaultOrder(firstOrder))
                 ]),
                 TransferSet([
                     ScriptTransfer(addressFromStringValue(getOrderOwner(firstOrder)), fillableOrderAmount, neutrinoAssetId),
-                    ScriptTransfer(neutrinoContract, totalOrderNSBTRequired, bondAssetId)
+                    ScriptTransfer(neutrinoContract, finalNBTFillable, bondAssetId)
                 ])
             )
         }
