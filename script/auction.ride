@@ -129,6 +129,8 @@ func addBuyBondOrder(price : Int, prevOrder: String) = {
         then throw("min order total equals " + toString(MINORDERTOTAL))
     else if (roi > MAXROI)
         then throw("max setOrder ROI is 95%")
+    else if (deficit > 0 && roi < 0)
+        then throw("can't place order with negative roi during deficit")
     else if (roi < -MAXROI)
         then throw("min setOrder ROI is -95%")
     else if (roi == 0)
