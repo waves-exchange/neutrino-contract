@@ -81,6 +81,8 @@ func getOrderOwner(id : String) = getStringByKey(getOrderOwnerKey(id))
 func getOrderStatus(id : String) = getStringByKey(getOrderStatusKey(id))
 func getOrderFilledTotal(id : String) = getNumberByKey(getOrderFilledTotalKey(id))
 
+let CurrentDefaultOrderKey = "order_default"
+
 
 #-------------------Callable---------------------------
 
@@ -111,7 +113,8 @@ func migrationOrdersNSBTtoSON() = {
     else WriteSet([
                 DataEntry(keyStatusLiquidationMigration, finalStatus),
                 DataEntry(keyLastMigratedOrder, currentOrderId),
-                DataEntry(getOrderPriceKey(currentOrderId), 100)
+                DataEntry(getOrderPriceKey(currentOrderId), 100),
+                DataEntry(CurrentDefaultOrderKey, currentOrderId)
             ])
 }
 
