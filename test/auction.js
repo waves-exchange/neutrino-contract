@@ -34,11 +34,15 @@ describe('Auction test', async function () {
             assetId: deployResult.assets.neutrinoAssetId,
             fee: 500000
         }, deployResult.accounts.neutrinoContract.phrase)
+
         await broadcast(transferTx);
         await waitForTx(transferTx.id);
 
         neutrinoApi = await neutrinoHelper.create(env.API_BASE, env.CHAIN_ID, deployResult.accounts.neutrinoContract.address);
         oracleApi = await oracleHelper.create(env.API_BASE, env.CHAIN_ID, deployResult.accounts.neutrinoContract.address);
+
+        console.log("here: ", oracleApi)
+
 
         await oracleApi.transferToAuction(accounts.testAccount);
     });
