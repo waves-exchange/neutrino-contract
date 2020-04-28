@@ -137,14 +137,26 @@ func checkIsValidMinSponsoredFee(tx: SponsorFeeTransaction) = {
     let SponsoredFeeUpperBound = 100 # % of fee profits higther than real fee for transfer
     let MINTRANSFERFEE = 100000 #wavelets (to support smart assets)
 
-    let realNeutrinoFee = convertWavesToNeutrino(MINTRANSFERFEE, currentPrice) # in paulis
+    # let actual = extract(tx.minSponsoredAssetFee)
 
-    let exactFee = realNeutrinoFee + fraction(realNeutrinoFee, SponsoredFeeUpperBound, 100)
-    let actual = extract(tx.minSponsoredAssetFee)
-    if actual == exactFee && tx.assetId == neutrinoAssetId
+    let realNeutrinoFee = convertWavesToNeutrino(MINTRANSFERFEE, currentPrice) # in paulis
+    let minNeutrinoFee = realNeutrinoFee * 2 # 100%
+    let maxNeutrinoFee = fraction(realNeutrinoFee, SponsoredFeeUpperBound, 100)
+
+    # Medium value
+    let recommendedFee = (minNeutrinoFee + maxNeutrinoFee) / 2
+    # let exactFee = realNeutrinoFee + fraction(realNeutrinoFee, SponsoredFeeUpperBound, 100)
+    let actualFee = extract(tx.minSponsoredAssetFee)
+
+    func satisfiesRange(inputFee: Int) = {
+        inputFee >= minNeutrinoFee && inputFee <= maxNeutrinoFee && tx.assetId == neutrinoAssetId
+    }
+
+    if satisfiesRange(actualFee)
         then true
     else
-        throw("Error. Exact: " + toString(exactFee) + ". Passed: " + toString(actual))
+        throw("MinSponsoredAssetFee is out of bounds. InputFee: " + toString(actualFee)
+            + ". MIN: " + toString(minNeutrinoFee) + ". MAX: " + toString(maxNeutrinoFee))
 }
 
 #-------------------Get functions----------------------
