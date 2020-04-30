@@ -1,0 +1,29 @@
+{
+  "name": "neutrino-contract-github",
+  "version": "1.0.0",
+  "description": "[Neutrino](https://beta.neutrino.at) is an algorithmic price-stable cryptocurrency protocol that allows for the creation of stable coins tied to a specific real world asset, such as national currency or commodity, and collateralized by a native token. The first synthetic asset created with Neutrino Protocol is USD Neutrino (USDN). Neutrino is currently in public beta.",
+  "main": "index.js",
+  "directories": {
+    "test": "test"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "mocha-test": "mocha --timeout 10000"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ventuary-lab/neutrino-contract.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/ventuary-lab/neutrino-contract/issues"
+  },
+  "homepage": "https://github.com/ventuary-lab/neutrino-contract#readme",
+  "dependencies": {
+    "@waves/ts-lib-crypto": "^1.4.3",
+    "@waves/waves-transactions": "^3.25.3",
+    "axios": "^0.19.2",
+    "mocha": "^7.1.1"
+  }
+}

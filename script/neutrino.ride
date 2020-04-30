@@ -44,6 +44,13 @@ func getBoolByAddressAndKey(address: String, key: String) = {
     }
 }
 
+let pubKeyAdminsList = [
+    "BLEoguzPVKVTfXxxT3W7Rqf8aUm2ggC9Vemd2MQawM2G",	
+    "FWVffYr2ALmHMejZm3WqeLz6Sdym3gLFGtJn4KTwyU5x",	
+    "3Wh2LaWcb5gg7K2pPcW3Ep6EAuRBzYkAgrdpt43jTDFa",	
+    "5WRXFSjwcTbNfKcJs8ZqXmSSWYsSVJUtMvMqZj5hH4Nc"	
+]
+
 #-------------------Constants---------------------------
 let SENDTXEXPIRE = 30
 let LISTSPLITSYMBOL = "_"
@@ -64,7 +71,6 @@ let MinWavesSwapAmountKey = "min_waves_swap_amount"
 let MinNeutrinoSwapAmountKey = "min_neutrino_swap_amount"
 let NodeOracleProviderPubKeyKey = "node_oracle_provider"
 
-#-------------------Keys---------------------------------
 #------Common----------------
 let RPDBalanceKey = "rpd_balance"
 #------RPD contract----------
@@ -124,6 +130,19 @@ let neutrinoSupply = neutrinoLockedBalance + extract(assetInfo(neutrinoAssetId))
 let surplus = convertWavesToNeutrino(reserve, currentPrice) - neutrinoSupply
 let deficit = neutrinoSupply - convertWavesToNeutrino(reserve, currentPrice)
 
+
+#-------------------Verifier Functions----------------------
+func checkIsValidMinSponsoredFee(tx: SponsorFeeTransaction) = {
+    let MINTRANSFERFEE = 100000 #wavelets (to support smart assets)
+    let SponsoredFeeUpperBound = 1000 # % of fee profits higther than real fee for transfer
+    let realNeutrinoFee = convertWavesToNeutrino(MINTRANSFERFEE, currentPrice) # in paulis
+    let minNeutrinoFee = realNeutrinoFee * 2 # 100%
+    let maxNeutrinoFee = fraction(realNeutrinoFee, SponsoredFeeUpperBound, 100)
+
+    let inputFee = extract(tx.minSponsoredAssetFee)
+
+    inputFee >= minNeutrinoFee && inputFee <= maxNeutrinoFee && tx.assetId == neutrinoAssetId
+}
 
 #-------------------Get functions----------------------
 #------RPD contract---------
@@ -281,22 +300,17 @@ func migrationUSDNB2NSBTSwap() = {
 @Verifier(tx)
  func verify() = {
     let id = toBase58String(tx.id)
+    let count =	
+        (if(sigVerify(tx.bodyBytes, tx.proofs[0], fromBase58String(pubKeyAdminsList[0]))) then 1 else 0) +	
+        (if(sigVerify(tx.bodyBytes, tx.proofs[1], fromBase58String(pubKeyAdminsList[1]))) then 1 else 0) +	
+        (if(sigVerify(tx.bodyBytes, tx.proofs[2], fromBase58String(pubKeyAdminsList[2]))) then 1 else 0) +	
+        (if(sigVerify(tx.bodyBytes, tx.proofs[3], fromBase58String(pubKeyAdminsList[3]))) then 2 else 0)
     match tx {
         case leasingTx: LeaseTransaction | LeaseCancelTransaction =>
             sigVerify(tx.bodyBytes, tx.proofs[0], nodeOracleProviderPubKey)
-        case _ => {
-            let pubKeyAdminsList = [
-                "BLEoguzPVKVTfXxxT3W7Rqf8aUm2ggC9Vemd2MQawM2G",
-                "FWVffYr2ALmHMejZm3WqeLz6Sdym3gLFGtJn4KTwyU5x",
-                "3Wh2LaWcb5gg7K2pPcW3Ep6EAuRBzYkAgrdpt43jTDFa",
-                "5WRXFSjwcTbNfKcJs8ZqXmSSWYsSVJUtMvMqZj5hH4Nc"
-            ]
-            let count =
-                (if(sigVerify(tx.bodyBytes, tx.proofs[0], fromBase58String(pubKeyAdminsList[0]))) then 1 else 0) +
-                (if(sigVerify(tx.bodyBytes, tx.proofs[1], fromBase58String(pubKeyAdminsList[1]))) then 1 else 0) +
-                (if(sigVerify(tx.bodyBytes, tx.proofs[2], fromBase58String(pubKeyAdminsList[2]))) then 1 else 0) +
-                (if(sigVerify(tx.bodyBytes, tx.proofs[3], fromBase58String(pubKeyAdminsList[3]))) then 2 else 0)
-
+        case sponsorTx: SponsorFeeTransaction =>
+            checkIsValidMinSponsoredFee(sponsorTx) && count >= 3
+        case _ => {	
             count >= 3
         }
     }
