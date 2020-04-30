@@ -3,3 +3,5 @@
 /test/deploy/*.development.js
 npm-debug.log
 surfboard.development.config.json
+
+node_modules/
