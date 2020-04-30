@@ -57,7 +57,6 @@ let LISTSPLITSYMBOL = "_"
 let LISTDATASYMBOL = "+"
 let WAVELET = 100000000
 let PAULI = 1000000
-let DEFICITOFFSET = 5
 
 #-------------------Constructor-------------------------
 let NeutrinoAssetIdKey = "neutrino_asset_id"
@@ -260,22 +259,20 @@ func withdraw(account : String, index: Int) = {
 }
 
 # Transfers bonds from neutrino.ride to auction.ride to fulfill 'buy bonds' orders
-# Is called n-times during the deficit stage until all pending orders on auction.ride are fulfilled
+# Is called n-times until all pending orders on auction.ride are fulfilled or to keep NB reserves equal to total USDN supply
 # [called by pacemaker oracles]
 @Callable(i)
 func transferToAuction() = {
-    let deficitBondAmount = deficit - assetBalance(addressFromStringValue(auctionContract), bondAssetId)
-    let minDeficit = fraction(neutrinoSupply, DEFICITOFFSET, 100)
-
+    let auctionNBAmount = neutrinoSupply - assetBalance(addressFromStringValue(auctionContract), bondAssetId)
     let surplusWithLiquidation = (surplus - assetBalance(addressFromStringValue(liquidationContract), neutrinoAssetId)) #in 6 decimals
     if(isBlocked)
         then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles") # see control.ride
-    else if(deficitBondAmount > minDeficit && deficitBondAmount > 0)
-        then TransferSet([ScriptTransfer(addressFromStringValue(auctionContract), deficitBondAmount, bondAssetId)])
+    else if(auctionNBAmount > 1*PAULI)
+        then TransferSet([ScriptTransfer(addressFromStringValue(auctionContract), auctionNBAmount, bondAssetId)])
     else if(surplusWithLiquidation >= 1*PAULI)
         then TransferSet([ScriptTransfer(addressFromStringValue(liquidationContract), surplusWithLiquidation, neutrinoAssetId)])
     else 
-        throw("bond were generated or do not need it. Deficit:" + toString(deficitBondAmount) + "|" + toString(minDeficit) + ". Surplus:" + toString(surplusWithLiquidation) + "|" + toString(surplus))
+        throw("bond were generated or do not need it. Deficit:" + toString(auctionNBAmount) + "|" + toString(0) + ". Surplus:" + toString(surplusWithLiquidation) + "|" + toString(surplus))
 }
 
 # Transfers tokens from one address to another via smart contact

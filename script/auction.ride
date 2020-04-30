@@ -2,7 +2,7 @@
 {-# CONTENT_TYPE DAPP #-}
 {-# SCRIPT_TYPE ACCOUNT #-}
 #
-# Smart Contract Implementing Bonds Auction in the Orderbook of Neutrino Protocol 
+# Smart Contract Implementing NSBT Auction in the Orderbook of Neutrino Protocol 
 #
 
 #-------------------Base functions----------------------
@@ -42,9 +42,8 @@ func getNumberByAddressAndKey(address: Address, key: String) = {
 #-------------------Constants---------------------------
 let WAVELET = 100000000
 let PAULI = 1000000
-let PERCENTACCURACY = 1000
 let MINORDERTOTAL = 10*WAVELET
-let MAXROI = 100
+let MAXROI = 95
 #------Order statuses------
 let CANCELED = "canceled"
 let NEW = "new"
@@ -114,31 +113,33 @@ func getNextOrder(id: String) = getStringByKey(getNextOrderKey(id))
 
 #-------------------Callable---------------------------
 
-# set buy bonds order
+# set buy NSBT order
 # [called by user]
 @Callable(i)
 func addBuyBondOrder(price : Int, prevOrder: String) = {
     let pmt = extract(i.payment);
-    let orderId = toBase58String(keccak256(toBytes(price) + toBytes(pmt.amount) + i.caller.bytes + toBytes(height) + i.transactionId))
-    # price = 100*usdnb/waves, but we have to work with price with another scale: priceWavesByBondCents = 100*waves/usdnb, so priceWavesByBondCents = 100*1/(price/100)
+    let newOrderId = toBase58String(keccak256(toBytes(price) + toBytes(pmt.amount) + i.caller.bytes + toBytes(height) + i.transactionId))
+    # price = 100*nsbt/waves, but we have to work with price with another scale: priceWavesByBondCents = 100*waves/nsbt, so priceWavesByBondCents = 100*1/(price/100)
     let priceWavesByBondCents = fraction(100, 100, price)
-    let roi = fraction(priceWavesByBondCents - currentPrice, 100, currentPrice) # Example: 1.2 WAVES/USDNB (1.2 bonds for 1 waves) and 0.8 WAVES/USD (0.8 usd for 1 waves) gives 100*(1.2-0.8/0.8) 50% ROI
+    let roi = fraction(priceWavesByBondCents - currentPrice, 100, currentPrice) # Example: 1.2 WAVES/nsbt (1.2 NSBT for 1 waves) and 0.8 WAVES/USD (0.8 usd for 1 waves) gives 100*(1.2-0.8/0.8) 50% ROI
 
     if (isBlocked)
-        then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles")
-    else if (deficit <= 0)
-        then throw("there is no ability to add order during proficit")
+        then throw("contract is blocked by EMERGENCY SHUTDOWN actions until reactivation by emergency oracles")
     else if(pmt.amount < MINORDERTOTAL)
         then throw("min order total equals " + toString(MINORDERTOTAL))
     else if (roi > MAXROI)
-        then throw("max setOrder ROI is 100%")
-    else if (roi <= 0)
-        then throw("min setOrder ROI is more than 0%")
+        then throw("max setOrder ROI is 95%")
+    else if (deficit > 0 && roi < 0)
+        then throw("can't place order with negative roi during deficit")
+    else if (roi < -MAXROI)
+        then throw("min setOrder ROI is -95%")
+    else if (roi == 0)
+        then throw("roi should not be equal to 0")
     else if (isDefined(pmt.assetId))
         then throw("can use waves only")
     else if(price <= 0)
         then throw("price less zero")
-    else if(getOrderOwner(orderId) != "")
+    else if(getOrderOwner(newOrderId) != "")
         then throw("order exists")
     else if(prevOrder != "" && getOrderStatus(prevOrder) != NEW)
         then throw("prev order status is not new")
@@ -155,26 +156,27 @@ func addBuyBondOrder(price : Int, prevOrder: String) = {
             then throw("invalid order isPrevOrderError:" + toString(isPrevOrderError) + " isNextOrderError:" + toString(isNextOrderError))
         else
             WriteSet([
-                DataEntry(getPrevOrderKey(orderId), prevOrder),
-                DataEntry(getNextOrderKey(orderId), nextOrder),
+                DataEntry(getPrevOrderKey(newOrderId), prevOrder),
+                DataEntry(getNextOrderKey(newOrderId), nextOrder),
 
-                DataEntry(getNextOrderKey(prevOrder), if prevOrder == "" then "" else orderId),
-                DataEntry(getPrevOrderKey(nextOrder), if nextOrder == "" then "" else orderId),
+                DataEntry(getNextOrderKey(prevOrder), if prevOrder == "" then "" else newOrderId),
+                DataEntry(getPrevOrderKey(nextOrder), if nextOrder == "" then "" else newOrderId),
 
-                DataEntry(FirstOrderKey, if firstOrder == "" || firstOrder == nextOrder then orderId else firstOrder),
+                DataEntry(FirstOrderKey, if firstOrder == "" || firstOrder == nextOrder then newOrderId else firstOrder),
 
-                DataEntry(getOrderPriceKey(orderId), price),
-                DataEntry(getOrderTotalKey(orderId), pmt.amount),
-                DataEntry(getOrderOwnerKey(orderId), owner),
-                DataEntry(getOrderHeightKey(orderId), height),
-                DataEntry(getOrderStatusKey(orderId), NEW),
-                DataEntry("debug_order_currentPrice_" + orderId, currentPrice),
-                DataEntry(getRoiByOrderIdKey(orderId), roi)
+                DataEntry(getOrderPriceKey(newOrderId), price),
+                DataEntry(getOrderTotalKey(newOrderId), pmt.amount),
+                DataEntry(getOrderOwnerKey(newOrderId), owner),
+                DataEntry(getOrderHeightKey(newOrderId), height),
+                DataEntry(getOrderStatusKey(newOrderId), NEW),
+                DataEntry("debug_order_currentPrice_" + newOrderId, currentPrice),
+                DataEntry(getRoiByOrderIdKey(newOrderId), roi)
             ])
     }
 }
 
-# cancel buy bonds order or liquidation order
+
+# cancel buy NSBT order or liquidation order
 # [called by user]
 @Callable(i)
 func cancelOrder(orderId : String) = {
@@ -186,7 +188,7 @@ func cancelOrder(orderId : String) = {
     let prevOrder = getPrevOrder(orderId)
 
     if (isBlocked)
-        then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles")
+        then throw("contract is blocked by EMERGENCY SHUTDOWN actions until reactivation by emergency oracles")
     else if(owner != caller)
         then throw("permission denied")
     else if(getOrderStatus(orderId) != NEW)
@@ -207,22 +209,20 @@ func cancelOrder(orderId : String) = {
     }
 }
 
-# executing buy bonds orders from the bonds orderbook if SC has reached deficit in collateral cap
-# it's calling n-times untill all orders from the lbonds orderbook will be executed during deficit stage
+# executing buy NSBT orders from the NSBT orderbook
+# called n times until all orders from the NSBT orderbook are sold
 # [called by pacemaker oracles]
 @Callable(i)
 func sellBond() = {
     let bondBalance = assetBalance(this, bondAssetId) #integers (dollars)
-    let deficitPositive = if(deficit <= 0) then 0 else deficit #paulis to 6-decimals (pauli)
-    let bondAmount = if(deficitPositive >= bondBalance) then bondBalance else deficitPositive # possible bond amount for selling; scale: integers (dollars)
-    let returnAmount = if(deficitPositive >= bondBalance) then 0 else bondBalance-deficitPositive #scale: integers (dollars); send bonds back if there is remaining bonds on the main contract
+    let returnAmount = bondBalance - neutrinoSupply
 
-    if(deficitPositive == 0 && bondBalance == 0)
-        then throw("without deficit")
+    if (isBlocked) 
+        then throw("contract is blocked by EMERGENCY SHUTDOWN actions until reactivation by emergency oracles")
     else if (bondBalance == 0)
-        then throw("without bonds to sell")
+        then throw("without base tokens to sell")
     else if(returnAmount > 0) then {
-        # return bonds back if there is more bonds than deficit  
+        # return nsbts back if there is more nsbts than deficit  
         TransferSet([
             ScriptTransfer(neutrinoContract, returnAmount, bondAssetId)
         ])
@@ -232,28 +232,28 @@ func sellBond() = {
     else {
         let nextOrder = getNextOrder(firstOrder)
         let filledTotal = getOrderFilledTotal(firstOrder) #waveletes; returns 0 if there is no records
-        let orderPrice = getOrderPrice(firstOrder) #100*usdnb/waves
-        let priceWavesByBondCents = fraction(100, 100, orderPrice)
+        let orderPrice = getOrderPrice(firstOrder) #100*nsbt/waves
         let roi = getNumberByKey(getRoiByOrderIdKey(firstOrder))
 
+        let priceWavesByBondCents = fraction(100+roi, currentPrice, 100)
+
         let remainedTotal = getOrderTotal(firstOrder) - filledTotal #waveletes
-        let amountToExecuteOrder = convertWavesToBond(remainedTotal, priceWavesByBondCents); # expected price format 100*waves/usd; return scale: bonds (integers/dollars)
+        let amountToExecuteOrder = convertWavesToBond(remainedTotal, priceWavesByBondCents); # expected price format 100*waves/usd; return scale: nsbt (integers/dollars)
     
-        let fillOrderCondition = bondAmount >= amountToExecuteOrder
-        let fillableOrderAmount = if(fillOrderCondition) then amountToExecuteOrder else bondAmount #scale: bonds (integers/dollars) то, сколько бондов можно продать в эту итерацию
+        let fillOrderCondition = bondBalance >= amountToExecuteOrder
+        let fillableOrderAmount = if(fillOrderCondition) then amountToExecuteOrder else bondBalance #scale: nsbt (integers/dollars) то, сколько бондов можно продать в эту итерацию
 
         let totalOrderWaveletesRequired = convertBondToWaves(fillableOrderAmount, priceWavesByBondCents) # expected in wavelets
+        let nbTokensSellCondition = fraction(deficit, 100, neutrinoSupply) >= roi # it's working for both: deficit & profict as well (15% > 10% and -15% < -10%)
 
-        if ( fraction(deficit, 100, neutrinoSupply) < roi || deficitPositive <= 0)
-            then throw("deficit should be higther or equal than roi: " + toString(roi))
+        if (!nbTokensSellCondition)
+            then throw("innapropriate roi: " + toString(roi))
         else if (amountToExecuteOrder == 0) then
-            # this code is executing if there is not enough amount of waves to sell integer number of bonds, but there is still remaining waves amount in the order
+            # this code is executing if there is not enough amount of waves to sell integer number of nsbt, but there is still remaining waves amount in the order
             ScriptResult(
                 WriteSet([
                     DataEntry(FirstOrderKey, nextOrder),
-
                     DataEntry(getPrevOrderKey(nextOrder), ""), #if current first order has new status filled so, his prev order is now empty
-                    DataEntry(FirstOrderKey, nextOrder),
                     DataEntry(getOrderStatusKey(firstOrder), FILLED)
                ]),
                TransferSet([
@@ -261,9 +261,9 @@ func sellBond() = {
                 ])
             )
         else if(totalOrderWaveletesRequired == 0) then
-            throw("cannot fill order at the moment") #it happens if not enought bonds to fill the order by order price
+            throw("cannot fill order at the moment") #if not enough nsbt to fill the order by order price
         else {
-            let newStatus = if(fillOrderCondition && remainedTotal == 0) then FILLED else NEW
+            let newStatus = if(fillOrderCondition && (remainedTotal == 0 || remainedTotal == totalOrderWaveletesRequired)) then FILLED else NEW
             ScriptResult(
                 WriteSet([
                     DataEntry(getPrevOrderKey(nextOrder), if(newStatus == FILLED) then "" else firstOrder), #if current first order has new status filled so, his prev order is now empty
