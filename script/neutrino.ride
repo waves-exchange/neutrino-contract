@@ -226,8 +226,9 @@ func withdraw(account : String, index: Int) = {
     let prevIndexHeight = getHeightPriceByIndex(index-1)
     let priceByIndex = getPriceHistory(indexHeight)
 
-    let neutrinoAmount = convertWavesToNeutrino(userWavesLockedBalance, priceByIndex)
-    let wavesAmount = convertNeutrinoToWaves(userNeutrinoLockedBalance, priceByIndex)
+    let spread = if (priceByIndex < 100) then 1 else priceByIndex / 100
+    let neutrinoAmount = convertWavesToNeutrino(userWavesLockedBalance, priceByIndex - spread)
+    let wavesAmount = convertNeutrinoToWaves(userNeutrinoLockedBalance, priceByIndex + spread)
             
     if(isBlocked)
         then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles") # see control.ride
