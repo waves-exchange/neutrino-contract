@@ -86,6 +86,10 @@ func getRewardsConfigStartKey(configKey : String, isStart: Boolean) = {
     configKey + (if isStart then "_start" else "_end")
 }
 
+func getRewardConfigInitialShare(configKey : String) = {
+    configKey + "_initialShare"
+}
+
 func internallockNeutrino(i: Invocation, receiver: String, share: Int) = {
     let pmt = extract(i.payment)
     if (!isDefined(addressFromString(receiver))) 
@@ -100,6 +104,24 @@ func internallockNeutrino(i: Invocation, receiver: String, share: Int) = {
         let account = toString(i.caller)
         let assetIdString = toBase58String(value(pmt.assetId))
         let currentConfig = getStringByKey(getCurrentRewardsConfigKey(account))
+
+        # can be zero because of old records
+        let notMigratedInitialShare = if (currentConfig == "") then share else getNumberByKey(getRewardConfigInitialShare(currentConfig))
+
+        let initialShare = if (currentConfig != "") then {
+            # staking has been submitted before - need to do additional validations
+            let currentConfigData = currentConfig.split("_")
+            let currShare = currentConfigData[2].parseIntValue()
+            let currReceiver = currentConfigData[3]
+            let actualInitialShare = if (notMigratedInitialShare == 0) then currShare else notMigratedInitialShare
+
+            if (currReceiver != receiver) then throw("Impossible to setup new referral address for existed staking") else 
+            if (share < actualInitialShare) then throw("Impossible to setup new share less then initial share for existed staking") else
+            actualInitialShare
+        } else {
+            share
+        }
+
         let newCurrentConfig = getRewardsConfigKey(account, share, receiver)
         let isNewConfig = !(currentConfig == newCurrentConfig)
         let end = if isNewConfig then height else 0
@@ -109,6 +131,7 @@ func internallockNeutrino(i: Invocation, receiver: String, share: Int) = {
             DataEntry(getUserBalanceKey(account, assetIdString), getUserBalance(account, assetIdString) + pmt.amount),
             DataEntry(getRewardsConfigStartKey(currentConfig, false), end), #if there is no current config it leads to dead state key
             DataEntry(getRewardsConfigStartKey(newCurrentConfig, true), start),
+            DataEntry(getRewardConfigInitialShare(newCurrentConfig), initialShare),
             DataEntry(getCurrentRewardsConfigKey(account), newCurrentConfig)
         ])
     }
