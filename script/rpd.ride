@@ -87,7 +87,7 @@ func getRewardsConfigStartKey(configKey : String, isStart: Boolean) = {
 }
 
 func getRewardConfigInitialShare(configKey : String) = {
-    configKey + "_initialShare"
+    configKey + "_1stShare"
 }
 
 func internallockNeutrino(i: Invocation, receiver: String, share: Int) = {
