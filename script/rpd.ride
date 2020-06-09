@@ -117,7 +117,7 @@ func internallockNeutrino(i: Invocation, receiver: String, share: Int) = {
             #if (currReceiver != receiver) then throw("Impossible to setup new referral address for existed staking") else 
             #if (share < actualInitialShare) then throw("Impossible to setup new share less then initial share for existed staking") else
             let newShare = if (share < actualInitialShare) then actualInitialShare else share
-            [actualInitialShare.toString(), share.toString(), currReceiver]
+            [actualInitialShare.toString(), newShare.toString(), currReceiver]
         } else {
             [share.toString(), share.toString(), receiver]
         }
