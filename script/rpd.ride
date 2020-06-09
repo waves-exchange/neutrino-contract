@@ -86,6 +86,10 @@ func getRewardsConfigStartKey(configKey : String, isStart: Boolean) = {
     configKey + (if isStart then "_start" else "_end")
 }
 
+func getRewardConfigInitialShare(owner : String) = {
+    owner + "_initialShare"
+}
+
 func internallockNeutrino(i: Invocation, receiver: String, share: Int) = {
     let pmt = extract(i.payment)
     if (!isDefined(addressFromString(receiver))) 
@@ -100,7 +104,28 @@ func internallockNeutrino(i: Invocation, receiver: String, share: Int) = {
         let account = toString(i.caller)
         let assetIdString = toBase58String(value(pmt.assetId))
         let currentConfig = getStringByKey(getCurrentRewardsConfigKey(account))
-        let newCurrentConfig = getRewardsConfigKey(account, share, receiver)
+
+        let correctData = if (currentConfig != "") then {
+            # staking has been submitted before - need to do additional validations
+            let currentConfigData = currentConfig.split("_")
+            let currShare = currentConfigData[2].parseIntValue()
+            let currReceiver = currentConfigData[3]
+            # can be zero because of old records
+            let notMigratedInitialShare = getNumberByKey(getRewardConfigInitialShare(account))
+            let actualInitialShare = if (notMigratedInitialShare == 0) then currShare else notMigratedInitialShare
+
+            #if (currReceiver != receiver) then throw("Impossible to setup new referral address for existed staking") else 
+            #if (share < actualInitialShare) then throw("Impossible to setup new share less then initial share for existed staking") else
+            let newShare = if (share < actualInitialShare) then actualInitialShare else share
+            [actualInitialShare.toString(), newShare.toString(), currReceiver]
+        } else {
+            [share.toString(), share.toString(), receiver]
+        }
+        let correctInitialShare = correctData[0].parseIntValue()
+        let correctShare = correctData[1].parseIntValue()
+        let correctReceiver = correctData[2]
+
+        let newCurrentConfig = getRewardsConfigKey(account, correctShare, correctReceiver)
         let isNewConfig = !(currentConfig == newCurrentConfig)
         let end = if isNewConfig then height else 0
         let start = if isNewConfig then height else getNumberByKey(getRewardsConfigStartKey(newCurrentConfig, true))
@@ -109,6 +134,7 @@ func internallockNeutrino(i: Invocation, receiver: String, share: Int) = {
             DataEntry(getUserBalanceKey(account, assetIdString), getUserBalance(account, assetIdString) + pmt.amount),
             DataEntry(getRewardsConfigStartKey(currentConfig, false), end), #if there is no current config it leads to dead state key
             DataEntry(getRewardsConfigStartKey(newCurrentConfig, true), start),
+            DataEntry(getRewardConfigInitialShare(account), correctInitialShare),
             DataEntry(getCurrentRewardsConfigKey(account), newCurrentConfig)
         ])
     }
