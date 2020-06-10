@@ -57,6 +57,7 @@ let LISTSPLITSYMBOL = "_"
 let LISTDATASYMBOL = "+"
 let WAVELET = 100000000
 let PAULI = 1000000
+let PRICELET = 1000000 # 10^6
 
 #-------------------Constructor-------------------------
 let NeutrinoAssetIdKey = "neutrino_asset_id"
@@ -77,6 +78,7 @@ let RPDBalanceKey = "rpd_balance"
 func getRPDContractBalanceKey(assetId: ByteVector) = RPDBalanceKey + "_" + toBase58String(assetId)
 #------Control contract-------
 let PriceKey = "price"
+
 let PriceIndexKey = "price_index"
 let IsBlockedKey = "is_blocked"
 func getPriceHistoryKey(block: Int) = PriceKey + "_" + toString(block)
@@ -94,8 +96,8 @@ func getBalanceUnlockBlockKey(owner: String) = "balance_unlock_block_" + owner
 func getRPDProfitKey(count: Int) = "rpd_profit" + "_" + toString(count)
 
 #-------------------Convert functions-------------------
-func convertNeutrinoToWaves(amount: Int, price: Int) = fraction(fraction(amount, 100, price),WAVELET, PAULI)
-func convertWavesToNeutrino(amount: Int, price: Int) = fraction(fraction(amount, price, 100), PAULI, WAVELET)
+func convertNeutrinoToWaves(amount: Int, price: Int) = fraction(fraction(amount, PRICELET, price),WAVELET, PAULI)
+func convertWavesToNeutrino(amount: Int, price: Int) = fraction(fraction(amount, price, PRICELET), PAULI, WAVELET)
 func convertWavesToBond(amount: Int, price: Int) = convertWavesToNeutrino(amount, price) # it's here to be more explicit with convertation
 func convertJsonArrayToList(jsonArray: String) = {
    jsonArray.split(",") #jsonArray.take(size(jsonArray)-1).drop(1).split(",")
@@ -226,7 +228,7 @@ func withdraw(account : String, index: Int) = {
     let prevIndexHeight = getHeightPriceByIndex(index-1)
     let priceByIndex = getPriceHistory(indexHeight)
 
-    let spread = if (priceByIndex < 100) then 1 else priceByIndex / 100
+    let spread = if (priceByIndex < 1*PRICELET) then 1*PRICELET else priceByIndex / 100
     let neutrinoAmount = convertWavesToNeutrino(userWavesLockedBalance, priceByIndex - spread)
     let wavesAmount = convertNeutrinoToWaves(userNeutrinoLockedBalance, priceByIndex + spread)
             

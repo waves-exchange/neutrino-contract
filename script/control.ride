@@ -6,7 +6,7 @@
 #
 
 #-------------------Functions----------------------
-func convertWavesToNeutrino(amount: Int, price: Int) = fraction(fraction(amount, price, 100), 1000000, 100000000)
+func convertWavesToNeutrino(amount: Int, price: Int) = fraction(fraction(amount, price, 1000000), 1000000, 100000000)
 
 func getStringByKey(key: String) = {
     match getString(this, key) {
