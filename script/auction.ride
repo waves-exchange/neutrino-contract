@@ -129,7 +129,8 @@ func orderData(orderId: String, totalWavelets: Int, owner: String, status: Strin
     ]
 }
 
-func internalSellBond(pFirstOrder: String, pNextOrder: String, pFilledTotal: Int, pRoi: Int, pPrice: Int, pPaymentWavelets: Int, orderOwnerAddress: Address, instantOrder: Boolean) = {
+# @param currentMaxRoi - it was introduce to reduce complexity because of SC-626 defect. After 1.2 node release it can be remove and calculated directly in current method
+func internalSellBond(currentMaxRoi: Int, pFirstOrder: String, pNextOrder: String, pFilledTotal: Int, pRoi: Int, pPrice: Int, pPaymentWavelets: Int, orderOwnerAddress: Address, instantOrder: Boolean) = {
     # WARNING: COPY/PASTED SECTION #2 because of complexity estimator defect SC-626 - if you plan to modify then check all 2 places:
     # 1) 'func internalSellBond':       let priceWavesByBondCents = fraction(100+pRoi, currentPrice, 100)
     # 2) 'func instantBuyNsbtOrFail':   let priceWavesByBondCents = fraction(100+roi, currentPrice, 100)
@@ -140,7 +141,8 @@ func internalSellBond(pFirstOrder: String, pNextOrder: String, pFilledTotal: Int
     let fillableOrderAmount = convertWavesToBond(remainedTotal, priceWavesByBondCents); # expected price format 100*waves/usd; return scale: nsbt (integers/dollars)
 
     let totalOrderWaveletesRequired = convertBondToWaves(fillableOrderAmount, priceWavesByBondCents) # expected in wavelets
-    let nbTokensSellCondition = fraction(deficit, 100, neutrinoSupply) >= pRoi # it's working for both: deficit & profict as well (15% > 10% and -15% < -10%)
+
+    let nbTokensSellCondition = currentMaxRoi >= pRoi # it's working for both: deficit & profict as well (15% > 10% and -15% < -10%)
 
     if (!nbTokensSellCondition) then throw("innapropriate roi: " + toString(pRoi)) else
     if(totalOrderWaveletesRequired == 0) then throw("cannot fill order at the moment") else #if not enough nsbt to fill the order by order price
@@ -179,7 +181,7 @@ func internalSellBond(pFirstOrder: String, pNextOrder: String, pFilledTotal: Int
             ScriptTransfer(orderOwnerAddress, changeWavelets, unit)]))
 }
 
-func internalAddBuyBondOrder(roi : Int, price: Int, prevOrder: String, inv: Invocation, instantOrder: Boolean) = {
+func internalAddBuyBondOrder(currentMaxRoi: Int, roi : Int, price: Int, prevOrder: String, inv: Invocation, instantOrder: Boolean) = {
     let pmt = extract(inv.payment);
     let newOrderId = toBase58String(inv.transactionId)
 
@@ -204,7 +206,7 @@ func internalAddBuyBondOrder(roi : Int, price: Int, prevOrder: String, inv: Invo
 
     if (isNextOrderError || isPrevOrderError) then throw("invalid order isPrevOrderError:" + toString(isPrevOrderError) + " isNextOrderError:" + toString(isNextOrderError)) else
     if (isNewOrderAtFirstPosition && instantOrder) then {
-        internalSellBond(newOrderId, nextOrder, 0, roi, price, pmt.amount, inv.caller, true)
+        internalSellBond(currentMaxRoi, newOrderId, nextOrder, 0, roi, price, pmt.amount, inv.caller, true)
     } else if (instantOrder) then {
         throw("Instant order couldn't be added into waiting queue")
     } else
@@ -226,19 +228,31 @@ func internalAddBuyBondOrder(roi : Int, price: Int, prevOrder: String, inv: Invo
 # set buy NSBT order
 # [called by user]
 @Callable(i)
-func instantBuyNsbtOrFail(roi : Int) = {
-    let pmt = extract(i.payment);
+func instantBuyNsbtOrFail(noLessThenRoi : Int) = {
+    let pmt = extract(i.payment)
+    # WARNING: COPY/PASTED SECTION #4 because of complexity estimator defect SC-626 - if you plan to modify then check all 3 places:
+    # 1) 'func instantBuyNsbtOrFail':   let maxValidRoi = fraction(deficit, 100, neutrinoSupply)
+    # 2) 'func addBuyBondOrder':        fraction(deficit, 100, neutrinoSupply) - parameter in internalAddBuyBondOrder call
+    # 3) 'func sellBond':               fraction(deficit, 100, neutrinoSupply) - parameter int internalSellBond call
+    let currentMaxRoi = fraction(deficit, 100, neutrinoSupply)
+
+    if (noLessThenRoi > currentMaxRoi) then throw("Current maxRoi=" + currentMaxRoi.toString() + " is less then passed parameter noLessThenRoi=" + noLessThenRoi.toString()) else
     # WARNING: COPY/PASTED SECTION #2 because of complexity estimator defect SC-626 - if you plan to modify then check all 2 places:
     # 1) 'func internalSellBond':       let priceWavesByBondCents = fraction(100+pRoi, currentPrice, 100)
     # 2) 'func instantBuyNsbtOrFail':   let priceWavesByBondCents = fraction(100+roi, currentPrice, 100)
-    let priceWavesByBondCents = fraction(100+roi, currentPrice, 100)
+    let priceWavesByBondCents = fraction(100+currentMaxRoi, currentPrice, 100)
 
     # WARNING: COPY/PASTED SECTION #3 because of complexity estimator defect SC-626 - if you plan to modify then check all 2 places:
-    # 1) 'func instantBuyNsbtOrFail':   let price = 100 * 100 / priceWavesByBondCents
+    # 1) 'func instantBuyNsbtOrFail':   100 * 100 / priceWavesByBondCents
     # 2) 'func addBuyBondOrder':        let priceWavesByBondCents = fraction(100, 100, price)
-    let price = 100 * 100 / priceWavesByBondCents
 
-    internalAddBuyBondOrder(roi, price, "", i, true)
+    internalAddBuyBondOrder(
+        currentMaxRoi,
+        currentMaxRoi,
+        100 * 100 / priceWavesByBondCents, # it is price which is used just to keep backward compatibility (save price into state) and in the next functions it doesn't used in any computations
+        "",
+        i,
+        true)
 }
 
 # set buy NSBT order
@@ -252,10 +266,19 @@ func addBuyBondOrder(price : Int, prevOrder: String) = {
     # 2) 'func addBuyBondOrder':        let priceWavesByBondCents = fraction(100, 100, price)
     let priceWavesByBondCents = fraction(100, 100, price)
 
-    let roi = fraction(priceWavesByBondCents - currentPrice, 100, currentPrice) # Example: 1.2 WAVES/nsbt (1.2 NSBT for 1 waves) and 0.8 WAVES/USD (0.8 usd for 1 waves) gives 100*(1.2-0.8/0.8) 50% ROI
-
     if(price <= 0) then throw("price less zero") else
-    internalAddBuyBondOrder(roi, price, prevOrder, i, false)
+
+    # WARNING: COPY/PASTED SECTION #4 because of complexity estimator defect SC-626 - if you plan to modify then check all 3 places:
+    # 1) 'func instantBuyNsbtOrFail':   let maxValidRoi = fraction(deficit, 100, neutrinoSupply)
+    # 2) 'func addBuyBondOrder':        fraction(deficit, 100, neutrinoSupply) - parameter in internalAddBuyBondOrder call
+    # 3) 'func sellBond':               fraction(deficit, 100, neutrinoSupply) - parameter int internalSellBond call
+    internalAddBuyBondOrder(
+        fraction(deficit, 100, neutrinoSupply),
+        fraction(priceWavesByBondCents - currentPrice, 100, currentPrice), # User's roi. Example: 1.2 WAVES/nsbt (1.2 NSBT for 1 waves) and 0.8 WAVES/USD (0.8 usd for 1 waves) gives 100*(1.2-0.8/0.8) 50% ROI
+        price,
+        prevOrder,
+        i,
+        false)
 }
 
 
@@ -307,7 +330,20 @@ func sellBond() = {
 
         let paymentWavelets = getOrderTotal(firstOrder)
         let orderOwnerAddress = Address(fromBase58String(getOrderOwner(firstOrder)))
-        internalSellBond(firstOrder, nextOrder, filledTotal, roi, orderPrice, paymentWavelets, orderOwnerAddress, false)
+        # WARNING: COPY/PASTED SECTION #4 because of complexity estimator defect SC-626 - if you plan to modify then check all 2 places:
+        # 1) 'func instantBuyNsbtOrFail':   let maxValidRoi = fraction(deficit, 100, neutrinoSupply)
+        # 2) 'func addBuyBondOrder':        fraction(deficit, 100, neutrinoSupply) - parameter in internalAddBuyBondOrder call
+        # 3) 'func sellBond':               fraction(deficit, 100, neutrinoSupply) - parameter int internalSellBond call
+        internalSellBond(
+            fraction(deficit, 100, neutrinoSupply),
+            firstOrder,
+            nextOrder,
+            filledTotal,
+            roi,
+            orderPrice,
+            paymentWavelets,
+            orderOwnerAddress,
+            false)
     }
 }
 
