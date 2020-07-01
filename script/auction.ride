@@ -1,4 +1,4 @@
-{-# STDLIB_VERSION 3 #-}
+{-# STDLIB_VERSION 4 #-}
 {-# CONTENT_TYPE DAPP #-}
 {-# SCRIPT_TYPE ACCOUNT #-}
 #
@@ -7,38 +7,23 @@
 
 #-------------------Base functions----------------------
 func getNumberByKey(key: String) = {
-    match getInteger(this, key) {
-            case a:Int => a
-            case _ => 0
-    }
+    getInteger(this, key).valueOrElse(0)
 }
 
 func getStringByKey(key: String) = {
-    match getString(this, key) {
-            case a:String => a
-            case _ => ""
-    }
+    getString(this, key).valueOrElse("")
 }
 
 func getBoolByAddressAndKey(address: Address, key: String) = {
-     match getBoolean(address, key) {
-            case a:Boolean => a
-            case _ => false
-    }
+     getBoolean(address, key).valueOrElse(false)
 }
 
 func getStringByAddressAndKey(address: Address, key: String) = {
-   match getString(address, key) {
-            case a:String => a
-            case _ => ""
-    }
+   getString(address, key).valueOrElse("")
 }
 
 func getNumberByAddressAndKey(address: Address, key: String) = {
-    match getInteger(address, key) {
-            case a:Int => a
-            case _ => 0
-    }
+    getInteger(address, key).valueOrElse(0)
 }
 
 #-------------------Constants---------------------------
@@ -98,10 +83,11 @@ let isBlocked = getBoolByAddressAndKey(controlContract, "is_blocked")
 let currentPrice = getNumberByAddressAndKey(controlContract, PriceKey) # The value from control.ride
 let neutrinoLockedBalance = getNumberByAddressAndKey(neutrinoContract, NeutrinoLockedBalanceKey) #locked balance from USDN -> WAVES swap
 #cannot be expressed by complexity limitations: let wavesLockedBalance = getNumberByAddressAndKey(neutrinoContract, WavesLockedBalanceKey) #locked balance from WAVES -> USDN swap
-let reserve = wavesBalance(neutrinoContract) -
+let reserve = wavesBalance(neutrinoContract).regular -
     getNumberByAddressAndKey(neutrinoContract, WavesLockedBalanceKey) #waves reserves to cover USDN supply
 let neutrinoSupply = neutrinoLockedBalance + extract(assetInfo(neutrinoAssetId)).quantity - assetBalance(neutrinoContract, neutrinoAssetId) - assetBalance(liquidationContract, neutrinoAssetId) # supply outside main sc or liquidation contract
 let deficit = neutrinoSupply - convertWavesToNeutrino(reserve, currentPrice)
+let currentMaxRoi = fraction(deficit, 100, neutrinoSupply)
 let firstOrder = getStringByKey(FirstOrderKey)
 
 #-------------------Get functions----------------------
@@ -113,30 +99,26 @@ func getOrderFilledTotal(id : String) = getNumberByKey(getOrderFilledTotalKey(id
 func getPrevOrder(id: String) = getStringByKey(getPrevOrderKey(id))
 func getNextOrder(id: String) = getStringByKey(getNextOrderKey(id))
 
+func getPriceForRoi(roiPercents: Int) = {fraction(100 + roiPercents, currentPrice, 100)}
+func getReversePrice(price: Int) = {PRICELET * PRICELET / price}
 
 #------------------- -------------
 #-------------------Any functions----------------------
-# WARNING: COPY/PASTED SECTION #1 because of complexity estimator defect SC-626 - if you plan to modify then check all 3 places:
-#        1) 'func orderData = {copy/paste}'
-#        2) 'func internalSellBond': if (instantOrder) copy/paste then ...
-#        3) 'func internalSellBond': if (instantOrder) ... then copy/paste
-func orderData(orderId: String, totalWavelets: Int, owner: String, status: String, roi: Int, price: Int) = {
-    [   DataEntry(getOrderPriceKey(orderId), price), # currently it is kept for backwards compatibility with cache-updater: see https://github.com/waves-exchange/cache-updater/blob/master/src/entities/bondsorder.go#L143
-        DataEntry(getOrderTotalKey(orderId), totalWavelets),
-        DataEntry(getOrderOwnerKey(orderId), owner),
-        DataEntry(getOrderHeightKey(orderId), height),
-        DataEntry(getOrderStatusKey(orderId), status),
-        DataEntry("debug_order_currentPrice_" + orderId, currentPrice),
-        DataEntry(getRoiByOrderIdKey(orderId), roi)
+
+func orderData(orderId: String, totalWavelets: Int, filledWavelets: Int, owner: String, status: String, roi: Int, price: Int) = {
+    [IntegerEntry(getOrderPriceKey(orderId), price), # currently it is kept for backwards compatibility with cache-updater: see https://github.com/waves-exchange/cache-updater/blob/master/src/entities/bondsorder.go#L143
+     IntegerEntry(getOrderTotalKey(orderId), totalWavelets),
+     IntegerEntry(getOrderFilledTotalKey(orderId), filledWavelets),
+     StringEntry(getOrderOwnerKey(orderId), owner),
+     IntegerEntry(getOrderHeightKey(orderId), height),
+     StringEntry(getOrderStatusKey(orderId), status),
+     IntegerEntry("debug_order_currentPrice_" + orderId, currentPrice),
+     IntegerEntry(getRoiByOrderIdKey(orderId), roi)
     ]
 }
 
-# @param currentMaxRoi - it was introduce to reduce complexity because of SC-626 defect. After 1.2 node release it can be remove and calculated directly in current method
-func internalSellBond(currentMaxRoi: Int, pFirstOrder: String, pNextOrder: String, pFilledTotal: Int, pRoi: Int, pPrice: Int, pPaymentWavelets: Int, orderOwnerAddress: Address, instantOrder: Boolean) = {
-    # WARNING: COPY/PASTED SECTION #2 because of complexity estimator defect SC-626 - if you plan to modify then check all 2 places:
-    # 1) 'func internalSellBond':       let priceWavesByBondCents = fraction(100+pRoi, currentPrice, 100)
-    # 2) 'func instantBuyNsbtOrFail':   let priceWavesByBondCents = fraction(100+roi, currentPrice, 100)
-    let priceWavesByBondCents = fraction(100+pRoi, currentPrice, 100)
+func internalSellBond(pFirstOrder: String, pNextOrder: String, pFilledTotal: Int, pRoi: Int, pPrice: Int, pPaymentWavelets: Int, orderOwnerAddress: Address, instantOrder: Boolean) = {
+    let priceWavesByBondCents = getPriceForRoi(pRoi)
 
     let remainedTotal = pPaymentWavelets - pFilledTotal #waveletes
 
@@ -152,39 +134,23 @@ func internalSellBond(currentMaxRoi: Int, pFirstOrder: String, pNextOrder: Strin
     let changeWavelets = remainedTotal - totalOrderWaveletesRequired
 
     let writeSetData = if (instantOrder) then {
-# WARNING: COPY/PASTED SECTION #1 because of complexity estimator defect SC-626 - if you plan to modify then check all 3 places:
-#        1) 'func orderData = {copy/paste}'
-#        2) 'func internalSellBond': if (instantOrder) copy/paste then ...
-#        3) 'func internalSellBond': if (instantOrder) ... then copy/paste
-        [DataEntry(getOrderPriceKey(pFirstOrder), pPrice), # currently it is kept for backwards compatibility with cache-updater: see https://github.com/waves-exchange/cache-updater/blob/master/src/entities/bondsorder.go#L143
-        DataEntry(getOrderTotalKey(pFirstOrder), pPaymentWavelets),
-        DataEntry(getOrderOwnerKey(pFirstOrder), toBase58String(orderOwnerAddress.bytes)),
-        DataEntry(getOrderHeightKey(pFirstOrder), height),
-        DataEntry(getOrderStatusKey(pFirstOrder), FILLED),
-        DataEntry("debug_order_currentPrice_" + pFirstOrder, currentPrice),
-        DataEntry(getRoiByOrderIdKey(pFirstOrder), pRoi)]
+        orderData(pFirstOrder, pPaymentWavelets, pFilledTotal + totalOrderWaveletesRequired, toBase58String(orderOwnerAddress.bytes), FILLED, pRoi, currentPrice)
     } else {
-# WARNING: COPY/PASTED SECTION #1 because of complexity estimator defect SC-626 - if you plan to modify then check all 3 places:
-#        1) 'func orderData = {copy/paste}'
-#        2) 'func internalSellBond': if (instantOrder) copy/paste then ...
-#        3) 'func internalSellBond': if (instantOrder) ... then copy/paste
-        [DataEntry(getOrderFilledTotalKey(pFirstOrder), pFilledTotal + totalOrderWaveletesRequired),
-        DataEntry(getOrderStatusKey(pFirstOrder), FILLED), # filled status if there is no remained waveletes in the order
-        DataEntry(getOrderTotalKey(pFirstOrder), pPaymentWavelets),
-        DataEntry(getPrevOrderKey(pNextOrder), ""),
-        DataEntry(FirstOrderKey, pNextOrder)]
+        [IntegerEntry(getOrderFilledTotalKey(pFirstOrder), pFilledTotal + totalOrderWaveletesRequired),
+        StringEntry(getOrderStatusKey(pFirstOrder), FILLED), # filled status if there is no remained waveletes in the order
+        StringEntry(getPrevOrderKey(pNextOrder), ""),
+        StringEntry(FirstOrderKey, pNextOrder)]
     }
 
-    ScriptResult(
-        WriteSet(writeSetData),
-        TransferSet([
-            ScriptTransfer(orderOwnerAddress, fillableOrderAmount, bondAssetId),
-            ScriptTransfer(neutrinoContract, totalOrderWaveletesRequired, unit),
-            ScriptTransfer(orderOwnerAddress, changeWavelets, unit)]))
+    writeSetData ++ [
+        ScriptTransfer(orderOwnerAddress, fillableOrderAmount, bondAssetId),
+        ScriptTransfer(neutrinoContract, totalOrderWaveletesRequired, unit),
+        ScriptTransfer(orderOwnerAddress, changeWavelets, unit)
+    ]
 }
 
-func internalAddBuyBondOrder(currentMaxRoi: Int, roi : Int, price: Int, prevOrder: String, inv: Invocation, instantOrder: Boolean) = {
-    let pmt = extract(inv.payment);
+func internalAddBuyBondOrder(roi : Int, price: Int, prevOrder: String, inv: Invocation, instantOrder: Boolean) = {
+    let pmt = extract(inv.payments[0]);
     let newOrderId = toBase58String(inv.transactionId)
 
     if (isBlocked) then throw("contract is blocked by EMERGENCY SHUTDOWN actions until reactivation by emergency oracles") else
@@ -208,21 +174,18 @@ func internalAddBuyBondOrder(currentMaxRoi: Int, roi : Int, price: Int, prevOrde
 
     if (isNextOrderError || isPrevOrderError) then throw("invalid order isPrevOrderError:" + toString(isPrevOrderError) + " isNextOrderError:" + toString(isNextOrderError)) else
     if (isNewOrderAtFirstPosition && instantOrder) then {
-        internalSellBond(currentMaxRoi, newOrderId, nextOrder, 0, roi, price, pmt.amount, inv.caller, true)
+        internalSellBond(newOrderId, nextOrder, 0, roi, price, pmt.amount, inv.caller, true)
     } else if (instantOrder) then {
         throw("Instant order couldn't be added into waiting queue")
     } else
-        WriteSet(
-            DataEntry(getPrevOrderKey(newOrderId), prevOrder)
-            ::DataEntry(getNextOrderKey(newOrderId), nextOrder)
+        [StringEntry(getPrevOrderKey(newOrderId), prevOrder),
+        StringEntry(getNextOrderKey(newOrderId), nextOrder),
 
-            ::DataEntry(getNextOrderKey(prevOrder), if prevOrder == "" then "" else newOrderId)
-            ::DataEntry(getPrevOrderKey(nextOrder), if nextOrder == "" then "" else newOrderId)
+        StringEntry(getNextOrderKey(prevOrder), if prevOrder == "" then "" else newOrderId),
+        StringEntry(getPrevOrderKey(nextOrder), if nextOrder == "" then "" else newOrderId),
 
-            ::DataEntry(FirstOrderKey, if firstOrder == "" || firstOrder == nextOrder then newOrderId else firstOrder)
-
-            ::orderData(newOrderId, pmt.amount, owner, NEW, roi, price)
-        )
+        StringEntry(FirstOrderKey, if firstOrder == "" || firstOrder == nextOrder then newOrderId else firstOrder)
+        ] ++ orderData(newOrderId, pmt.amount, 0, owner, NEW, roi, price)
 }
 
 #-------------------Callable---------------------------
@@ -231,27 +194,16 @@ func internalAddBuyBondOrder(currentMaxRoi: Int, roi : Int, price: Int, prevOrde
 # [called by user]
 @Callable(i)
 func instantBuyNsbtOrFail(noLessThenRoi : Int) = {
-    let pmt = extract(i.payment)
-    # WARNING: COPY/PASTED SECTION #4 because of complexity estimator defect SC-626 - if you plan to modify then check all 3 places:
-    # 1) 'func instantBuyNsbtOrFail':   let maxValidRoi = fraction(deficit, 100, neutrinoSupply)
-    # 2) 'func addBuyBondOrder':        fraction(deficit, 100, neutrinoSupply) - parameter in internalAddBuyBondOrder call
-    # 3) 'func sellBond':               fraction(deficit, 100, neutrinoSupply) - parameter int internalSellBond call
-    let currentMaxRoi = fraction(deficit, 100, neutrinoSupply)
+    let pmt = extract(i.payments[0])
+    let roi = currentMaxRoi
 
-    if (noLessThenRoi > currentMaxRoi) then throw("Current maxRoi=" + currentMaxRoi.toString() + " is less then passed parameter noLessThenRoi=" + noLessThenRoi.toString()) else
-    # WARNING: COPY/PASTED SECTION #2 because of complexity estimator defect SC-626 - if you plan to modify then check all 2 places:
-    # 1) 'func internalSellBond':       let priceWavesByBondCents = fraction(100+pRoi, currentPrice, 100)
-    # 2) 'func instantBuyNsbtOrFail':   let priceWavesByBondCents = fraction(100+roi, currentPrice, 100)
-    let priceWavesByBondCents = fraction(100+currentMaxRoi, currentPrice, 100)
+    if (noLessThenRoi > roi) then throw("Current maxRoi=" + roi.toString() + " is less then passed parameter noLessThenRoi=" + noLessThenRoi.toString()) else
 
-    # WARNING: COPY/PASTED SECTION #3 because of complexity estimator defect SC-626 - if you plan to modify then check all 2 places:
-    # 1) 'func instantBuyNsbtOrFail':   PRICELET * PRICELET / priceWavesByBondCents
-    # 2) 'func addBuyBondOrder':        let priceWavesByBondCents = fraction(PRICELET, PRICELET, price)
+    let priceWavesByBondCents = getPriceForRoi(roi)
 
     internalAddBuyBondOrder(
-        currentMaxRoi,
-        currentMaxRoi,
-        PRICELET * PRICELET / priceWavesByBondCents, # it is price which is used just to keep backward compatibility (save price into state) and in the next functions it doesn't used in any computations
+        roi,
+        getReversePrice(priceWavesByBondCents), # it is price which is used just to keep backward compatibility (save price into state) and in the next functions it doesn't used in any computations
         "",
         i,
         true)
@@ -261,21 +213,13 @@ func instantBuyNsbtOrFail(noLessThenRoi : Int) = {
 # [called by user]
 @Callable(i)
 func addBuyBondOrder(price : Int, prevOrder: String) = {
-    let pmt = extract(i.payment);
+    let pmt = extract(i.payments[0]);
     # price = 100*nsbt/waves, but we have to work with price with another scale: priceWavesByBondCents = 100*waves/nsbt, so priceWavesByBondCents = 100*1/(price/100)
-    # WARNING: COPY/PASTED SECTION #3 because of complexity estimator defect SC-626 - if you plan to modify then check all 2 places:
-    # 1) 'func instantBuyNsbtOrFail':   let price = PRICELET * PRICELET / priceWavesByBondCents
-    # 2) 'func addBuyBondOrder':        let priceWavesByBondCents = fraction(PRICELET, PRICELET, price)
-    let priceWavesByBondCents = fraction(PRICELET, PRICELET, price)
+    let priceWavesByBondCents = getReversePrice(price)
 
     if(price <= 0) then throw("price less zero") else
 
-    # WARNING: COPY/PASTED SECTION #4 because of complexity estimator defect SC-626 - if you plan to modify then check all 3 places:
-    # 1) 'func instantBuyNsbtOrFail':   let maxValidRoi = fraction(deficit, 100, neutrinoSupply)
-    # 2) 'func addBuyBondOrder':        fraction(deficit, 100, neutrinoSupply) - parameter in internalAddBuyBondOrder call
-    # 3) 'func sellBond':               fraction(deficit, 100, neutrinoSupply) - parameter int internalSellBond call
     internalAddBuyBondOrder(
-        fraction(deficit, 100, neutrinoSupply),
         fraction(priceWavesByBondCents - currentPrice, 100, currentPrice), # User's roi. Example: 1.2 WAVES/nsbt (1.2 NSBT for 1 waves) and 0.8 WAVES/USD (0.8 usd for 1 waves) gives 100*(1.2-0.8/0.8) 50% ROI
         price,
         prevOrder,
@@ -301,19 +245,13 @@ func cancelOrder(orderId : String) = {
         then throw("permission denied")
     else if(getOrderStatus(orderId) != NEW)
         then throw("invalid order status")
-    else {
-        ScriptResult(
-            WriteSet([
-                DataEntry(FirstOrderKey, if firstOrder == orderId then nextOrder else firstOrder),
+    else {[
+        StringEntry(FirstOrderKey, if firstOrder == orderId then nextOrder else firstOrder),
 
-                DataEntry(getNextOrderKey(prevOrder), nextOrder),
-                DataEntry(getPrevOrderKey(nextOrder), prevOrder),
-                DataEntry(getOrderStatusKey(orderId), CANCELED)
-            ]),
-            TransferSet([
-                ScriptTransfer(i.caller, amount, unit)
-            ])
-        )
+        StringEntry(getNextOrderKey(prevOrder), nextOrder),
+        StringEntry(getPrevOrderKey(nextOrder), prevOrder),
+        StringEntry(getOrderStatusKey(orderId), CANCELED),
+        ScriptTransfer(i.caller, amount, unit)]
     }
 }
 
@@ -332,12 +270,8 @@ func sellBond() = {
 
         let paymentWavelets = getOrderTotal(firstOrder)
         let orderOwnerAddress = Address(fromBase58String(getOrderOwner(firstOrder)))
-        # WARNING: COPY/PASTED SECTION #4 because of complexity estimator defect SC-626 - if you plan to modify then check all 2 places:
-        # 1) 'func instantBuyNsbtOrFail':   let maxValidRoi = fraction(deficit, 100, neutrinoSupply)
-        # 2) 'func addBuyBondOrder':        fraction(deficit, 100, neutrinoSupply) - parameter in internalAddBuyBondOrder call
-        # 3) 'func sellBond':               fraction(deficit, 100, neutrinoSupply) - parameter int internalSellBond call
+
         internalSellBond(
-            fraction(deficit, 100, neutrinoSupply),
             firstOrder,
             nextOrder,
             filledTotal,
