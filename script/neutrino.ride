@@ -310,7 +310,7 @@ func migrationUSDNB2NSBTSwap() = {
         (if(sigVerify(tx.bodyBytes, tx.proofs[3], fromBase58String(pubKeyAdminsList[3]))) then 2 else 0)
     match tx {
         case leasingTx: LeaseTransaction | LeaseCancelTransaction =>
-            sigVerify(tx.bodyBytes, tx.proofs[0], nodeOracleProviderPubKey)
+            sigVerify(leasingTx.bodyBytes, leasingTx.proofs[0], nodeOracleProviderPubKey)
         case sponsorTx: SponsorFeeTransaction =>
             checkIsValidMinSponsoredFee(sponsorTx) && count >= 3
         case _ => {	
