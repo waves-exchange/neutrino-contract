@@ -1,4 +1,4 @@
-{-# STDLIB_VERSION 3 #-}
+{-# STDLIB_VERSION 4 #-}
 {-# CONTENT_TYPE DAPP #-}
 {-# SCRIPT_TYPE ACCOUNT #-}
 #
@@ -9,30 +9,18 @@
 func convertWavesToNeutrino(amount: Int, price: Int) = fraction(fraction(amount, price, 1000000), 1000000, 100000000)
 
 func getStringByKey(key: String) = {
-    match getString(this, key) {
-            case a:String => a
-            case _ => ""
-    }
+    getString(this, key).valueOrElse("")
 }
 func getNumberByAddressAndKey(address: String, key: String) = {
-    match getInteger(addressFromStringValue(address), key) {
-            case a:Int => a
-            case _ => 0
-    }
+    getInteger(addressFromStringValue(address), key).valueOrElse(0)
 }
 
 func getOracleProvideHeight(ownerPub: ByteVector, height: Int) = {
-    match getInteger(addressFromPublicKey(ownerPub), "price_" + toString(height)) {
-            case a:Int => a
-            case _ => 0
-    }
+    getInteger(addressFromPublicKey(ownerPub), "price_" + toString(height)).valueOrElse(0)
 }
 
 func getStringByAddressAndKey(address: Address, key: String) = {
-     match getString(address, key) {
-            case a:String => a
-            case _ => ""
-    }
+     getString(address, key).valueOrElse("")
 }
 
 func dropElementInJsonArray(array: String, element: String) = {
@@ -54,18 +42,12 @@ func convertJsonArrayToList(jsonArray: String) = {
 #------This contract----------
 
 #-------------------Global vars-------------------------
-let price = match getInteger(this, "price") {
-            case a:Int => a
-            case _ => 0}
+let price = getInteger(this, "price").valueOrElse(0)
 
 #let priceIndex = getNumberByKey("price_index")
-let priceIndex = match getInteger(this, "price_index") {
-            case a:Int => a
-            case _ => 0}
+let priceIndex = getInteger(this, "price_index").valueOrElse(0)
 
-let isBlocked = match getBoolean(this, "is_blocked") {
-            case a:Boolean => a
-            case _ => false}
+let isBlocked = getBoolean(this, "is_blocked").valueOrElse(false)
 
 let percentPriceOffset = 7
 
@@ -79,21 +61,17 @@ let bftCoefficientOracle = 4
 #-------------------Other func--------------------------
 
 
-let neutrinoAddress     = addressFromPublicKey(fromBase58String("BRnVwSVctnV8pge5vRpsJdWnkjWEJspFb6QvrmZvu3Ht"))
-let liquidationAddress  = addressFromPublicKey(fromBase58String("H8Gooqgk4486MkqEQVwACpgoyEjt5Px4eskysnEDZ1nR"))
-let neutrinoAsset       = fromBase58String("DG2xFkPdDwKUoBkzGAhQtLpSGzfXLiCYPEzeKH2Ad24p")
+let neutrinoAddress     = Address(base58'3PC9BfRwJWWiw9AREE2B3eWzCks3CYtg4yo')
+let liquidationAddress  = Address(base58'3P4PCxsJqMzQBALo8zANHtBDZRRquobHQp7')
+let neutrinoAsset       = base58'DG2xFkPdDwKUoBkzGAhQtLpSGzfXLiCYPEzeKH2Ad24p'
 
 #locked balance from USDN -> WAVES swap
-let neutrinoLockedBalance = match getInteger(neutrinoAddress, "balance_lock_neutrino") {
-            case a:Int => a
-            case _ => 0}
+let neutrinoLockedBalance = getInteger(neutrinoAddress, "balance_lock_neutrino").valueOrElse(0)
 
 #locked balance from WAVES -> USDN swap
-let wavesLockedBalance = match getInteger(neutrinoAddress, "balance_lock_waves") {
-            case a:Int => a
-            case _ => 0}
+let wavesLockedBalance = getInteger(neutrinoAddress, "balance_lock_waves").valueOrElse(0)
 
-let reserve = wavesBalance(neutrinoAddress) - wavesLockedBalance #waves reserves to cover USDN supply
+let reserve = wavesBalance(neutrinoAddress).regular - wavesLockedBalance #waves reserves to cover USDN supply
 let neutrinoSupply = neutrinoLockedBalance + extract(assetInfo(neutrinoAsset)).quantity - assetBalance(neutrinoAddress, neutrinoAsset)
     - assetBalance(liquidationAddress, neutrinoAsset) # supply outside main sc or liquidation contract
 let deficit = neutrinoSupply - convertWavesToNeutrino(reserve, price)
@@ -188,26 +166,19 @@ func formattingPriceMsg(price: Int, height: Int) = {
 func callEmergencyShutdown(reason: String) = {
     let AutoEmergencyOracleAddress = "3P7ihFVxBNbHK237TNdPxT1xHEu8pHexXTr"
     let callerAddress = toString(i.caller)
-    if (AutoEmergencyOracleAddress != callerAddress)
-        then throw("caller must be one an emergency oracle")
-    else
-        WriteSet([
-            DataEntry("is_blocked", true),
-            DataEntry("is_blocked_caller", callerAddress),
-            DataEntry("is_blocked_reason", reason)
-        ])
+    if (AutoEmergencyOracleAddress != callerAddress) then throw("caller must be one an emergency oracle") else
+    [BooleanEntry("is_blocked", true),
+      StringEntry("is_blocked_caller", callerAddress),
+      StringEntry("is_blocked_reason", reason)]
 }
 
 # [called by price oracles]
 @Callable(i)
 func finalizeCurrentPrice(price1: Int, sign1: ByteVector, price2: Int, sign2: ByteVector, price3: Int, sign3: ByteVector, price4: Int, sign4: ByteVector, price5: Int, sign5: ByteVector) = {
-    if(isBlocked) then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles")
-    else if (match getInteger(this, "price_" + toString(height)) {
-            case a:Int => a
-            case _ => 0} != 0)
-    then throw("wait next block") else
-    if (pubKeyOraclesList[height % 5] != toBase58String(i.callerPublicKey))
-    then throw("Out of turn finalization: " + toString(height) + " block should be finalize by " + pubKeyOraclesList[height % 5]) else
+    if(isBlocked) then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles") else
+    if (getInteger(this, "price_" + toString(height)).valueOrElse(0) != 0) then throw("wait next block") else
+    if (pubKeyOraclesList[height % 5] != toBase58String(i.callerPublicKey)) then throw("Out of turn finalization: "
+             + toString(height) + " block should be finalize by " + pubKeyOraclesList[height % 5]) else
 
     let prices = [
         if sigVerify(formattingPriceMsg(price1, height), sign1, fromBase58String(pubKeyOraclesList[0])) then price1 else 0,
@@ -236,24 +207,20 @@ func finalizeCurrentPrice(price1: Int, sign1: ByteVector, price2: Int, sign2: By
 
     if(newPrice >= (price + price*percentPriceOffset/100) || newPrice <= (price - price*percentPriceOffset/100)) then {
         let reason = "automatic emergency shutdown because of large price variability"
-        WriteSet([
-            DataEntry("is_blocked", true),
-            DataEntry("is_blocked_caller", toString(this)),
-            DataEntry("is_blocked_reason", reason),
-            DataEntry("black_swarm_price" + "_" + toString(height), newPrice)
-        ])
-    }
-    else {
+        [BooleanEntry("is_blocked", true),
+          StringEntry("is_blocked_caller", toString(this)),
+          StringEntry("is_blocked_reason", reason),
+          IntegerEntry("black_swarm_price" + "_" + toString(height), newPrice)]
+    } else {
         let newPriceIndex = priceIndex + 1
-        WriteSet([
-            DataEntry("price", newPrice),
-            DataEntry("price_" + toString(height), newPrice),
-            DataEntry("price_index", newPriceIndex),
-            DataEntry("price_index_" + toString(newPriceIndex), height),
-            DataEntry("deficit_" + toString(height), deficit),
-            DataEntry("neutrinoSupply_" + toString(height), neutrinoSupply),
-            DataEntry("deficit_percent_" + toString(height), if (neutrinoSupply != 0) then deficit * 100 / neutrinoSupply else 0)
-        ])
+        [IntegerEntry("price", newPrice),
+          IntegerEntry("price_" + toString(height), newPrice),
+          IntegerEntry("price_index", newPriceIndex),
+          IntegerEntry("price_index_" + toString(newPriceIndex), height),
+          IntegerEntry("deficit_" + toString(height), deficit),
+          IntegerEntry("neutrinoSupply_" + toString(height), neutrinoSupply),
+          IntegerEntry("deficit_percent_" + toString(height), if (neutrinoSupply != 0) then deficit * 100 / neutrinoSupply else 0)
+        ]
     }
 }
 
