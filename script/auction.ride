@@ -142,6 +142,9 @@ func internalSellBond(currentMaxRoi: Int, pFirstOrder: String, pNextOrder: Strin
 
     let totalOrderWaveletesRequired = convertBondToWaves(fillableOrderAmount, priceWavesByBondCents) # expected in wavelets
 
+# WARNING: COPY/PASTED SECTION #5 because of complexity estimator defect SC-626 - if you plan to modify then check all 2 places:
+# 1) 'func internalAddBuyBondOrder':    && currentMaxRoi >= roi
+# 2) 'func internalSellBond':           let nbTokensSellCondition = currentMaxRoi >= pRoi
     let nbTokensSellCondition = currentMaxRoi >= pRoi # it's working for both: deficit & profict as well (15% > 10% and -15% < -10%)
 
     if (!nbTokensSellCondition) then throw("innapropriate roi: " + toString(pRoi)) else
@@ -158,6 +161,7 @@ func internalSellBond(currentMaxRoi: Int, pFirstOrder: String, pNextOrder: Strin
         DataEntry(getOrderTotalKey(pFirstOrder), pPaymentWavelets),
         DataEntry(getOrderOwnerKey(pFirstOrder), toBase58String(orderOwnerAddress.bytes)),
         DataEntry(getOrderHeightKey(pFirstOrder), height),
+        DataEntry(getOrderFilledTotalKey(pFirstOrder), pFilledTotal + totalOrderWaveletesRequired),
         DataEntry(getOrderStatusKey(pFirstOrder), FILLED),
         DataEntry("debug_order_currentPrice_" + pFirstOrder, currentPrice),
         DataEntry(getRoiByOrderIdKey(pFirstOrder), pRoi)]
@@ -205,7 +209,10 @@ func internalAddBuyBondOrder(currentMaxRoi: Int, roi : Int, price: Int, prevOrde
     let isPrevOrderError = if(prevOrder != "" && roi < prevOrderRoi) then true else false;
 
     if (isNextOrderError || isPrevOrderError) then throw("invalid order isPrevOrderError:" + toString(isPrevOrderError) + " isNextOrderError:" + toString(isNextOrderError)) else
-    if (isNewOrderAtFirstPosition && instantOrder) then {
+# WARNING: COPY/PASTED SECTION #5 because of complexity estimator defect SC-626 - if you plan to modify then check all 2 places:
+# 1) 'func internalAddBuyBondOrder':    && currentMaxRoi >= roi
+# 2) 'func internalSellBond':           let nbTokensSellCondition = currentMaxRoi >= pRoi
+    if (isNewOrderAtFirstPosition && currentMaxRoi >= roi) then {
         internalSellBond(currentMaxRoi, newOrderId, nextOrder, 0, roi, price, pmt.amount, inv.caller, true)
     } else if (instantOrder) then {
         throw("Instant order couldn't be added into waiting queue")
