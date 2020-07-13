@@ -54,17 +54,14 @@ let NEW = "new"
 let FILLED = "filled"
 
 #-------------------Constructor-------------------------
-let NeutrinoContractKey = "neutrino_contract"
 
 #-------------------Keys--------------------------------
 let PriceKey = "price"
 let BondAssetIdKey = "bond_asset_id"
 let NeutrinoAssetIdKey = "neutrino_asset_id"
-let ControlContractKey = "control_contract"
 let BalanceLockedkKey = "balance_lock_"
 let WavesLockedBalanceKey = BalanceLockedkKey + "waves"
 let NeutrinoLockedBalanceKey = BalanceLockedkKey + "neutrino"
-let LiquidationContractKey = "liquidation_contract"
 let FirstOrderKey = "order_first"
 
 func getRoiByOrderIdKey(orderId: String) = "debug_order_roi_" + orderId
