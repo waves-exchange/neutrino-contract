@@ -121,7 +121,7 @@ func migrateOrderPrice() = {
     let finalStatus = "migrated_to_6decimals"
     let lastMigratedOrderId = getStringByKey(lastMigratedOrderKey)
     let currentOrderId = if(lastMigratedOrderId == "") then firstOrder else getNextOrder(lastMigratedOrderId)
-    let orderMigrationStatusKey = "migration_6decimals_status" + currentOrderId
+    let orderMigrationStatusKey = "migration_6decimals_status_" + currentOrderId
     let orderMigrationStatus = getStringByKey(orderMigrationStatusKey)
 
     if (orderMigrationStatus == finalStatus)
