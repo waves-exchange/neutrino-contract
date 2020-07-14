@@ -45,10 +45,10 @@ func getBoolByAddressAndKey(address: String, key: String) = {
 }
 
 let pubKeyAdminsList = [
-    "BLEoguzPVKVTfXxxT3W7Rqf8aUm2ggC9Vemd2MQawM2G",	
-    "FWVffYr2ALmHMejZm3WqeLz6Sdym3gLFGtJn4KTwyU5x",	
-    "3Wh2LaWcb5gg7K2pPcW3Ep6EAuRBzYkAgrdpt43jTDFa",	
-    "5WRXFSjwcTbNfKcJs8ZqXmSSWYsSVJUtMvMqZj5hH4Nc"	
+    "BLEoguzPVKVTfXxxT3W7Rqf8aUm2ggC9Vemd2MQawM2G",
+    "FWVffYr2ALmHMejZm3WqeLz6Sdym3gLFGtJn4KTwyU5x",
+    "3Wh2LaWcb5gg7K2pPcW3Ep6EAuRBzYkAgrdpt43jTDFa",
+    "5WRXFSjwcTbNfKcJs8ZqXmSSWYsSVJUtMvMqZj5hH4Nc"
 ]
 
 #-------------------Constants---------------------------
@@ -127,7 +127,7 @@ let currentPrice = getNumberByAddressAndKey(controlContract, PriceKey) # The val
 let neutrinoLockedBalance = getNumberByKey(NeutrinoLockedBalanceKey) #locked balance from USDN -> WAVES swap
 let wavesLockedBalance = getNumberByKey(WavesLockedBalanceKey) #locked balance from WAVES -> USDN swap
 let reserve = wavesBalance(neutrinoContract) - wavesLockedBalance #waves reserves to cover USDN supply
-let neutrinoSupply = neutrinoLockedBalance + extract(assetInfo(neutrinoAssetId)).quantity - assetBalance(neutrinoContract, neutrinoAssetId) 
+let neutrinoSupply = neutrinoLockedBalance + extract(assetInfo(neutrinoAssetId)).quantity - assetBalance(neutrinoContract, neutrinoAssetId)
     - assetBalance(addressFromStringValue(liquidationContract), neutrinoAssetId) # supply outside main sc or liquidation contract
 let surplus = convertWavesToNeutrino(reserve, currentPrice) - neutrinoSupply
 let deficit = neutrinoSupply - convertWavesToNeutrino(reserve, currentPrice)
@@ -169,7 +169,7 @@ func getRPDProfit(count: Int) = getNumberByKey(getRPDProfitKey(count))
 func swapWavesToNeutrino() = {
     let pmt = extract(i.payment)
     let account = toString(i.caller)
-    
+
     if (pmt.amount < minWavesSwapAmount)
         then throw("The specified Waves amount is less than the required minimum of " + toString(minWavesSwapAmount) + " wavelets.")
     else if (isDefined(pmt.assetId))
@@ -228,10 +228,10 @@ func withdraw(account : String, index: Int) = {
     let prevIndexHeight = getHeightPriceByIndex(index-1)
     let priceByIndex = getPriceHistory(indexHeight)
 
-    let spread = if (priceByIndex < 1*PRICELET) then 1*PRICELET else priceByIndex / 100
+    let spread = 0
     let neutrinoAmount = convertWavesToNeutrino(userWavesLockedBalance, priceByIndex - spread)
     let wavesAmount = convertNeutrinoToWaves(userNeutrinoLockedBalance, priceByIndex + spread)
-            
+
     if(isBlocked)
         then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles") # see control.ride
     else if(unlockHeight > height)
@@ -244,7 +244,7 @@ func withdraw(account : String, index: Int) = {
                 + " prevIndexHeight=" + toString(prevIndexHeight))
     else if(neutrinoAmount <= 0 && wavesAmount <= 0)
         then throw("balance equals zero")
-    else {   
+    else {
         ScriptResult(
             WriteSet([
                 DataEntry(getWavesLockedBalanceKey(account), 0),
@@ -274,7 +274,7 @@ func transferToAuction() = {
         then TransferSet([ScriptTransfer(addressFromStringValue(auctionContract), auctionNBAmount, bondAssetId)])
     else if(surplusWithLiquidation >= 1*PAULI)
         then TransferSet([ScriptTransfer(addressFromStringValue(liquidationContract), surplusWithLiquidation, neutrinoAssetId)])
-    else 
+    else
         throw("bond were generated or do not need it. Deficit:" + toString(auctionNBAmount) + "|" + toString(0) + ". Surplus:" + toString(surplusWithLiquidation) + "|" + toString(surplus))
 }
 
@@ -303,17 +303,17 @@ func migrationUSDNB2NSBTSwap() = {
 @Verifier(tx)
  func verify() = {
     let id = toBase58String(tx.id)
-    let count =	
-        (if(sigVerify(tx.bodyBytes, tx.proofs[0], fromBase58String(pubKeyAdminsList[0]))) then 1 else 0) +	
-        (if(sigVerify(tx.bodyBytes, tx.proofs[1], fromBase58String(pubKeyAdminsList[1]))) then 1 else 0) +	
-        (if(sigVerify(tx.bodyBytes, tx.proofs[2], fromBase58String(pubKeyAdminsList[2]))) then 1 else 0) +	
+    let count =
+        (if(sigVerify(tx.bodyBytes, tx.proofs[0], fromBase58String(pubKeyAdminsList[0]))) then 1 else 0) +
+        (if(sigVerify(tx.bodyBytes, tx.proofs[1], fromBase58String(pubKeyAdminsList[1]))) then 1 else 0) +
+        (if(sigVerify(tx.bodyBytes, tx.proofs[2], fromBase58String(pubKeyAdminsList[2]))) then 1 else 0) +
         (if(sigVerify(tx.bodyBytes, tx.proofs[3], fromBase58String(pubKeyAdminsList[3]))) then 2 else 0)
     match tx {
         case leasingTx: LeaseTransaction | LeaseCancelTransaction =>
             sigVerify(leasingTx.bodyBytes, leasingTx.proofs[0], nodeOracleProviderPubKey)
         case sponsorTx: SponsorFeeTransaction =>
             checkIsValidMinSponsoredFee(sponsorTx) && count >= 3
-        case _ => {	
+        case _ => {
             count >= 3
         }
     }
