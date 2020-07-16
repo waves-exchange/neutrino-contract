@@ -44,6 +44,8 @@ func getNumberByAddressAndKey(address: Address, key: String) = {
 #-------------------Constants---------------------------
 let WAVELET = 100000000
 let PAULI = 1000000
+let PRICELET = 1000000 # 10^6
+
 let MINORDERTOTAL = 10*WAVELET
 let MAXROI = 95
 #------Order statuses------
@@ -52,17 +54,14 @@ let NEW = "new"
 let FILLED = "filled"
 
 #-------------------Constructor-------------------------
-let NeutrinoContractKey = "neutrino_contract"
 
 #-------------------Keys--------------------------------
 let PriceKey = "price"
 let BondAssetIdKey = "bond_asset_id"
 let NeutrinoAssetIdKey = "neutrino_asset_id"
-let ControlContractKey = "control_contract"
 let BalanceLockedkKey = "balance_lock_"
 let WavesLockedBalanceKey = BalanceLockedkKey + "waves"
 let NeutrinoLockedBalanceKey = BalanceLockedkKey + "neutrino"
-let LiquidationContractKey = "liquidation_contract"
 let FirstOrderKey = "order_first"
 
 func getRoiByOrderIdKey(orderId: String) = "debug_order_roi_" + orderId
@@ -77,8 +76,8 @@ func getOrderFilledTotalKey(orderId: String) = "order_filled_total_" + orderId
 func getPrevOrderKey(orderId: String) = "order_prev_" + orderId
 func getNextOrderKey(orderId: String) = "order_next_" + orderId
 #-------------------Convert functions-------------------
-func convertNeutrinoToWaves(amount: Int, price: Int) = fraction(fraction(amount, 100, price),WAVELET, PAULI)
-func convertWavesToNeutrino(amount: Int, price: Int) = fraction(fraction(amount, price, 100), PAULI, WAVELET)
+func convertNeutrinoToWaves(amount: Int, price: Int) = fraction(fraction(amount, PRICELET, price),WAVELET, PAULI)
+func convertWavesToNeutrino(amount: Int, price: Int) = fraction(fraction(amount, price, PRICELET), PAULI, WAVELET)
 
 func convertWavesToBond(amount: Int, price: Int) = convertWavesToNeutrino(amount, price)
 func convertBondToWaves(amount: Int, price: Int) = convertNeutrinoToWaves(amount, price)
@@ -250,13 +249,13 @@ func instantBuyNsbtOrFail(noLessThenRoi : Int) = {
     let priceWavesByBondCents = fraction(100+currentMaxRoi, currentPrice, 100)
 
     # WARNING: COPY/PASTED SECTION #3 because of complexity estimator defect SC-626 - if you plan to modify then check all 2 places:
-    # 1) 'func instantBuyNsbtOrFail':   100 * 100 / priceWavesByBondCents
-    # 2) 'func addBuyBondOrder':        let priceWavesByBondCents = fraction(100, 100, price)
+    # 1) 'func instantBuyNsbtOrFail':   PRICELET * PRICELET / priceWavesByBondCents
+    # 2) 'func addBuyBondOrder':        let priceWavesByBondCents = fraction(PRICELET, PRICELET, price)
 
     internalAddBuyBondOrder(
         currentMaxRoi,
         currentMaxRoi,
-        100 * 100 / priceWavesByBondCents, # it is price which is used just to keep backward compatibility (save price into state) and in the next functions it doesn't used in any computations
+        PRICELET * PRICELET / priceWavesByBondCents, # it is price which is used just to keep backward compatibility (save price into state) and in the next functions it doesn't used in any computations
         "",
         i,
         true)
@@ -269,9 +268,9 @@ func addBuyBondOrder(price : Int, prevOrder: String) = {
     let pmt = extract(i.payment);
     # price = 100*nsbt/waves, but we have to work with price with another scale: priceWavesByBondCents = 100*waves/nsbt, so priceWavesByBondCents = 100*1/(price/100)
     # WARNING: COPY/PASTED SECTION #3 because of complexity estimator defect SC-626 - if you plan to modify then check all 2 places:
-    # 1) 'func instantBuyNsbtOrFail':   let price = 100 * 100 / priceWavesByBondCents
-    # 2) 'func addBuyBondOrder':        let priceWavesByBondCents = fraction(100, 100, price)
-    let priceWavesByBondCents = fraction(100, 100, price)
+    # 1) 'func instantBuyNsbtOrFail':   let price = PRICELET * PRICELET / priceWavesByBondCents
+    # 2) 'func addBuyBondOrder':        let priceWavesByBondCents = fraction(PRICELET, PRICELET, price)
+    let priceWavesByBondCents = fraction(PRICELET, PRICELET, price)
 
     if(price <= 0) then throw("price less zero") else
 

@@ -37,6 +37,8 @@ func getNumberByAddressAndKey(address: Address, key: String) = {
 #-------------------Constants---------------------------
 let WAVELET = 100000000
 let PAULI = 1000000
+let PRICELET = 1000000 # 10^6
+
 #------Order statuses------
 let CANCELED = "canceled"
 let NEW = "new"
@@ -68,8 +70,8 @@ func getNextOrderKey(orderId: String) = "order_next_" + orderId
 
 
 #-------------------Convert functions-------------------
-func convertNeutrinoToWaves(amount: Int, price: Int) = fraction(fraction(amount, 100, price),WAVELET, PAULI)
-func convertWavesToNeutrino(amount: Int, price: Int) = fraction(fraction(amount, price, 100), PAULI, WAVELET)
+func convertNeutrinoToWaves(amount: Int, price: Int) = fraction(fraction(amount, PRICELET, price),WAVELET, PAULI)
+func convertWavesToNeutrino(amount: Int, price: Int) = fraction(fraction(amount, price, PRICELET), PAULI, WAVELET)
 func convertWavesToBond(amount: Int, price: Int) = convertWavesToNeutrino(amount, price)
 
 #-------------------Global vars -------------------------
@@ -269,17 +271,17 @@ func liquidateBond() = {
     else {
         let nextOrder = getNextOrder(firstOrder)
         let filledTotal = getOrderFilledTotal(firstOrder)
-        let orderPrice = getOrderPrice(firstOrder)
+        let nsbt2UsdnPrice = getOrderPrice(firstOrder)
 
         let remainedTotal = getOrderTotal(firstOrder) - filledTotal #bt value
 
-        let totalUSDNRequiredToFillOrder = fraction(remainedTotal, orderPrice, 100) #usdn value
+        let totalUSDNRequiredToFillOrder = fraction(remainedTotal, nsbt2UsdnPrice, 100) #usdn value
         let isOrderFullyFilable = usdnAmount >= totalUSDNRequiredToFillOrder
         let fillableOrderAmount = if(isOrderFullyFilable) then totalUSDNRequiredToFillOrder else usdnAmount #usdn value
 
-        let finalNBTFillable = fraction(fillableOrderAmount, 100, orderPrice) #bt value
+        let finalNBTFillable = fraction(fillableOrderAmount, 100, nsbt2UsdnPrice) #bt value
 
-        let nbTokensLiquidateCondition = fraction(surplus + neutrinoSupply, 100, neutrinoSupply) >= orderPrice
+        let nbTokensLiquidateCondition = fraction(surplus + neutrinoSupply, 100, neutrinoSupply) >= nsbt2UsdnPrice
 
         if (!nbTokensLiquidateCondition)
             then throw("innapropriate surplus: " + toString(surplus))
