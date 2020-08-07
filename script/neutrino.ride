@@ -206,7 +206,7 @@ func withdraw(account : String, index: Int) = {
     let prevIndexHeight = getHeightPriceByIndex(index-1)
     let priceByIndex = getPriceHistory(indexHeight)
 
-    let spread = if (priceByIndex < 1*PRICELET) then 1*PRICELET else priceByIndex / 100
+    let spread = 0
     let neutrinoAmount = convertWavesToNeutrino(userWavesLockedBalance, priceByIndex - spread)
     let wavesAmount = convertNeutrinoToWaves(userNeutrinoLockedBalance, priceByIndex + spread)
 

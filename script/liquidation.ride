@@ -271,8 +271,8 @@ func liquidateBond() = {
 
             IntegerEntry(getOrderFilledTotalKey(firstOrder), filledTotal + finalNBTFillable),
             StringEntry(getOrderStatusKey(firstOrder), newStatus),
-
-            StringEntry(CurrentDefaultOrderKey, computeCurrentDefaultOrder(firstOrder)),
+            # no need to compute default order in case of partially filled order
+            StringEntry(CurrentDefaultOrderKey, if(newStatus == NEW) then currentDefaultOrder else computeCurrentDefaultOrder(firstOrder)),
 
             ScriptTransfer(addressFromStringValue(getOrderOwner(firstOrder)), fillableOrderAmount, neutrinoAssetId),
             ScriptTransfer(neutrinoContract, finalNBTFillable, bondAssetId)]
