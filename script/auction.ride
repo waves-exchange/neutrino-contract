@@ -85,7 +85,7 @@ let neutrinoLockedBalance = getNumberByAddressAndKey(neutrinoContract, NeutrinoL
 #cannot be expressed by complexity limitations: let wavesLockedBalance = getNumberByAddressAndKey(neutrinoContract, WavesLockedBalanceKey) #locked balance from WAVES -> USDN swap
 let reserve = wavesBalance(neutrinoContract).regular -
     getNumberByAddressAndKey(neutrinoContract, WavesLockedBalanceKey) #waves reserves to cover USDN supply
-let neutrinoSupply = neutrinoLockedBalance + extract(assetInfo(neutrinoAssetId)).quantity - assetBalance(neutrinoContract, neutrinoAssetId) - assetBalance(liquidationContract, neutrinoAssetId) # supply outside main sc or liquidation contract
+let neutrinoSupply = neutrinoLockedBalance + assetInfo(neutrinoAssetId).value().quantity - assetBalance(neutrinoContract, neutrinoAssetId) - assetBalance(liquidationContract, neutrinoAssetId) # supply outside main sc or liquidation contract
 let deficit = neutrinoSupply - convertWavesToNeutrino(reserve, currentPrice)
 let currentMaxRoi = fraction(deficit, 100, neutrinoSupply)
 let firstOrder = getStringByKey(FirstOrderKey)
@@ -150,7 +150,7 @@ func internalSellBond(pFirstOrder: String, pNextOrder: String, pFilledTotal: Int
 }
 
 func internalAddBuyBondOrder(roi : Int, price: Int, prevOrder: String, inv: Invocation, instantOrder: Boolean) = {
-    let pmt = extract(inv.payments[0]);
+    let pmt = inv.payments[0].value();
     let newOrderId = toBase58String(inv.transactionId)
 
     if (isBlocked) then throw("contract is blocked by EMERGENCY SHUTDOWN actions until reactivation by emergency oracles") else
@@ -194,7 +194,7 @@ func internalAddBuyBondOrder(roi : Int, price: Int, prevOrder: String, inv: Invo
 # [called by user]
 @Callable(i)
 func instantBuyNsbtOrFail(noLessThenRoi : Int) = {
-    let pmt = extract(i.payments[0])
+    let pmt = i.payments[0].value()
     let roi = currentMaxRoi
 
     if (noLessThenRoi > roi) then throw("Current maxRoi=" + roi.toString() + " is less then passed parameter noLessThenRoi=" + noLessThenRoi.toString()) else
@@ -213,7 +213,7 @@ func instantBuyNsbtOrFail(noLessThenRoi : Int) = {
 # [called by user]
 @Callable(i)
 func addBuyBondOrder(price : Int, prevOrder: String) = {
-    let pmt = extract(i.payments[0]);
+    let pmt = i.payments[0].value()
     # price = 100*nsbt/waves, but we have to work with price with another scale: priceWavesByBondCents = 100*waves/nsbt, so priceWavesByBondCents = 100*1/(price/100)
     let priceWavesByBondCents = getReversePrice(price)
 

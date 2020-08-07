@@ -72,7 +72,7 @@ let neutrinoLockedBalance = getInteger(neutrinoAddress, "balance_lock_neutrino")
 let wavesLockedBalance = getInteger(neutrinoAddress, "balance_lock_waves").valueOrElse(0)
 
 let reserve = wavesBalance(neutrinoAddress).regular - wavesLockedBalance #waves reserves to cover USDN supply
-let neutrinoSupply = neutrinoLockedBalance + extract(assetInfo(neutrinoAsset)).quantity - assetBalance(neutrinoAddress, neutrinoAsset)
+let neutrinoSupply = neutrinoLockedBalance + assetInfo(neutrinoAsset).value().quantity - assetBalance(neutrinoAddress, neutrinoAsset)
     - assetBalance(liquidationAddress, neutrinoAsset) # supply outside main sc or liquidation contract
 let deficit = neutrinoSupply - convertWavesToNeutrino(reserve, price)
 

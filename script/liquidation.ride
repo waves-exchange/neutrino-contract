@@ -74,7 +74,7 @@ let currentPrice = getNumberByAddressAndKey(controlContract, PriceKey) # The val
 let neutrinoLockedBalance = getNumberByAddressAndKey(neutrinoContract, NeutrinoLockedBalanceKey) #locked balance from USDN -> WAVES swap
 let wavesLockedBalance = getNumberByAddressAndKey(neutrinoContract, WavesLockedBalanceKey) #locked balance from WAVES -> USDN swap
 let reserve = wavesBalance(neutrinoContract).regular - wavesLockedBalance #waves reserves to cover USDN supply
-let neutrinoSupply = neutrinoLockedBalance + extract(assetInfo(neutrinoAssetId)).quantity - assetBalance(neutrinoContract, neutrinoAssetId) - assetBalance(liquidationContract, neutrinoAssetId) # supply outside main sc or liquidation contract
+let neutrinoSupply = neutrinoLockedBalance + assetInfo(neutrinoAssetId).value().quantity - assetBalance(neutrinoContract, neutrinoAssetId) - assetBalance(liquidationContract, neutrinoAssetId) # supply outside main sc or liquidation contract
 let surplus = convertWavesToNeutrino(reserve, currentPrice) - neutrinoSupply
 
 
@@ -91,7 +91,7 @@ func getNextOrder(id: String) = getStringByKey(getNextOrderKey(id))
 let currentDefaultOrder = getStringByKey(CurrentDefaultOrderKey)
 
 func generateDataEntryToAddOrder(price: Int, newOrderId: String, i: Invocation, prevOrder: String, nextOrder: String, firstOrder: String) = {
-    let amount = extract(i.payments[0]).amount;
+    let amount = i.payments[0].value().amount;
     let isOneForOneOrder = price == 100
 
     let isFirstOrderEmty = firstOrder == ""
@@ -123,7 +123,7 @@ func internalAddLiquidationOrder(i: Invocation, price: Int, prevOrder: String) =
     # price - means how SC will execute orders. USDN/NSBT, example: 15 neutrinos / 10 basetokens;
     # i.e. SC is going to buy 10 basetokens for 15 usdn tokens; price = 150 (1.5 * 100)
     # the behaviour of this price is same as roi within auction SC, so almost no changes in the orderbook logic
-    let pmt = extract(i.payments[0])
+    let pmt = i.payments[0].value()
     let newOrderId = toBase58String(keccak256(toBytes(pmt.amount) + i.caller.bytes + toBytes(height) + i.transactionId))
     let owner = toString(i.caller)
 

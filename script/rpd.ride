@@ -76,7 +76,7 @@ func getRewardConfigInitialShare(owner : String) = {
 }
 
 func internallockNeutrino(i: Invocation, receiver: String, share: Int) = {
-    let pmt = extract(i.payments[0])
+    let pmt = i.payments[0].value()
     if (!isDefined(addressFromString(receiver)))
         then throw("Invalid address format " + receiver)
     else if (pmt.assetId != neutrinoAssetId)
