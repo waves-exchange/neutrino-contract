@@ -275,11 +275,14 @@ func liquidateBond() = {
 
         let remainedTotal = getOrderTotal(firstOrder) - filledTotal #bt value
 
-        let totalUSDNRequiredToFillOrder = fraction(remainedTotal, nsbt2UsdnPrice, 100) #usdn value
-        let isOrderFullyFilable = usdnAmount >= totalUSDNRequiredToFillOrder
-        let fillableOrderAmount = if(isOrderFullyFilable) then totalUSDNRequiredToFillOrder else usdnAmount #usdn value
+        let totalUSDNRequiredToFillOrderX100 = fraction(remainedTotal, nsbt2UsdnPrice, 1) #usdn value
+        let totalUSDNRequiredToFillOrder = totalUSDNRequiredToFillOrderX100 / 100
 
-        let finalNBTFillable = fraction(fillableOrderAmount, 100, nsbt2UsdnPrice) #bt value
+        let isOrderFullyFilable = usdnAmount >= totalUSDNRequiredToFillOrder
+        let fillableOrderAmountX100 = if(isOrderFullyFilable) then totalUSDNRequiredToFillOrderX100 else usdnAmount * 100 #usdn value
+
+        let finalNBTFillable = fraction(fillableOrderAmountX100, 1, nsbt2UsdnPrice) #bt value
+        let fillableOrderAmount = fillableOrderAmountX100 / 100
 
         let nbTokensLiquidateCondition = fraction(surplus + neutrinoSupply, 100, neutrinoSupply) >= nsbt2UsdnPrice
 
