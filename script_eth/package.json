@@ -1,0 +1,23 @@
+{
+  "name": "usdn",
+  "version": "0.0.1",
+  "description": "USDN ERC20 token",
+  "main": "truffle-config.js",
+  "directories": {
+    "test": "test"
+  },
+  "scripts": {},
+  "keywords": [
+    "waves",
+    "erc20",
+    "eth",
+    "staking",
+    "usdn"
+  ],
+  "private": true,
+  "author": "WAVES",
+  "license": "ISC",
+  "dependencies": {
+    "truffle-assertions": "^0.9.2"
+  }
+}
