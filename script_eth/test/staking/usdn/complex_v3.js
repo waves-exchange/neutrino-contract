@@ -1,6 +1,6 @@
 const USDN = artifacts.require("./staking/usdn/USDN");
 
-contract("USDN complex v6", async accounts => {
+contract("USDN complex v3", async accounts => {
   it(`complex should be success`, async function () {
     const contract = await USDN.deployed();
     await contract.deposit(accounts[0], 100);
