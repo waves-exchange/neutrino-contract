@@ -23,7 +23,7 @@ contract("USDN withdrawal", async accounts => {
     const contract = await USDN.deployed();
     await contract.deposit(accounts[0], 1,)
     await contract.withdraw(accounts[0])
-    // assert.equal((await contract.balanceOf(accounts[0])).toNumber(), 0)
+    assert.equal((await contract.balanceOf(accounts[0])).toNumber(), 0)
     assert.equal((await contract.totalSupply()).toNumber(), 0)
   });
 
@@ -31,7 +31,7 @@ contract("USDN withdrawal", async accounts => {
     const contract = await USDN.deployed();
     await contract.deposit(accounts[0], 2);
     const tx1 = await contract.withdraw(accounts[0])
-    // assert.equal((await contract.balanceOf(accounts[0])).toNumber(), 0)
+    assert.equal((await contract.balanceOf(accounts[0])).toNumber(), 0)
     assert.equal((await contract.totalSupply()).toNumber(), 0)
   });
 
@@ -40,16 +40,16 @@ contract("USDN withdrawal", async accounts => {
     await contract.deposit(accounts[0], 1);
     await contract.stake(1);
     const tx1 = await contract.withdraw(accounts[0])
-    // assert.equal((await contract.balanceOf(accounts[0])).toNumber(), 0)
+    assert.equal((await contract.balanceOf(accounts[0])).toNumber(), 0)
     assert.equal((await contract.totalSupply()).toNumber(), 0)
   });
 
   it(`withdrawal should success for complex test`, async function () {
     const contract = await USDN.deployed();
     await contract.deposit(accounts[0], 2);
-    // assert.equal((await contract.balanceOf(accounts[0])).toNumber(), 2)
+    assert.equal((await contract.balanceOf(accounts[0])).toNumber(), 2)
     await contract.stake(2);
-    // assert.equal((await contract.balanceOf(accounts[0])).toNumber(), 2)
+    assert.equal((await contract.balanceOf(accounts[0])).toNumber(), 2)
     const tx1 = await contract.withdraw(accounts[0])
     assert.equal((await contract.totalSupply()).toNumber(), 0)
     assert.equal((await contract.balanceOf(accounts[0])).toNumber(), 0)

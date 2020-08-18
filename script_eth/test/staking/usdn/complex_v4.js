@@ -1,9 +1,9 @@
 const USDN = artifacts.require("./staking/usdn/USDN");
 
-contract("USDN ruslan v2", async accounts => {
-  it(`ruslan v2 should be happy`, async function () {
+contract("USDN complex v4", async accounts => {
+  it(`complex should be success`, async function () {
     const contract = await USDN.deployed();
-    // 1
+
     await contract.deposit(accounts[0], 1000100);
     await contract.deposit(accounts[1], 1);
     await contract.stake(100);
@@ -12,7 +12,6 @@ contract("USDN ruslan v2", async accounts => {
     assert.equal((await contract.balanceOf(accounts[2])).toNumber(), 0)
     assert.equal((await contract.totalSupply()).toNumber(), 1000101)
 
-    // 2
     await contract.deposit(accounts[1], 99);
     await contract.deposit(accounts[2], 25);
     await contract.deposit(accounts[3], 4000000);

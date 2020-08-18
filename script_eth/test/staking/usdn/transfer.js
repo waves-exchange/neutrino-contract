@@ -23,8 +23,8 @@ contract("USDN transfer", async accounts => {
   it(`transfer should success`, async function () {
     const contract = await USDN.deployed();
     await contract.transfer(accounts[1], 1)
-    // assert.equal((await contract.balanceOf(accounts[0])).toNumber(), 0)
-    // assert.equal((await contract.balanceOf(accounts[1])).toNumber(), 1)
+    assert.equal((await contract.balanceOf(accounts[0])).toNumber(), 0)
+    assert.equal((await contract.balanceOf(accounts[1])).toNumber(), 1)
     assert.equal((await contract.totalSupply()).toNumber(), 1)
   });
 
@@ -32,33 +32,33 @@ contract("USDN transfer", async accounts => {
     const contract = await USDN.deployed();
     await contract.deposit(accounts[0], 2);
     await contract.transfer(accounts[1], 2)
-    // assert.equal((await contract.balanceOf(accounts[0])).toNumber(), 0)
-    // assert.equal((await contract.balanceOf(accounts[1])).toNumber(), 3)
+    assert.equal((await contract.balanceOf(accounts[0])).toNumber(), 0)
+    assert.equal((await contract.balanceOf(accounts[1])).toNumber(), 3)
     assert.equal((await contract.totalSupply()).toNumber(), 3)
   });
 
   it(`withdrawal should success after stakingReward`, async function () {
     const contract = await USDN.deployed();
     await contract.stake(1);
-    // assert.equal((await contract.balanceOf(accounts[0])).toNumber(), 0)
-    // assert.equal((await contract.balanceOf(accounts[1])).toNumber(), 3)
+    assert.equal((await contract.balanceOf(accounts[0])).toNumber(), 0)
+    assert.equal((await contract.balanceOf(accounts[1])).toNumber(), 3)
     assert.equal((await contract.totalSupply()).toNumber(), 3)
     await contract.transfer(accounts[0], 3, {from: accounts[1]})
-    // assert.equal((await contract.balanceOf(accounts[0])).toNumber(), 3)
-    // assert.equal((await contract.balanceOf(accounts[1])).toNumber(), 0)
+    assert.equal((await contract.balanceOf(accounts[0])).toNumber(), 3)
+    assert.equal((await contract.balanceOf(accounts[1])).toNumber(), 0)
     assert.equal((await contract.totalSupply()).toNumber(), 3)
   });
 
   it(`stakingReward should success after transfer`, async function () {
     const contract = await USDN.deployed();
     await contract.transfer(accounts[1], 2);
-    // assert.equal((await contract.balanceOf(accounts[0])).toNumber(), 1)
-    // assert.equal((await contract.balanceOf(accounts[1])).toNumber(), 2)
-    // assert.equal((await contract.balanceOf(accounts[2])).toNumber(), 0)
+    assert.equal((await contract.balanceOf(accounts[0])).toNumber(), 1)
+    assert.equal((await contract.balanceOf(accounts[1])).toNumber(), 2)
+    assert.equal((await contract.balanceOf(accounts[2])).toNumber(), 0)
     assert.equal((await contract.totalSupply()).toNumber(), 3)
     await contract.stake(3);
     assert.equal((await contract.totalSupply()).toNumber(), 6)
-    // assert.equal((await contract.balanceOf(accounts[0])).toNumber(), 2)
+    assert.equal((await contract.balanceOf(accounts[0])).toNumber(), 2)
     assert.equal((await contract.balanceOf(accounts[1])).toNumber(), 4)
   });
 });

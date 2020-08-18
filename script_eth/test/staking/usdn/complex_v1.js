@@ -1,5 +1,3 @@
-const truffleAssert = require('truffle-assertions');
-
 const USDN = artifacts.require("./staking/usdn/USDN");
 
 contract("USDN complex v1", async accounts => {

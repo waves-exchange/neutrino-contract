@@ -7,7 +7,13 @@
     "test": "test"
   },
   "scripts": {},
-  "keywords": ["waves", "erc20", "eth", "staking", "usdn"],
+  "keywords": [
+    "waves",
+    "erc20",
+    "eth",
+    "staking",
+    "usdn"
+  ],
   "private": true,
   "author": "WAVES",
   "license": "ISC",
