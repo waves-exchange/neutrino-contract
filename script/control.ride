@@ -188,11 +188,11 @@ func finalizeCurrentPrice(price1: Int, sign1: ByteVector, price2: Int, sign2: By
         if sigVerify_8Kb(formattingPriceMsg(price5, height), sign5, fromBase58String(pubKeyOraclesList[4])) then price5 else 0
     ]
 
-    let zeroPriceCount = if (prices[0] == 0) then 0 else 1
-        + if (prices[1] == 0) then 0 else 1
-        + if (prices[2] == 0) then 0 else 1
-        + if (prices[3] == 0) then 0 else 1
-        + if (prices[4] == 0) then 0 else 1
+    let zeroPriceCount = if (prices[0] == 0) then 1 else 0
+            + if (prices[1] == 0) then 1 else 0
+            + if (prices[2] == 0) then 1 else 0
+            + if (prices[3] == 0) then 1 else 0
+            + if (prices[4] == 0) then 1 else 0
 
     if (zeroPriceCount >= 3) then throw("3 prices or more are equals to 0") else
 
