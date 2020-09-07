@@ -30,6 +30,8 @@ func getNumberByAddressAndKey(address: Address, key: String) = {
 let WAVELET = 100000000
 let PAULI = 1000000
 let PRICELET = 1000000 # 10^6
+let MULT = 100000000 #10^8
+let SCALEMULT = 8
 
 let MINORDERTOTAL = 10*WAVELET
 let MAXROI = 95
@@ -82,9 +84,12 @@ let neutrinoLockedBalance = getNumberByAddressAndKey(neutrinoContract, NeutrinoL
 #cannot be expressed by complexity limitations: let wavesLockedBalance = getNumberByAddressAndKey(neutrinoContract, WavesLockedBalanceKey) #locked balance from WAVES -> USDN swap
 let reserve = wavesBalance(neutrinoContract).regular -
     getNumberByAddressAndKey(neutrinoContract, WavesLockedBalanceKey) #waves reserves to cover USDN supply
+let reservesInUsdn = convertWavesToNeutrino(reserve, currentPrice)
 let neutrinoSupply = neutrinoLockedBalance + assetInfo(neutrinoAssetId).value().quantity - assetBalance(neutrinoContract, neutrinoAssetId) - assetBalance(liquidationContract, neutrinoAssetId) # supply outside main sc or liquidation contract
-let deficit = neutrinoSupply - convertWavesToNeutrino(reserve, currentPrice)
+let deficit = neutrinoSupply - reservesInUsdn
 let currentMaxRoi = fraction(deficit, 100, neutrinoSupply)
+
+let currentBrMult = fraction(reservesInUsdn, MULT, neutrinoSupply)
 let firstOrder = getStringByKey(FirstOrderKey)
 
 #-------------------Get functions----------------------
@@ -98,6 +103,8 @@ func getNextOrder(id: String) = getStringByKey(getNextOrderKey(id))
 
 func getPriceForRoi(roiPercents: Int) = {fraction(100 + roiPercents, currentPrice, 100)}
 func getReversePrice(price: Int) = {PRICELET * PRICELET / price}
+
+func calcNsbt2WavesPriceRaw(spentWavesRaw: Int, receivedNsbtRaw: Int) = {fraction(spentWavesRaw, PAULI * PRICELET, receivedNsbtRaw)}
 
 #------------------- -------------
 #-------------------Any functions----------------------
@@ -156,8 +163,7 @@ func internalAddBuyBondOrder(roi : Int, price: Int, prevOrder: String, inv: Invo
     if (isBlocked) then throw("contract is blocked by EMERGENCY SHUTDOWN actions until reactivation by emergency oracles") else
     if (pmt.amount < MINORDERTOTAL) then throw("min order total equals " + toString(MINORDERTOTAL)) else
     if (roi > MAXROI) then throw("max setOrder ROI is 95%") else
-    if (deficit > 0 && roi < 0) then throw("can't place order with negative roi during deficit") else
-    if (roi < -MAXROI) then throw("min setOrder ROI is -95%") else
+    if (roi < 0) then throw("can't place order with negative roi") else
     if (roi == 0) then throw("roi should not be equal to 0") else
     if (isDefined(pmt.assetId)) then throw("can use waves only") else
     if (getOrderOwner(newOrderId) != "") then throw("order exists") else
@@ -191,7 +197,59 @@ func internalAddBuyBondOrder(roi : Int, price: Int, prevOrder: String, inv: Invo
         ] ++ orderData(newOrderId, pmt.amount, 0, owner, NEW, roi, price)
 }
 
+# explicit parameters were introduced to simplify testing
+func curveFunction(wRaw: Int, uRaw: Int, price: Int) = {
+    let EXP = 271828100
+
+    let nsbtCurveParamA = getInteger(this, "nsbtCurveParam_a").valueOrElse(3)
+
+    let wReservesInUsdn = convertWavesToNeutrino(wRaw, price)
+    let brMult = fraction(wReservesInUsdn, MULT, uRaw)
+    let powerMult = nsbtCurveParamA * (brMult - 1 * MULT)
+    let expInPowerMult = pow(EXP, SCALEMULT, powerMult, SCALEMULT, SCALEMULT, DOWN)
+
+    let constCoeff = fraction(uRaw, PRICELET, nsbtCurveParamA * price)
+    let finalResult = fraction(constCoeff, MULT, expInPowerMult)
+    (finalResult, wReservesInUsdn, brMult, powerMult, expInPowerMult, constCoeff)
+}
 #-------------------Callable---------------------------
+
+func toStr(name: String, l: (Int, Int, Int, Int, Int, Int)) = {
+    name + "[finalResult=" + toString(l._1)
+        + "wReservesInUsdn=" + toString(l._2)
+        + " brMult=" + toString(l._3)
+        + " powerMult=" + toString(l._4)
+        + " expInPowerMult=" + toString(l._5)
+        + " constCoeff=" + toString(l._6)
+        + "]"
+}
+
+@Callable(i)
+func buyNsbtInSurplus() = {
+    let pmt = i.payments[0].value()
+    let pmtAmount = pmt.amount
+    let ownerAddress = i.caller
+
+    if (isBlocked) then throw("contract is blocked by EMERGENCY SHUTDOWN actions until reactivation by emergency oracles") else
+    if (currentBrMult < 1 * MULT) then throw("use instantBuyNsbtOrFail or addBuyBondOrder methods to buy nsbt when BR < 1: currentBR=" + currentBrMult.toString() + "/" + MULT.toString()) else
+    if (isDefined(pmt.assetId)) then throw("can use waves only") else
+    let f0 = curveFunction(reserve, neutrinoSupply, currentPrice)
+    let f1 = curveFunction(reserve + pmtAmount, neutrinoSupply, currentPrice)
+    let nsbtAmount = f0._1 - f1._1
+
+    let nsbt2WavesPriceRaw = calcNsbt2WavesPriceRaw(pmtAmount, nsbtAmount)
+    let roi = fraction(getReversePrice(nsbt2WavesPriceRaw), 100, currentPrice) - 100
+
+    orderData(i.transactionId.toBase58String(), pmtAmount, pmtAmount, ownerAddress.toString(), FILLED,
+                roi,                # to keep backword compatability with prev. format
+                nsbt2WavesPriceRaw) # to keep backword compatability with prev. format
+    ++ [
+      ScriptTransfer(ownerAddress, nsbtAmount, bondAssetId),
+      ScriptTransfer(neutrinoContract, pmtAmount, unit),
+      StringEntry("debug_f0", toStr("f0", f0)),
+      StringEntry("debug_f1", toStr("f1", f1))
+    ]
+}
 
 # set buy NSBT order
 # [called by user]
