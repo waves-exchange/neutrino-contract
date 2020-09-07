@@ -181,12 +181,20 @@ func finalizeCurrentPrice(price1: Int, sign1: ByteVector, price2: Int, sign2: By
              + toString(height) + " block should be finalize by " + pubKeyOraclesList[height % 5]) else
 
     let prices = [
-        if sigVerify(formattingPriceMsg(price1, height), sign1, fromBase58String(pubKeyOraclesList[0])) then price1 else 0,
-        if sigVerify(formattingPriceMsg(price2, height), sign2, fromBase58String(pubKeyOraclesList[1])) then price2 else 0,
-        if sigVerify(formattingPriceMsg(price3, height), sign3, fromBase58String(pubKeyOraclesList[2])) then price3 else 0,
-        if sigVerify(formattingPriceMsg(price4, height), sign4, fromBase58String(pubKeyOraclesList[3])) then price4 else 0,
-        if sigVerify(formattingPriceMsg(price5, height), sign5, fromBase58String(pubKeyOraclesList[4])) then price5 else 0
+        if sigVerify_8Kb(formattingPriceMsg(price1, height), sign1, fromBase58String(pubKeyOraclesList[0])) then price1 else 0,
+        if sigVerify_8Kb(formattingPriceMsg(price2, height), sign2, fromBase58String(pubKeyOraclesList[1])) then price2 else 0,
+        if sigVerify_8Kb(formattingPriceMsg(price3, height), sign3, fromBase58String(pubKeyOraclesList[2])) then price3 else 0,
+        if sigVerify_8Kb(formattingPriceMsg(price4, height), sign4, fromBase58String(pubKeyOraclesList[3])) then price4 else 0,
+        if sigVerify_8Kb(formattingPriceMsg(price5, height), sign5, fromBase58String(pubKeyOraclesList[4])) then price5 else 0
     ]
+
+    let zeroPriceCount = if (prices[0] == 0) then 0 else 1
+        + if (prices[1] == 0) then 0 else 1
+        + if (prices[2] == 0) then 0 else 1
+        + if (prices[3] == 0) then 0 else 1
+        + if (prices[4] == 0) then 0 else 1
+
+    if (zeroPriceCount >= 3) then throw("3 prices or more are equals to 0") else
 
     let pricesInRange = findPricesInRange(prices)
     let priceProvidingCount = pricesInRange.size();
