@@ -1,4 +1,4 @@
-{-# STDLIB_VERSION 3 #-}
+{-# STDLIB_VERSION 4 #-}
 {-# CONTENT_TYPE DAPP #-}
 {-# SCRIPT_TYPE ACCOUNT #-}
 
@@ -9,34 +9,19 @@
 
 #-------------------Base functions----------------------
 func getNumberByKey(key: String) = {
-    match getInteger(this, key) {
-            case a:Int => a
-            case _ => 0
-    }
+    getInteger(this, key).valueOrElse(0)
 }
 func getStringByKey(key: String) = {
-    match getString(this, key) {
-            case a:String => a
-            case _ => ""
-    }
+    getString(this, key).valueOrElse("")
 }
 func getBoolByKey(key: String) = {
-    match getBoolean(this, key) {
-            case a:Boolean => a
-            case _ => false
-    }
+    getBoolean(this, key).valueOrElse(false)
 }
 func getNumberByAddressAndKey(address: String, key: String) = {
-    match getInteger(addressFromStringValue(address), key) {
-            case a:Int => a
-            case _ => 0
-    }
+    getInteger(addressFromStringValue(address), key).valueOrElse(0)
 }
 func getStringByAddressAndKey(address: Address, key: String) = {
-     match getString(address, key) {
-            case a:String => a
-            case _ => ""
-    }
+     getString(address, key).valueOrElse("")
 }
 
 #-------------------Constructor-------------------------
@@ -91,8 +76,8 @@ func getRewardConfigInitialShare(owner : String) = {
 }
 
 func internallockNeutrino(i: Invocation, receiver: String, share: Int) = {
-    let pmt = extract(i.payment)
-    if (!isDefined(addressFromString(receiver))) 
+    let pmt = i.payments[0].value()
+    if (!isDefined(addressFromString(receiver)))
         then throw("Invalid address format " + receiver)
     else if (pmt.assetId != neutrinoAssetId)
         then throw("can use usd only")
@@ -114,7 +99,7 @@ func internallockNeutrino(i: Invocation, receiver: String, share: Int) = {
             let notMigratedInitialShare = getNumberByKey(getRewardConfigInitialShare(account))
             let actualInitialShare = if (notMigratedInitialShare == 0) then currShare else notMigratedInitialShare
 
-            #if (currReceiver != receiver) then throw("Impossible to setup new referral address for existed staking") else 
+            #if (currReceiver != receiver) then throw("Impossible to setup new referral address for existed staking") else
             #if (share < actualInitialShare) then throw("Impossible to setup new share less then initial share for existed staking") else
             let newShare = if (share < actualInitialShare || currReceiver != receiver) then actualInitialShare else share
             [actualInitialShare.toString(), newShare.toString(), currReceiver]
@@ -129,14 +114,13 @@ func internallockNeutrino(i: Invocation, receiver: String, share: Int) = {
         let isNewConfig = !(currentConfig == newCurrentConfig)
         let end = if isNewConfig then height else 0
         let start = if isNewConfig then height else getNumberByKey(getRewardsConfigStartKey(newCurrentConfig, true))
-        WriteSet([
-            DataEntry(getContractBalanceKey(assetIdString), getContractBalance(assetIdString) + pmt.amount),
-            DataEntry(getUserBalanceKey(account, assetIdString), getUserBalance(account, assetIdString) + pmt.amount),
-            DataEntry(getRewardsConfigStartKey(currentConfig, false), end), #if there is no current config it leads to dead state key
-            DataEntry(getRewardsConfigStartKey(newCurrentConfig, true), start),
-            DataEntry(getRewardConfigInitialShare(account), correctInitialShare),
-            DataEntry(getCurrentRewardsConfigKey(account), newCurrentConfig)
-        ])
+
+        [IntegerEntry(getContractBalanceKey(assetIdString), getContractBalance(assetIdString) + pmt.amount),
+        IntegerEntry(getUserBalanceKey(account, assetIdString), getUserBalance(account, assetIdString) + pmt.amount),
+        IntegerEntry(getRewardsConfigStartKey(currentConfig, false), end), #if there is no current config it leads to dead state key
+        IntegerEntry(getRewardsConfigStartKey(newCurrentConfig, true), start),
+        IntegerEntry(getRewardConfigInitialShare(account), correctInitialShare),
+        StringEntry(getCurrentRewardsConfigKey(account), newCurrentConfig)]
     }
 }
 #-------------------Callable----------------------
@@ -165,13 +149,9 @@ func unlockNeutrino(unlockAmount: Int, assetIdString: String) = {
     else if(assetId != neutrinoAssetId)
         then throw("can use neutrino")
     else {
-        ScriptResult(
-            WriteSet([
-                DataEntry(getContractBalanceKey(assetIdString), getContractBalance(assetIdString) - unlockAmount),
-                DataEntry(getUserBalanceKey(account, assetIdString), balance)
-            ]),
-            TransferSet([ScriptTransfer(addressFromStringValue(account), unlockAmount, neutrinoAssetId)])
-        )
+      [IntegerEntry(getContractBalanceKey(assetIdString), getContractBalance(assetIdString) - unlockAmount),
+      IntegerEntry(getUserBalanceKey(account, assetIdString), balance),
+      ScriptTransfer(addressFromStringValue(account), unlockAmount, neutrinoAssetId)]
     }
 }
 
@@ -184,9 +164,7 @@ func vote(hash: String, indexArgument: Int) = {
     if(height > getExpireProposal(hash))
         then throw("proposal is expired")
     else {
-        WriteSet([
-            DataEntry(getVoteKey(toString(i.caller), hash), argument)
-        ])
+      [StringEntry(getVoteKey(toString(i.caller), hash), argument)]
     }
 }
 
@@ -197,11 +175,9 @@ func createProposal(arguments: String, expairHeight: Int) = {
     if(getOwnerProposal(hash) != "")
         then throw("proposal is exist")
     else {
-        WriteSet([
-            DataEntry(getExpireProposalKey(hash), expairHeight),
-            DataEntry(getOwnerProposalKey(hash), toString(i.caller)),
-            DataEntry(getArgumentsProposalKey(hash), arguments)
-        ])
+        [IntegerEntry(getExpireProposalKey(hash), expairHeight),
+        StringEntry(getOwnerProposalKey(hash), toString(i.caller)),
+        StringEntry(getArgumentsProposalKey(hash), arguments)]
     }
 }
 

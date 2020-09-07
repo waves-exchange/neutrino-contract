@@ -1,4 +1,4 @@
-{-# STDLIB_VERSION 3 #-}
+{-# STDLIB_VERSION 4 #-}
 {-# CONTENT_TYPE DAPP #-}
 {-# SCRIPT_TYPE ACCOUNT #-}
 #
@@ -8,40 +8,22 @@
 
 #-------------------Base functions----------------------
 func getNumberByKey(key: String) = {
-    match getInteger(this, key) {
-            case a:Int => a
-            case _ => 0
-    }
+    getInteger(this, key).valueOrElse(0)
 }
 func getStringByKey(key: String) = {
-    match getString(this, key) {
-            case a:String => a
-            case _ => ""
-    }
+    getString(this, key).valueOrElse("")
 }
 func getBoolByKey(key: String) = {
-    match getBoolean(this, key) {
-            case a:Boolean => a
-            case _ => false
-    }
+    getBoolean(this, key).valueOrElse(false)
 }
 func getNumberByAddressAndKey(address: String, key: String) = {
-    match getInteger(addressFromStringValue(address), key) {
-            case a:Int => a
-            case _ => 0
-    }
+    getInteger(addressFromStringValue(address), key).valueOrElse(0)
 }
 func getStringByAddressAndKey(address: String, key: String) = {
-     match getString(addressFromStringValue(address), key) {
-            case a:String => a
-            case _ => ""
-    }
+     getString(addressFromStringValue(address), key).valueOrElse("")
 }
 func getBoolByAddressAndKey(address: String, key: String) = {
-     match getBoolean(addressFromStringValue(address), key) {
-            case a:Boolean => a
-            case _ => false
-    }
+     getBoolean(addressFromStringValue(address), key).valueOrElse(false)
 }
 
 let pubKeyAdminsList = [
@@ -126,8 +108,8 @@ let neutrinoContract = this
 let currentPrice = getNumberByAddressAndKey(controlContract, PriceKey) # The value from control.ride
 let neutrinoLockedBalance = getNumberByKey(NeutrinoLockedBalanceKey) #locked balance from USDN -> WAVES swap
 let wavesLockedBalance = getNumberByKey(WavesLockedBalanceKey) #locked balance from WAVES -> USDN swap
-let reserve = wavesBalance(neutrinoContract) - wavesLockedBalance #waves reserves to cover USDN supply
-let neutrinoSupply = neutrinoLockedBalance + extract(assetInfo(neutrinoAssetId)).quantity - assetBalance(neutrinoContract, neutrinoAssetId)
+let reserve = wavesBalance(neutrinoContract).regular - wavesLockedBalance #waves reserves to cover USDN supply
+let neutrinoSupply = neutrinoLockedBalance + assetInfo(neutrinoAssetId).value().quantity - assetBalance(neutrinoContract, neutrinoAssetId)
     - assetBalance(addressFromStringValue(liquidationContract), neutrinoAssetId) # supply outside main sc or liquidation contract
 let surplus = convertWavesToNeutrino(reserve, currentPrice) - neutrinoSupply
 let deficit = neutrinoSupply - convertWavesToNeutrino(reserve, currentPrice)
@@ -141,7 +123,7 @@ func checkIsValidMinSponsoredFee(tx: SponsorFeeTransaction) = {
     let minNeutrinoFee = realNeutrinoFee * 2 # 100%
     let maxNeutrinoFee = fraction(realNeutrinoFee, SponsoredFeeUpperBound, 100)
 
-    let inputFee = extract(tx.minSponsoredAssetFee)
+    let inputFee = tx.minSponsoredAssetFee.value()
 
     inputFee >= minNeutrinoFee && inputFee <= maxNeutrinoFee && tx.assetId == neutrinoAssetId
 }
@@ -167,7 +149,7 @@ func getRPDProfit(count: Int) = getNumberByKey(getRPDProfitKey(count))
 # [called by user]
 @Callable(i)
 func swapWavesToNeutrino() = {
-    let pmt = extract(i.payment)
+    let pmt = i.payments[0].value()
     let account = toString(i.caller)
 
     if (pmt.amount < minWavesSwapAmount)
@@ -181,11 +163,9 @@ func swapWavesToNeutrino() = {
     else if (getNeutrinoLockedBalance(account) != 0 || getWavesLockedBalance(account) != 0)
         then throw("please withdraw locked funds first")
     else {
-        WriteSet([
-            DataEntry(getWavesLockedBalanceKey(account), pmt.amount),
-            DataEntry(getBalanceUnlockBlockKey(account), height + balanceWavesLockInterval),
-            DataEntry(WavesLockedBalanceKey, wavesLockedBalance + pmt.amount)
-        ])
+      [IntegerEntry(getWavesLockedBalanceKey(account), pmt.amount),
+      IntegerEntry(getBalanceUnlockBlockKey(account), height + balanceWavesLockInterval),
+      IntegerEntry(WavesLockedBalanceKey, wavesLockedBalance + pmt.amount)]
     }
 }
 
@@ -194,7 +174,7 @@ func swapWavesToNeutrino() = {
 # [called by user]
 @Callable(i)
 func swapNeutrinoToWaves() = {
-    let pmt = extract(i.payment)
+    let pmt = i.payments[0].value()
     let account = toString(i.caller)
     if (pmt.amount < minNeutrinoSwapAmount)
         then throw("The specified Neutrino amount is less than the required minimum of " + toString(minNeutrinoSwapAmount) + " Neutrino cents.")
@@ -207,11 +187,9 @@ func swapNeutrinoToWaves() = {
     else if (getNeutrinoLockedBalance(account) != 0 || getWavesLockedBalance(account) != 0)
         then throw("please withdraw locked funds first")
     else {
-        WriteSet([
-            DataEntry(getNeutrinoLockedBalanceKey(account), pmt.amount),
-            DataEntry(getBalanceUnlockBlockKey(account), height + balanceNeutrinoLockInterval),
-            DataEntry(NeutrinoLockedBalanceKey, neutrinoLockedBalance + pmt.amount)
-        ])
+        [IntegerEntry(getNeutrinoLockedBalanceKey(account), pmt.amount),
+        IntegerEntry(getBalanceUnlockBlockKey(account), height + balanceNeutrinoLockInterval),
+        IntegerEntry(NeutrinoLockedBalanceKey, neutrinoLockedBalance + pmt.amount)]
     }
 }
 
@@ -245,19 +223,14 @@ func withdraw(account : String, index: Int) = {
     else if(neutrinoAmount <= 0 && wavesAmount <= 0)
         then throw("balance equals zero")
     else {
-        ScriptResult(
-            WriteSet([
-                DataEntry(getWavesLockedBalanceKey(account), 0),
-                DataEntry(getNeutrinoLockedBalanceKey(account), 0),
+      [IntegerEntry(getWavesLockedBalanceKey(account), 0),
+      IntegerEntry(getNeutrinoLockedBalanceKey(account), 0),
 
-                DataEntry(WavesLockedBalanceKey, wavesLockedBalance - userWavesLockedBalance),
-                DataEntry(NeutrinoLockedBalanceKey, neutrinoLockedBalance - userNeutrinoLockedBalance)
-            ]),
-            TransferSet([
-                ScriptTransfer(addressFromStringValue(account), wavesAmount, unit),
-                ScriptTransfer(addressFromStringValue(account), neutrinoAmount, neutrinoAssetId)
-            ])
-        )
+      IntegerEntry(WavesLockedBalanceKey, wavesLockedBalance - userWavesLockedBalance),
+      IntegerEntry(NeutrinoLockedBalanceKey, neutrinoLockedBalance - userNeutrinoLockedBalance),
+
+      ScriptTransfer(addressFromStringValue(account), wavesAmount, unit),
+      ScriptTransfer(addressFromStringValue(account), neutrinoAmount, neutrinoAssetId)]
     }
 }
 
@@ -271,9 +244,9 @@ func transferToAuction() = {
     if(isBlocked)
         then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles") # see control.ride
     else if(auctionNBAmount > 1*PAULI)
-        then TransferSet([ScriptTransfer(addressFromStringValue(auctionContract), auctionNBAmount, bondAssetId)])
+        then [ScriptTransfer(addressFromStringValue(auctionContract), auctionNBAmount, bondAssetId)]
     else if(surplusWithLiquidation >= 1*PAULI)
-        then TransferSet([ScriptTransfer(addressFromStringValue(liquidationContract), surplusWithLiquidation, neutrinoAssetId)])
+        then [ScriptTransfer(addressFromStringValue(liquidationContract), surplusWithLiquidation, neutrinoAssetId)]
     else
         throw("bond were generated or do not need it. Deficit:" + toString(auctionNBAmount) + "|" + toString(0) + ". Surplus:" + toString(surplusWithLiquidation) + "|" + toString(surplus))
 }
@@ -282,8 +255,8 @@ func transferToAuction() = {
 # [called by user]
 @Callable(i)
 func transfer(account: String) = {
-    let pmt = extract(i.payment)
-    TransferSet([ScriptTransfer(addressFromStringValue(account), pmt.amount, pmt.assetId)])
+    let pmt = i.payments[0].value()
+    [ScriptTransfer(addressFromStringValue(account), pmt.amount, pmt.assetId)]
 }
 
 
@@ -291,11 +264,11 @@ func transfer(account: String) = {
 # [called by user]
 @Callable(i)
 func migrationUSDNB2NSBTSwap() = {
-    let pmt = extract(i.payment)
+    let pmt = i.payments[0].value()
     let account = i.caller
     if (deprecatedBondAssetId != pmt.assetId)
         then throw("error: attempt to swap not USDNB tokens")
-    else TransferSet([ScriptTransfer(account, pmt.amount*PAULI, bondAssetId)])
+    else [ScriptTransfer(account, pmt.amount*PAULI, bondAssetId)]
 }
 
 # LeaseCancelTransaction depends from swapNeutrinoToWaves() result i.e. waves amount is not enought for future swaps

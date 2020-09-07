@@ -1,37 +1,22 @@
-{-# STDLIB_VERSION 3 #-}
+{-# STDLIB_VERSION 4 #-}
 {-# CONTENT_TYPE DAPP #-}
 {-# SCRIPT_TYPE ACCOUNT #-}
 
 #-------------------Base functions----------------------
 func getNumberByKey(key: String) = {
-    match getInteger(this, key) {
-            case a:Int => a
-            case _ => 0
-    }
+    getInteger(this, key).valueOrElse(0)
 }
 func getStringByKey(key: String) = {
-    match getString(this, key) {
-            case a:String => a
-            case _ => ""
-    }
+    getString(this, key).valueOrElse("")
 }
 func getBoolByAddressAndKey(address: Address, key: String) = {
-     match getBoolean(address, key) {
-            case a:Boolean => a
-            case _ => false
-    }
+     getBoolean(address, key).valueOrElse(false)
 }
 func getStringByAddressAndKey(address: Address, key: String) = {
-   match getString(address, key) {
-            case a:String => a
-            case _ => ""
-    }
+   getString(address, key).valueOrElse("")
 }
 func getNumberByAddressAndKey(address: Address, key: String) = {
-    match getInteger(address, key) {
-            case a:Int => a
-            case _ => 0
-    }
+    getInteger(address, key).valueOrElse(0)
 }
 
 #-------------------Constants---------------------------
@@ -49,7 +34,7 @@ let NeutrinoContractKey = "neutrino_contract"
 
 #-------------------Keys--------------------------------
 let PriceKey = "price"
-let BondAssetIdKey = "bond_asset_id" 
+let BondAssetIdKey = "bond_asset_id"
 let NeutrinoAssetIdKey = "neutrino_asset_id"
 let ControlContractKey = "control_contract"
 let BalanceLockedkKey = "balance_lock_"
@@ -88,8 +73,8 @@ let isBlocked = getBoolByAddressAndKey(controlContract, "is_blocked")
 let currentPrice = getNumberByAddressAndKey(controlContract, PriceKey) # The value from control.ride
 let neutrinoLockedBalance = getNumberByAddressAndKey(neutrinoContract, NeutrinoLockedBalanceKey) #locked balance from USDN -> WAVES swap
 let wavesLockedBalance = getNumberByAddressAndKey(neutrinoContract, WavesLockedBalanceKey) #locked balance from WAVES -> USDN swap
-let reserve = wavesBalance(neutrinoContract) - wavesLockedBalance #waves reserves to cover USDN supply
-let neutrinoSupply = neutrinoLockedBalance + extract(assetInfo(neutrinoAssetId)).quantity - assetBalance(neutrinoContract, neutrinoAssetId) - assetBalance(liquidationContract, neutrinoAssetId) # supply outside main sc or liquidation contract
+let reserve = wavesBalance(neutrinoContract).regular - wavesLockedBalance #waves reserves to cover USDN supply
+let neutrinoSupply = neutrinoLockedBalance + assetInfo(neutrinoAssetId).value().quantity - assetBalance(neutrinoContract, neutrinoAssetId) - assetBalance(liquidationContract, neutrinoAssetId) # supply outside main sc or liquidation contract
 let surplus = convertWavesToNeutrino(reserve, currentPrice) - neutrinoSupply
 
 
@@ -106,30 +91,30 @@ func getNextOrder(id: String) = getStringByKey(getNextOrderKey(id))
 let currentDefaultOrder = getStringByKey(CurrentDefaultOrderKey)
 
 func generateDataEntryToAddOrder(price: Int, newOrderId: String, i: Invocation, prevOrder: String, nextOrder: String, firstOrder: String) = {
-    let amount = extract(i.payment).amount;
+    let amount = i.payments[0].value().amount;
     let isOneForOneOrder = price == 100
 
     let isFirstOrderEmty = firstOrder == ""
     let isNewOrderPriceLowerThanCurrentFirstOrder = price < getOrderPrice(firstOrder)
-    let newFirstOrder = if isFirstOrderEmty 
-        then newOrderId 
+    let newFirstOrder = if isFirstOrderEmty
+        then newOrderId
         else ( if isNewOrderPriceLowerThanCurrentFirstOrder then newOrderId else firstOrder)
     [
-        DataEntry(getPrevOrderKey(newOrderId), prevOrder),
-        DataEntry(getNextOrderKey(newOrderId), nextOrder),
+        StringEntry(getPrevOrderKey(newOrderId), prevOrder),
+        StringEntry(getNextOrderKey(newOrderId), nextOrder),
 
-        DataEntry(getNextOrderKey(prevOrder), if prevOrder == "" then prevOrder else newOrderId),
-        DataEntry(getPrevOrderKey(nextOrder), if nextOrder == "" then nextOrder else newOrderId),
+        StringEntry(getNextOrderKey(prevOrder), if prevOrder == "" then prevOrder else newOrderId),
+        StringEntry(getPrevOrderKey(nextOrder), if nextOrder == "" then nextOrder else newOrderId),
 
-        DataEntry(FirstOrderKey, newFirstOrder),
+        StringEntry(FirstOrderKey, newFirstOrder),
 
-        DataEntry(getOrderPriceKey(newOrderId), price),
-        DataEntry(getOrderTotalKey(newOrderId), amount),
-        DataEntry(getOrderOwnerKey(newOrderId), toString(i.caller)),
-        DataEntry(getOrderHeightKey(newOrderId), height),
-        DataEntry(getOrderStatusKey(newOrderId), NEW),
+        IntegerEntry(getOrderPriceKey(newOrderId), price),
+        IntegerEntry(getOrderTotalKey(newOrderId), amount),
+        StringEntry(getOrderOwnerKey(newOrderId), toString(i.caller)),
+        IntegerEntry(getOrderHeightKey(newOrderId), height),
+        StringEntry(getOrderStatusKey(newOrderId), NEW),
 
-        DataEntry(CurrentDefaultOrderKey, if isOneForOneOrder then newOrderId else currentDefaultOrder)
+        StringEntry(CurrentDefaultOrderKey, if isOneForOneOrder then newOrderId else currentDefaultOrder)
     ]
 }
 
@@ -138,7 +123,7 @@ func internalAddLiquidationOrder(i: Invocation, price: Int, prevOrder: String) =
     # price - means how SC will execute orders. USDN/NSBT, example: 15 neutrinos / 10 basetokens;
     # i.e. SC is going to buy 10 basetokens for 15 usdn tokens; price = 150 (1.5 * 100)
     # the behaviour of this price is same as roi within auction SC, so almost no changes in the orderbook logic
-    let pmt = extract(i.payment)
+    let pmt = i.payments[0].value()
     let newOrderId = toBase58String(keccak256(toBytes(pmt.amount) + i.caller.bytes + toBytes(height) + i.transactionId))
     let owner = toString(i.caller)
 
@@ -151,7 +136,7 @@ func internalAddLiquidationOrder(i: Invocation, price: Int, prevOrder: String) =
         then throw("order amount should be higher than 1 NSBT")
     else if (price < 100)
         then throw("price should be equal or higher than 1 nsbt for 1 usdn. i.e. >= 100; price: " + toString(price))
-    else if (pmt.assetId != bondAssetId) 
+    else if (pmt.assetId != bondAssetId)
         then throw("can use appropriate neutrino base tokens (nsbt) only")
     else if(getOrderOwner(newOrderId) != "")
         then throw("the order already exists")
@@ -165,24 +150,24 @@ func internalAddLiquidationOrder(i: Invocation, price: Int, prevOrder: String) =
         let isEmptyNextOrder = nextOrder == ""
 
         if (isEmptyFirstOrder)
-            then WriteSet(generateDataEntryToAddOrder(price, newOrderId, i, prevOrder, nextOrder, firstOrder))
+            then generateDataEntryToAddOrder(price, newOrderId, i, prevOrder, nextOrder, firstOrder)
         else {
             let nextOrderPrice = getNumberByKey(getOrderPriceKey(nextOrder)) # 0 if isEmptyNextOrder
             let prevOrderPrice = getNumberByKey(getOrderPriceKey(prevOrder)) # 0 if isEmptyPrevOrder
 
-            let isNextOrderError = !isEmptyNextOrder && price >= nextOrderPrice; # 
+            let isNextOrderError = !isEmptyNextOrder && price >= nextOrderPrice; #
             let isPrevOrderError = !isEmptyPrevOrder && price < prevOrderPrice; #
 
             if (isNextOrderError || isPrevOrderError)
                 then throw("invalid order isPrevOrderError:" + toString(isPrevOrderError) + " isNextOrderError:" + toString(isNextOrderError))
-            else 
-                WriteSet(generateDataEntryToAddOrder(price, newOrderId, i, prevOrder, nextOrder, firstOrder))
+            else
+                generateDataEntryToAddOrder(price, newOrderId, i, prevOrder, nextOrder, firstOrder)
         }
     }
 }
 
 func computeCurrentDefaultOrder(id : String) = {
-    if id != currentDefaultOrder 
+    if id != currentDefaultOrder
         then currentDefaultOrder
     else {
         ""
@@ -210,40 +195,34 @@ func cancelOrder(orderId : String) = {
     let owner = getOrderOwner(orderId)
     let amount = getOrderTotal(orderId) - getOrderFilledTotal(orderId)
     let caller = toString(i.caller)
-    
+
     let nextOrder = getNextOrder(orderId)
     let prevOrder = getPrevOrder(orderId)
 
     let isDefaultOrder = orderId == currentDefaultOrder
     let isPrevCanBecomeDefault = getOrderStatus(prevOrder) == NEW
-    let newDefaultOrder = if isDefaultOrder 
-        then 
-            (if isPrevCanBecomeDefault 
-                then prevOrder 
+    let newDefaultOrder = if isDefaultOrder
+        then
+            (if isPrevCanBecomeDefault
+                then prevOrder
                 else "")
         else currentDefaultOrder
-    
-    if (isBlocked) 
+
+    if (isBlocked)
         then throw("contract is blocked by EMERGENCY SHUTDOWN actions until reactivation by emergency oracles")
     else if(owner != caller)
         then throw("permission denied")
     else if(getOrderStatus(orderId) != NEW)
         then throw("invalid order status")
     else {
-        ScriptResult(
-            WriteSet([
-                DataEntry(CurrentDefaultOrderKey, newDefaultOrder),
+        [StringEntry(CurrentDefaultOrderKey, newDefaultOrder),
 
-                DataEntry(FirstOrderKey, if firstOrder == orderId then nextOrder else firstOrder),
+        StringEntry(FirstOrderKey, if firstOrder == orderId then nextOrder else firstOrder),
 
-                DataEntry(getNextOrderKey(prevOrder), nextOrder),
-                DataEntry(getPrevOrderKey(nextOrder), prevOrder),
-                DataEntry(getOrderStatusKey(orderId), CANCELED)
-            ]), 
-            TransferSet([
-                ScriptTransfer(i.caller, amount, bondAssetId)
-            ])
-        )
+        StringEntry(getNextOrderKey(prevOrder), nextOrder),
+        StringEntry(getPrevOrderKey(nextOrder), prevOrder),
+        StringEntry(getOrderStatusKey(orderId), CANCELED),
+        ScriptTransfer(i.caller, amount, bondAssetId)]
     }
 }
 
@@ -257,14 +236,12 @@ func liquidateBond() = {
     let usdnAmount = if(surplusPositive >= liquidationBalance) then liquidationBalance else surplusPositive
     let returnAmount = if(surplusPositive >= liquidationBalance) then 0 else liquidationBalance-surplusPositive
 
-    if (isBlocked) 
+    if (isBlocked)
         then throw("contract is blocked by EMERGENCY SHUTDOWN actions until reactivation by emergency oracles")
     else if (liquidationBalance == 0)
         then throw("without base tokens to liquidate")
     else if(returnAmount > 0) then {
-        TransferSet([
-            ScriptTransfer(neutrinoContract, returnAmount, neutrinoAssetId)
-        ])
+        [ScriptTransfer(neutrinoContract, returnAmount, neutrinoAssetId)]
     }
     else if(firstOrder == "")
         then throw("empty orderbook")
@@ -292,21 +269,16 @@ func liquidateBond() = {
             let isNothingToFillNow = remainedTotal == 0
             let isNothingToFillAtAll = (filledTotal + finalNBTFillable) == getOrderTotal(firstOrder)
             let newStatus = if(isOrderFullyFilable && ( isNothingToFillNow || isNothingToFillAtAll)) then FILLED else NEW
-            ScriptResult(
-                WriteSet([
-                    DataEntry(getPrevOrderKey(nextOrder), if(newStatus == FILLED) then "" else firstOrder), 
-                    DataEntry(FirstOrderKey, if(newStatus == FILLED) then nextOrder else firstOrder),
+            [StringEntry(getPrevOrderKey(nextOrder), if(newStatus == FILLED) then "" else firstOrder),
+            StringEntry(FirstOrderKey, if(newStatus == FILLED) then nextOrder else firstOrder),
 
-                    DataEntry(getOrderFilledTotalKey(firstOrder), filledTotal + finalNBTFillable),
-                    DataEntry(getOrderStatusKey(firstOrder), newStatus),
-                    # no need to compute default order in case of partially filled order
-                    DataEntry(CurrentDefaultOrderKey, if(newStatus == NEW) then currentDefaultOrder else computeCurrentDefaultOrder(firstOrder))
-                ]),
-                TransferSet([
-                    ScriptTransfer(addressFromStringValue(getOrderOwner(firstOrder)), fillableOrderAmount, neutrinoAssetId),
-                    ScriptTransfer(neutrinoContract, finalNBTFillable, bondAssetId)
-                ])
-            )
+            IntegerEntry(getOrderFilledTotalKey(firstOrder), filledTotal + finalNBTFillable),
+            StringEntry(getOrderStatusKey(firstOrder), newStatus),
+            # no need to compute default order in case of partially filled order
+            StringEntry(CurrentDefaultOrderKey, if(newStatus == NEW) then currentDefaultOrder else computeCurrentDefaultOrder(firstOrder)),
+
+            ScriptTransfer(addressFromStringValue(getOrderOwner(firstOrder)), fillableOrderAmount, neutrinoAssetId),
+            ScriptTransfer(neutrinoContract, finalNBTFillable, bondAssetId)]
         }
     }
 }
