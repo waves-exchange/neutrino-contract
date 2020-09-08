@@ -180,7 +180,7 @@ func computeCurrentDefaultOrder(id : String) = {
 # [called by user]
 @Callable(i)
 func addLiquidationOrderWithPrice(price: Int, prevOrder: String) = {
-    internalAddLiquidationOrder(i, price, prevOrder)
+    throw("Method has been deprecated: please use addLiquidationOrder method without parameters")
 }
 
 @Callable(i)
