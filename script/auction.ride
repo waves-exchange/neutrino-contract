@@ -209,7 +209,8 @@ func curveFunction(wRaw: Int, uRaw: Int, price: Int) = {
     let expInPowerMult = pow(EXP, SCALEMULT, powerMult, SCALEMULT, SCALEMULT, DOWN)
 
     let constCoeff = fraction(uRaw, PRICELET, nsbtCurveParamA * price)
-    let finalResult = fraction(constCoeff, MULT, expInPowerMult)
+    let finalResultIfPriceInUsdn = fraction(constCoeff, MULT, expInPowerMult)
+    let finalResult = fraction(finalResultIfPriceInUsdn, price, PRICELET)
     (finalResult, wReservesInUsdn, brMult, powerMult, expInPowerMult, constCoeff)
 }
 #-------------------Callable---------------------------
