@@ -1,0 +1,131 @@
+{-# STDLIB_VERSION 4 #-}
+{-# CONTENT_TYPE DAPP #-}
+{-# SCRIPT_TYPE ACCOUNT #-}
+#
+# Main Smart Contract of Neutrino Protocol
+# Implemented actions: Swap, Bond Liquidation, Leasing
+#
+
+let neutrinoContract = addressFromStringValue("3PC9BfRwJWWiw9AREE2B3eWzCks3CYtg4yo")
+
+#-------------------Base functions----------------------
+func getNumberByKey(key: String) = {
+    getInteger(neutrinoContract, key).valueOrElse(0)
+}
+func getStringByKey(key: String) = {
+    getString(neutrinoContract, key).valueOrElse("")
+}
+func getBoolByKey(key: String) = {
+    getBoolean(neutrinoContract, key).valueOrElse(false)
+}
+func getNumberByAddressAndKey(address: String, key: String) = {
+    getInteger(addressFromStringValue(address), key).valueOrElse(0)
+}
+func getStringByAddressAndKey(address: String, key: String) = {
+     getString(addressFromStringValue(address), key).valueOrElse("")
+}
+func getBoolByAddressAndKey(address: String, key: String) = {
+     getBoolean(addressFromStringValue(address), key).valueOrElse(false)
+}
+
+#-------------------Constants---------------------------
+let SENDTXEXPIRE = 30
+let LISTSPLITSYMBOL = "_"
+let LISTDATASYMBOL = "+"
+let WAVELET = 100000000
+let PAULI = 1000000
+let PRICELET = 1000000 # 10^6
+
+#-------------------Constructor-------------------------
+let NeutrinoAssetIdKey = "neutrino_asset_id"
+let BondAssetIdKey = "bond_asset_id"
+let AuctionContractKey = "auction_contract"
+let LiquidationContractKey = "liquidation_contract"
+let RPDContractKey = "rpd_contract"
+let ContolContractKey = "control_contract"
+let BalanceWavesLockIntervalKey = "balance_waves_lock_interval"
+let BalanceNeutrinoLockIntervalKey = "balance_neutrino_lock_interval"
+let MinWavesSwapAmountKey = "min_waves_swap_amount"
+let MinNeutrinoSwapAmountKey = "min_neutrino_swap_amount"
+let NodeOracleProviderPubKeyKey = "node_oracle_provider"
+
+#------Common----------------
+let RPDBalanceKey = "rpd_balance"
+#------RPD contract----------
+func getRPDContractBalanceKey(assetId: ByteVector) = RPDBalanceKey + "_" + toBase58String(assetId)
+#------Control contract-------
+let PriceKey = "price"
+
+let PriceIndexKey = "price_index"
+let IsBlockedKey = "is_blocked"
+func getPriceHistoryKey(block: Int) = PriceKey + "_" + toString(block)
+func getHeightPriceByIndexKey(index: Int) = PriceIndexKey + "_" + toString(index)
+#------This contract----------
+let BalanceLockedkKey = "balance_lock_"
+let WavesLockedBalanceKey = BalanceLockedkKey + "waves"
+let NeutrinoLockedBalanceKey = BalanceLockedkKey + "neutrino"
+
+func getRPDSnapshotContractBalanceKey(count: Int, assetId: ByteVector) = RPDBalanceKey + "_" + toBase58String(assetId) + "_" + toString(count)
+func getCancelLeaseTxReserveFeeKey(hash: String) = "cancel_lease_tx_reserve_fee" + "_" + hash
+func getWavesLockedBalanceKey(owner: String) = WavesLockedBalanceKey + "_" + owner
+func getNeutrinoLockedBalanceKey(owner: String) = NeutrinoLockedBalanceKey + "_" + owner
+func getBalanceUnlockBlockKey(owner: String) = "balance_unlock_block_" + owner
+func getRPDProfitKey(count: Int) = "rpd_profit" + "_" + toString(count)
+
+#-------------------Convert functions-------------------
+func convertNeutrinoToWaves(amount: Int, price: Int) = fraction(fraction(amount, PRICELET, price),WAVELET, PAULI)
+func convertWavesToNeutrino(amount: Int, price: Int) = fraction(fraction(amount, price, PRICELET), PAULI, WAVELET)
+func convertWavesToBond(amount: Int, price: Int) = convertWavesToNeutrino(amount, price) # it's here to be more explicit with convertation
+func convertJsonArrayToList(jsonArray: String) = {
+   jsonArray.split(",") #jsonArray.take(size(jsonArray)-1).drop(1).split(",")
+}
+
+#-------------------Global vars-------------------------
+
+let liquidationContract = getStringByKey(LiquidationContractKey)
+let neutrinoAssetIdString = getStringByKey(NeutrinoAssetIdKey)
+let neutrinoAssetId = fromBase58String(neutrinoAssetIdString)
+let auctionContract = getStringByKey(AuctionContractKey)
+let rpdContract = getStringByKey(RPDContractKey)
+let controlContract = getStringByKey(ContolContractKey)
+let priceIndex = getNumberByAddressAndKey(controlContract, PriceIndexKey) # Last price history iterator from control.ride
+let isBlocked = getBoolByAddressAndKey(controlContract,IsBlockedKey) # Checks for contract locks that might happen after attacks.  The var is read from control contract
+let nodeOracleProviderPubKey = fromBase58String(getStringByKey(NodeOracleProviderPubKeyKey))
+let balanceWavesLockInterval = getNumberByKey(BalanceWavesLockIntervalKey)
+let balanceNeutrinoLockInterval = getNumberByKey(BalanceNeutrinoLockIntervalKey)
+let minWavesSwapAmount = getNumberByKey(MinWavesSwapAmountKey)
+let minNeutrinoSwapAmount = getNumberByKey(MinNeutrinoSwapAmountKey)
+let bondAssetId = fromBase58String("6nSpVyNH7yM69eg446wrQR94ipbbcmZMU1ENPwanC97g") # NSBT with 6 decimals as USDN does
+let deprecatedBondAssetId = fromBase58String("975akZBfnMj513U7MZaHKzQrmsEx5aE3wdWKTrHBhbjF") # USDNB with 0 decimals
+
+
+#-------------------Global vars deficit, locked & supply -------------------------
+let currentPrice = getNumberByAddressAndKey(controlContract, PriceKey) # The value from control.ride
+let neutrinoLockedBalance = getNumberByKey(NeutrinoLockedBalanceKey) #locked balance from USDN -> WAVES swap
+let wavesLockedBalance = getNumberByKey(WavesLockedBalanceKey) #locked balance from WAVES -> USDN swap
+let reservesInWaves = wavesBalance(neutrinoContract).regular - wavesLockedBalance #waves reserves to cover USDN supply
+let reservesInUsdn = convertWavesToNeutrino(reservesInWaves, currentPrice)
+let neutrinoSupply = neutrinoLockedBalance + assetInfo(neutrinoAssetId).value().quantity - assetBalance(neutrinoContract, neutrinoAssetId)
+    - assetBalance(addressFromStringValue(liquidationContract), neutrinoAssetId) # supply outside main sc or liquidation contract
+let surplus = reservesInUsdn - neutrinoSupply
+let surplusPercent = fraction(surplus, PAULI, neutrinoSupply) * 100
+let BR = fraction(reservesInUsdn, PAULI, neutrinoSupply)
+
+
+#-------------------REST -------------------------
+@Callable(i)
+func neutrinoStateREST() = {
+  throw(
+    makeString([
+          "resultNeutrinoStateREST",        # 0
+          currentPrice.toString(),          # 1
+          neutrinoLockedBalance.toString(), # 2
+          wavesLockedBalance.toString(),    # 3
+          reservesInWaves.toString(),       # 4
+          reservesInUsdn.toString(),        # 5
+          neutrinoSupply.toString(),        # 6
+          surplus.toString(),               # 7
+          surplusPercent.toString(),        # 8
+          BR.toString()],                   # 9
+    "__"))
+}
