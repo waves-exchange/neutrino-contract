@@ -245,7 +245,7 @@ func withdraw(account : String, index: Int) = {
                 + " prevIndexHeight=" + toString(prevIndexHeight))
     else if(neutrinoAmountGross <= 0 && wavesAmountGross <= 0)
         then throw("balance equals zero")
-    else if (neutrinoOutFeePart < 0 || wavesOutFeePart < 0)
+    else if (neutrinoOutFeePart < 0 || neutrinoOutFeePart >= PAULI || wavesOutFeePart < 0 || wavesOutFeePart >= PAULI)
         then throw("invalid fees data: neutrinoOutFeePart=" + neutrinoOutFeePart.toString() + " wavesOutFeePart=" + wavesOutFeePart.toString())
     else {
       [IntegerEntry(getWavesLockedBalanceKey(account), 0),
