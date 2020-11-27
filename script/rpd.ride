@@ -31,6 +31,7 @@ let NeutrinoContractKey = "neutrino_contract"
 #-------------------Keys---------------------------------
 let BalanceKey = "rpd_balance"
 let ControlContractKey = "control_contract"
+let NsbtAssetIdKey = "bond_asset_id"
 let AdminsKey = "admins"
 
 func getUserBalanceKey(owner: String, assetId: String) = BalanceKey + "_" + assetId + "_" + owner
@@ -50,6 +51,8 @@ func convertJsonArrayToList(jsonArray: String) = {
 let neutrinoContract = addressFromStringValue(getStringByKey(NeutrinoContractKey))
 let controlContract = addressFromStringValue(getStringByAddressAndKey(neutrinoContract, ControlContractKey))
 let neutrinoAssetId = fromBase58String(getStringByAddressAndKey(neutrinoContract, NeutrinoAssetIdKey))
+let nsbtAssetIdStr = getStringByAddressAndKey(neutrinoContract, NsbtAssetIdKey)
+let nsbtAssetId = nsbtAssetIdStr.fromBase58String()
 
 #-------------------Get functions----------------------
 func getContractBalance(assetId: String) = getNumberByKey(getContractBalanceKey(assetId))
@@ -79,8 +82,8 @@ func internallockNeutrino(i: Invocation, receiver: String, share: Int) = {
     let pmt = i.payments[0].value()
     if (!isDefined(addressFromString(receiver)))
         then throw("Invalid address format " + receiver)
-    else if (pmt.assetId != neutrinoAssetId)
-        then throw("can use usd only")
+    else if (pmt.assetId != neutrinoAssetId && pmt.assetId != nsbtAssetId)
+        then throw("can use USDN or NSBT only")
     else if (share > 100)
         then throw("staking rewards share cannot be higher than 100%")
     else if (share < 1)
