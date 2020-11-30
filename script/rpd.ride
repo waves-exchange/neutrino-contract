@@ -34,6 +34,10 @@ let ControlContractKey = "control_contract"
 let NsbtAssetIdKey = "bond_asset_id"
 let AdminsKey = "admins"
 
+#-------------------Constants---------------------------------
+let USDNTYPE = "USDN"
+let NSBTTYPE = "NSBT"
+
 func getUserBalanceKey(owner: String, assetId: String) = BalanceKey + "_" + assetId + "_" + owner
 func getContractBalanceKey(assetId: String) = BalanceKey + "_" + assetId
 
@@ -58,11 +62,6 @@ let nsbtAssetId = nsbtAssetIdStr.fromBase58String()
 func getContractBalance(assetId: String) = getNumberByKey(getContractBalanceKey(assetId))
 func getUserBalance(owner : String, assetId: String) = getNumberByKey(getUserBalanceKey(owner, assetId))
 
-func getExpireProposal(hash: String) = getNumberByKey(getExpireProposalKey(hash))
-func getOwnerProposal(hash: String) = getStringByKey(getOwnerProposalKey(hash))
-func getArgumentsProposal(hash: String) = getStringByKey(getArgumentsProposalKey(hash))
-func getVote(owner: String, hash: String) = getStringByKey(getVoteKey(owner, hash))
-
 #----split protocol-------------------------------
 func getRewardsConfigKey(owner : String, share: Int, receiver: String) = {
     "stakingconfig_" + owner + "_" + toString(share) +  "_" + receiver
@@ -78,19 +77,26 @@ func getRewardConfigInitialShare(owner : String) = {
     owner + "_initialShare"
 }
 
-func internallockNeutrino(i: Invocation, receiver: String, share: Int) = {
+func getValidStakingAssetOrFail(stakingType: String, assetId: ByteVector) = {
+  if (stakingType == USDNTYPE && assetId != neutrinoAssetId) then throw("can use USDN only") else
+  if (stakingType == NSBTTYPE && assetId != nsbtAssetId) then throw("can use NSBT only") else
+  if (stakingType != USDNTYPE && stakingType != NSBTTYPE) then throw("unsupported staking type " + stakingType) else
+  assetId
+}
+
+func internalLockNeutrino(stakingType: String, i: Invocation, receiver: String, share: Int) = {
     let pmt = i.payments[0].value()
+    let assetId = getValidStakingAssetOrFail(stakingType, pmt.assetId.value())
+
     if (!isDefined(addressFromString(receiver)))
         then throw("Invalid address format " + receiver)
-    else if (pmt.assetId != neutrinoAssetId && pmt.assetId != nsbtAssetId)
-        then throw("can use USDN or NSBT only")
     else if (share > 100)
         then throw("staking rewards share cannot be higher than 100%")
     else if (share < 1)
         then throw("staking rewards share cannot be lower than 1%")
     else {
         let account = toString(i.caller)
-        let assetIdString = toBase58String(value(pmt.assetId))
+        let assetIdString = toBase58String(assetId)
         let currentConfig = getStringByKey(getCurrentRewardsConfigKey(account))
 
         let correctData = if (currentConfig != "") then {
@@ -126,62 +132,56 @@ func internallockNeutrino(i: Invocation, receiver: String, share: Int) = {
         StringEntry(getCurrentRewardsConfigKey(account), newCurrentConfig)]
     }
 }
+
+func internalUnlock(stakingType: String, i: Invocation, unlockAmount: Int, assetIdParam: String) = {
+  let account = toString(i.caller)
+  let assetId = getValidStakingAssetOrFail(stakingType, assetIdParam.fromBase58String())
+  let assetIdString = assetId.toBase58String()
+
+  let balance = getUserBalance(account, assetIdString) - unlockAmount
+  if (balance <= 0) then throw("invalid amount") else
+
+  [IntegerEntry(getContractBalanceKey(assetIdString), getContractBalance(assetIdString) - unlockAmount),
+  IntegerEntry(getUserBalanceKey(account, assetIdString), balance),
+  ScriptTransfer(addressFromStringValue(account), unlockAmount, assetId)]
+
+}
+
 #-------------------Callable----------------------
 # start neutrino staking
 # [called by user]
 @Callable(i)
 func lockNeutrinoSP(receiver: String, share: Int) = {
-    internallockNeutrino(i, receiver, share)
+    internalLockNeutrino(USDNTYPE, i, receiver, share)
 }
 
 @Callable(i)
 func lockNeutrino() = {
-    internallockNeutrino(i, toString(i.caller), 100)
+    internalLockNeutrino(USDNTYPE, i, toString(i.caller), 100)
 }
 
+@Callable(i)
+func lockNsbtSP(receiver: String, share: Int) = {
+    internalLockNeutrino(NSBTTYPE, i, receiver, share)
+}
+
+@Callable(i)
+func lockNsbt() = {
+    internalLockNeutrino(NSBTTYPE, i, toString(i.caller), 100)
+}
 
 # cancel neutrino staking
 # [called by user]
 @Callable(i)
 func unlockNeutrino(unlockAmount: Int, assetIdString: String) = {
-    let account = toString(i.caller)
-    let assetId = fromBase58String(assetIdString)
-    let balance = getUserBalance(account, assetIdString) - unlockAmount
-    if (balance < 0)
-        then throw("invalid amount")
-    else if(assetId != neutrinoAssetId)
-        then throw("can use neutrino")
-    else {
-      [IntegerEntry(getContractBalanceKey(assetIdString), getContractBalance(assetIdString) - unlockAmount),
-      IntegerEntry(getUserBalanceKey(account, assetIdString), balance),
-      ScriptTransfer(addressFromStringValue(account), unlockAmount, neutrinoAssetId)]
-    }
+    internalUnlock(USDNTYPE, i, unlockAmount, assetIdString)
 }
 
-# cancel neutrino staking
+# cancel nsbt staking
 # [called by user]
 @Callable(i)
-func vote(hash: String, indexArgument: Int) = {
-    let arguments = getArgumentsProposal(hash).split(",")
-    let argument = arguments[indexArgument]
-    if(height > getExpireProposal(hash))
-        then throw("proposal is expired")
-    else {
-      [StringEntry(getVoteKey(toString(i.caller), hash), argument)]
-    }
-}
-
-
-@Callable(i)
-func createProposal(arguments: String, expairHeight: Int) = {
-    let hash = toBase58String(keccak256(toBytes(arguments) + toBytes(expairHeight) + i.callerPublicKey))
-    if(getOwnerProposal(hash) != "")
-        then throw("proposal is exist")
-    else {
-        [IntegerEntry(getExpireProposalKey(hash), expairHeight),
-        StringEntry(getOwnerProposalKey(hash), toString(i.caller)),
-        StringEntry(getArgumentsProposalKey(hash), arguments)]
-    }
+func unlockNsbt(unlockAmount: Int, assetIdString: String) = {
+    internalUnlock(NSBTTYPE, i, unlockAmount, assetIdString)
 }
 
 @Verifier(tx)
