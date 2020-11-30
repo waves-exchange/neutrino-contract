@@ -38,7 +38,7 @@ let AdminsKey = "admins"
 let USDNTYPE = "USDN"
 let NSBTTYPE = "NSBT"
 
-func getUserBalanceKey(owner: String, assetId: String) = BalanceKey + "_" + assetId + "_" + owner
+func getUserBalanceKey(owner: String, assetId: String) = makeString([BalanceKey, assetId, owner], "_")
 func getContractBalanceKey(assetId: String) = BalanceKey + "_" + assetId
 
 func getExpireProposalKey(hash: String) = "proposal_expire" + "_" + hash
@@ -64,7 +64,7 @@ func getUserBalance(owner : String, assetId: String) = getNumberByKey(getUserBal
 
 #----split protocol-------------------------------
 func getRewardsConfigKey(owner : String, share: Int, receiver: String) = {
-    "stakingconfig_" + owner + "_" + toString(share) +  "_" + receiver
+    makeString(["stakingconfig", owner, toString(share), receiver], "_")
 }
 func getCurrentRewardsConfigKey(owner : String) = {
     "stakingconfig_current_" + owner
