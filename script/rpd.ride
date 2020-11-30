@@ -139,7 +139,7 @@ func internalUnlock(stakingType: String, i: Invocation, unlockAmount: Int, asset
   let assetIdString = assetId.toBase58String()
 
   let balance = getUserBalance(account, assetIdString) - unlockAmount
-  if (balance <= 0) then throw("invalid amount") else
+  if (balance < 0) then throw("invalid amount") else
 
   [IntegerEntry(getContractBalanceKey(assetIdString), getContractBalance(assetIdString) - unlockAmount),
   IntegerEntry(getUserBalanceKey(account, assetIdString), balance),
