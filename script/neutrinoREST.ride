@@ -95,7 +95,8 @@ let balanceWavesLockInterval = getNumberByKey(BalanceWavesLockIntervalKey)
 let balanceNeutrinoLockInterval = getNumberByKey(BalanceNeutrinoLockIntervalKey)
 let minWavesSwapAmount = getNumberByKey(MinWavesSwapAmountKey)
 let minNeutrinoSwapAmount = getNumberByKey(MinNeutrinoSwapAmountKey)
-let bondAssetId = fromBase58String("6nSpVyNH7yM69eg446wrQR94ipbbcmZMU1ENPwanC97g") # NSBT with 6 decimals as USDN does
+let nsbtAssetIdStr = neutrinoContract.getStringValue(BondAssetIdKey)
+let nsbtAssetId = nsbtAssetIdStr.fromBase58String()
 let deprecatedBondAssetId = fromBase58String("975akZBfnMj513U7MZaHKzQrmsEx5aE3wdWKTrHBhbjF") # USDNB with 0 decimals
 
 
@@ -111,6 +112,8 @@ let surplus = reservesInUsdn - neutrinoSupply
 let surplusPercent = fraction(surplus, PAULI, neutrinoSupply) * 100
 let BR = fraction(reservesInUsdn, PAULI, neutrinoSupply)
 
+let auctionAddress = addressFromStringValue(auctionContract)
+let nsbtSupply = assetInfo(nsbtAssetId).value().quantity - auctionAddress.assetBalance(nsbtAssetId) - neutrinoContract.assetBalance(nsbtAssetId)
 
 #-------------------REST -------------------------
 @Callable(i)
@@ -126,6 +129,8 @@ func neutrinoStateREST() = {
           neutrinoSupply.toString(),        # 6
           surplus.toString(),               # 7
           surplusPercent.toString(),        # 8
-          BR.toString()],                   # 9
+          BR.toString(),                    # 9
+          nsbtSupply.toString()             # 10
+          ],
     "__"))
 }
