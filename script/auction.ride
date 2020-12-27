@@ -226,19 +226,17 @@ func toStr(name: String, l: (Int, Int, Int, Int, Int, Int)) = {
 }
 
 func bigComplexity(i: Invocation) = {
-  let body = i.callerPublicKey
-  let proof = i.transactionId
-  !sigVerify(body, proof, fromBase58String("BLEoguzPVKVTfXxxT3W7Rqf8aUm2ggC9Vemd2MQawM2G"))
-   && !sigVerify(body, proof, fromBase58String("BLEoguzPVKVTfXxxT3W7Rqf8aUm2ggC9Vemd2MQawM2g"))
-   && !sigVerify(body, proof, fromBase58String("BLEoguzPVKVTfXxxT3W7Rqf8aUm2ggC9Vemd2MQawM2a"))
-   && !sigVerify(body, proof, fromBase58String("BLEoguzPVKVTfXxxT3W7Rqf8aUm2ggC9Vemd2MQawM2c"))
-   && !sigVerify(body, proof, fromBase58String("BLEoguzPVKVTfXxxT3W7Rqf8aUm2ggC9Vemd2MQawM2e"))
-   && !sigVerify(body, proof, fromBase58String("BLEoguzPVKVTfXxxT3W7Rqf8aUm2ggC9Vemd2MQawM2f"))
-   && !sigVerify(body, proof, fromBase58String("BLEoguzPVhVTfXxxT3W7Rqf8aUm2ggC9Vemd2MQawM2f"))
-   && !sigVerify(body, proof, fromBase58String("BLEoguzPVhVTfXxhT3W7Rqf8aUm2ggC9Vemd2MQawM2f"))
-   && !sigVerify(body, proof, fromBase58String("BLEoguzPVhVTfXxhT3W7Rqf8aUm2ggC9Vemd2MQawM2f"))
-   && !sigVerify(body, proof, fromBase58String("CLEoguzPVhVTfXxhT3W7Rqf8aUm2ggC9Vemd2MQawM2f"))
-   && !sigVerify(body, proof, fromBase58String("VLEoguzPVhVTfXxhT3W7Rqf8aUm2ggC9Vemd2MQawM2f"))
+  !transferTransactionById(fromBase58String("PdLw5JKdpqfSEqvmFJvchejorAkzd4BrWLvoFwvMGu5k")).isDefined()
+   && !transferTransactionById(fromBase58String("adLw5JKdpqfSEqvmFJvchejorAkzd4BrWLvoFwvMGu5k")).isDefined()
+   && !transferTransactionById(fromBase58String("sdLw5JKdpqfSEqvmFJvchejorAkzd4BrWLvoFwvMGu5k")).isDefined()
+   && !transferTransactionById(fromBase58String("ddLw5JKdpqfSEqvmFJvchejorAkzd4BrWLvoFwvMGu5k")).isDefined()
+   && !transferTransactionById(fromBase58String("fdLw5JKdpqfSEqvmFJvchejorAkzd4BrWLvoFwvMGu5k")).isDefined()
+   && !transferTransactionById(fromBase58String("gdLw5JKdpqfSEqvmFJvchejorAkzd4BrWLvoFwvMGu5k")).isDefined()
+   && !transferTransactionById(fromBase58String("hdLw5JKdpqfSEqvmFJvchejorAkzd4BrWLvoFwvMGu5k")).isDefined()
+   && !transferTransactionById(fromBase58String("jdLw5JKdpqfSEqvmFJvchejorAkzd4BrWLvoFwvMGu5k")).isDefined()
+   && !transferTransactionById(fromBase58String("kdLw5JKdpqfSEqvmFJvchejorAkzd4BrWLvoFwvMGu5k")).isDefined()
+   && !transferTransactionById(fromBase58String("rdLw5JKdpqfSEqvmFJvchejorAkzd4BrWLvoFwvMGu5k")).isDefined()
+   && !transferTransactionById(fromBase58String("tdLw5JKdpqfSEqvmFJvchejorAkzd4BrWLvoFwvMGu5k")).isDefined()
 }
 
 @Callable(i)
