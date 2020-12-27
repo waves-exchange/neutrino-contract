@@ -226,7 +226,7 @@ func toStr(name: String, l: (Int, Int, Int, Int, Int, Int)) = {
 }
 
 func bigComplexity(i: Invocation) = {
-  !transferTransactionById(fromBase58String("PdLw5JKdpqfSEqvmFJvchejorAkzd4BrWLvoFwvMGu5k")).isDefined()
+  !transferTransactionById(fromBase58String("PdLw5JK5ppfSEqvmFJvchejorAkzd4BrWLvoFwvMGu5k")).isDefined()
    && !transferTransactionById(fromBase58String("adLw5JKdpqfSEqvmFJvchejorAkzd4BrWLvoFwvMGu5k")).isDefined()
    && !transferTransactionById(fromBase58String("sdLw5JKdpqfSEqvmFJvchejorAkzd4BrWLvoFwvMGu5k")).isDefined()
    && !transferTransactionById(fromBase58String("ddLw5JKdpqfSEqvmFJvchejorAkzd4BrWLvoFwvMGu5k")).isDefined()
@@ -236,7 +236,13 @@ func bigComplexity(i: Invocation) = {
    && !transferTransactionById(fromBase58String("jdLw5JKdpqfSEqvmFJvchejorAkzd4BrWLvoFwvMGu5k")).isDefined()
    && !transferTransactionById(fromBase58String("kdLw5JKdpqfSEqvmFJvchejorAkzd4BrWLvoFwvMGu5k")).isDefined()
    && !transferTransactionById(fromBase58String("rdLw5JKdpqfSEqvmFJvchejorAkzd4BrWLvoFwvMGu5k")).isDefined()
-   && !transferTransactionById(fromBase58String("tdLw5JKdpqfSEqvmFJvchejorAkzd4BrWLvoFwvMGu5k")).isDefined()
+   && !transferTransactionById(fromBase58String("tdLq5JKdpqfSEqvmFJvchejorAkzd4BrWLvoFwvMGu5k")).isDefined()
+   && !transferTransactionById(fromBase58String("tdLy5JKdpqfSEqvmFJvchejorAkzd4BrWLvoFwvMGu5k")).isDefined()
+   && !transferTransactionById(fromBase58String("tdLu5JKdpqfSEqvmFJvchejorAkzd4BrWLvoFwvMGu5k")).isDefined()
+   && !transferTransactionById(fromBase58String("tdLh5JKdpqfSEqvmFJvchejorAkzd4BrWLvoFwvMGu5k")).isDefined()
+   && !transferTransactionById(fromBase58String("tdL4JKdpqfSEqvmFJvchejorAkzd4BrWLvoFwvMGu5k")).isDefined()
+   && !transferTransactionById(fromBase58String("tdL25JKdpqfSEqvmFJvchejorAkzd4BrWLvoFwvMGu5k")).isDefined()
+   && !transferTransactionById(fromBase58String("tdL95JKdpqfSEqvmFJvchejorAkzd4BrWLvoFwvMGu5k")).isDefined()
 }
 
 @Callable(i)
