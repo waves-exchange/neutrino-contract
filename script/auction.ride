@@ -260,11 +260,10 @@ func buyNsbtInSurplus() = {
     let pmtAmount = pmt.amount
     let ownerAddress = i.caller
 
-    let minAmountFail = if (pmtAmount < 1 * WAVELET) then if (bigComplexity(i) == true) then true else false else false
-
     if (isBlocked) then throw("contract is blocked by EMERGENCY SHUTDOWN actions until reactivation by emergency oracles") else
     if (currentBrMult < 1 * MULT) then throw("use instantBuyNsbtOrFail or addBuyBondOrder methods to buy nsbt when BR < 1: currentBR=" + currentBrMult.toString() + "/" + MULT.toString()) else
     if (isDefined(pmt.assetId)) then throw("can use waves only") else
+    let minAmountFail = if (pmtAmount < 1 * WAVELET) then if (bigComplexity(i) == true) then true else false else false
     if (minAmountFail) then throw("big complexity + min 1 waves expected") else
     if (pmtAmount < 1 * WAVELET) then throw("min 1 waves expected") else
     let f0 = curveFunction(reserve, neutrinoSupply, currentPrice)
