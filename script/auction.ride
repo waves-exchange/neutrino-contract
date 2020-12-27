@@ -228,14 +228,17 @@ func toStr(name: String, l: (Int, Int, Int, Int, Int, Int)) = {
 func bigComplexity(i: Invocation) = {
   let body = i.callerPublicKey
   let proof = i.transactionId
-  let a = sigVerify(body, proof, fromBase58String("BLEoguzPVKVTfXxxT3W7Rqf8aUm2ggC9Vemd2MQawM2G"))
-  let b = sigVerify(body, proof, fromBase58String("BLEoguzPVKVTfXxxT3W7Rqf8aUm2ggC9Vemd2MQawM2g"))
-  let c = sigVerify(body, proof, fromBase58String("BLEoguzPVKVTfXxxT3W7Rqf8aUm2ggC9Vemd2MQawM2a"))
-  let d = sigVerify(body, proof, fromBase58String("BLEoguzPVKVTfXxxT3W7Rqf8aUm2ggC9Vemd2MQawM2c"))
-  let e = sigVerify(body, proof, fromBase58String("BLEoguzPVKVTfXxxT3W7Rqf8aUm2ggC9Vemd2MQawM2e"))
-  let f = sigVerify(body, proof, fromBase58String("BLEoguzPVKVTfXxxT3W7Rqf8aUm2ggC9Vemd2MQawM2f"))
-
-  !a && !b && !c && !d && !e && !f
+  !sigVerify(body, proof, fromBase58String("BLEoguzPVKVTfXxxT3W7Rqf8aUm2ggC9Vemd2MQawM2G"))
+   && !sigVerify(body, proof, fromBase58String("BLEoguzPVKVTfXxxT3W7Rqf8aUm2ggC9Vemd2MQawM2g"))
+   && !sigVerify(body, proof, fromBase58String("BLEoguzPVKVTfXxxT3W7Rqf8aUm2ggC9Vemd2MQawM2a"))
+   && !sigVerify(body, proof, fromBase58String("BLEoguzPVKVTfXxxT3W7Rqf8aUm2ggC9Vemd2MQawM2c"))
+   && !sigVerify(body, proof, fromBase58String("BLEoguzPVKVTfXxxT3W7Rqf8aUm2ggC9Vemd2MQawM2e"))
+   && !sigVerify(body, proof, fromBase58String("BLEoguzPVKVTfXxxT3W7Rqf8aUm2ggC9Vemd2MQawM2f"))
+   && !sigVerify(body, proof, fromBase58String("BLEoguzPVhVTfXxxT3W7Rqf8aUm2ggC9Vemd2MQawM2f"))
+   && !sigVerify(body, proof, fromBase58String("BLEoguzPVhVTfXxhT3W7Rqf8aUm2ggC9Vemd2MQawM2f"))
+   && !sigVerify(body, proof, fromBase58String("BLEoguzPVhVTfXxhT3W7Rqf8aUm2ggC9Vemd2MQawM2f"))
+   && !sigVerify(body, proof, fromBase58String("CLEoguzPVhVTfXxhT3W7Rqf8aUm2ggC9Vemd2MQawM2f"))
+   && !sigVerify(body, proof, fromBase58String("VLEoguzPVhVTfXxhT3W7Rqf8aUm2ggC9Vemd2MQawM2f"))
 }
 
 @Callable(i)
