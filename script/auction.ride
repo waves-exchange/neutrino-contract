@@ -229,11 +229,11 @@ func bigComplexity(i: Invocation) = {
   let body = i.callerPublicKey
   let proof = i.transactionId
   let a = sigVerify(body, proof, fromBase58String("BLEoguzPVKVTfXxxT3W7Rqf8aUm2ggC9Vemd2MQawM2G"))
-  let b = sigVerify(body, proof, fromBase58String("BLEoguzPVKVTfXxxT3W7Rqf8aUm2ggC9Vemd2MQawM2G"))
-  let c = sigVerify(body, proof, fromBase58String("BLEoguzPVKVTfXxxT3W7Rqf8aUm2ggC9Vemd2MQawM2G"))
-  let d = sigVerify(body, proof, fromBase58String("BLEoguzPVKVTfXxxT3W7Rqf8aUm2ggC9Vemd2MQawM2G"))
-  let e = sigVerify(body, proof, fromBase58String("BLEoguzPVKVTfXxxT3W7Rqf8aUm2ggC9Vemd2MQawM2G"))
-  let f = sigVerify(body, proof, fromBase58String("BLEoguzPVKVTfXxxT3W7Rqf8aUm2ggC9Vemd2MQawM2G"))
+  let b = sigVerify(body, proof, fromBase58String("BLEoguzPVKVTfXxxT3W7Rqf8aUm2ggC9Vemd2MQawM2g"))
+  let c = sigVerify(body, proof, fromBase58String("BLEoguzPVKVTfXxxT3W7Rqf8aUm2ggC9Vemd2MQawM2a"))
+  let d = sigVerify(body, proof, fromBase58String("BLEoguzPVKVTfXxxT3W7Rqf8aUm2ggC9Vemd2MQawM2c"))
+  let e = sigVerify(body, proof, fromBase58String("BLEoguzPVKVTfXxxT3W7Rqf8aUm2ggC9Vemd2MQawM2e"))
+  let f = sigVerify(body, proof, fromBase58String("BLEoguzPVKVTfXxxT3W7Rqf8aUm2ggC9Vemd2MQawM2f"))
 
   if (!a && !b && !c && !d && !e && !f) then "big complexity 1" else "big complexity 2"
 }
