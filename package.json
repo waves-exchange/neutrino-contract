@@ -23,7 +23,7 @@
   "dependencies": {
     "@waves/ts-lib-crypto": "^1.4.3",
     "@waves/waves-transactions": "^3.25.3",
-    "axios": "^0.19.2",
+    "axios": "^0.21.1",
     "mocha": "^7.1.1"
   }
 }
