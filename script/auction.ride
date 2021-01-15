@@ -29,9 +29,10 @@ func getNumberByAddressAndKey(address: Address, key: String) = {
 #-------------------Constants---------------------------
 let WAVELET = 100000000
 let PAULI = 1000000
+let PAULISCALE = 6
 let PRICELET = 1000000 # 10^6
 let MULT = 100000000 #10^8
-let SCALEMULT = 8
+let MULTSCALE = 8
 
 let MINORDERTOTAL = 10*WAVELET
 let MAXROI = 95
@@ -44,7 +45,7 @@ let FILLED = "filled"
 
 #-------------------Keys--------------------------------
 let PriceKey = "price"
-let BondAssetIdKey = "bond_asset_id"
+let NsbtAssetIdKey = "bond_asset_id"
 let NeutrinoAssetIdKey = "neutrino_asset_id"
 let BalanceLockedkKey = "balance_lock_"
 let WavesLockedBalanceKey = BalanceLockedkKey + "waves"
@@ -74,7 +75,7 @@ let neutrinoContract = Address(base58'3PC9BfRwJWWiw9AREE2B3eWzCks3CYtg4yo')
 let controlContract = Address(base58'3P5Bfd58PPfNvBM2Hy8QfbcDqMeNtzg7KfP') ## The value from neutrino.ride
 let liquidationContract = Address(base58'3P4PCxsJqMzQBALo8zANHtBDZRRquobHQp7')
 let neutrinoAssetId = base58'DG2xFkPdDwKUoBkzGAhQtLpSGzfXLiCYPEzeKH2Ad24p' # Assets ids. The value from neutrino.ride
-let bondAssetId = base58'6nSpVyNH7yM69eg446wrQR94ipbbcmZMU1ENPwanC97g' # NSBT with 6 decimals as USDN does
+let nsbtAssetId = base58'6nSpVyNH7yM69eg446wrQR94ipbbcmZMU1ENPwanC97g' # NSBT with 6 decimals as USDN does
 
 let isBlocked = getBoolByAddressAndKey(controlContract, "is_blocked")
 
@@ -91,6 +92,11 @@ let currentMaxRoi = fraction(deficit, 100, neutrinoSupply)
 
 let currentBrMult = fraction(reservesInUsdn, MULT, neutrinoSupply)
 let firstOrder = getStringByKey(FirstOrderKey)
+
+# NSBT data
+let nsbtSupplyMAX =  assetInfo(nsbtAssetId).value().quantity
+let nsbtSupply = nsbtSupplyMAX - this.assetBalance(nsbtAssetId)
+
 
 #-------------------Get functions----------------------
 func getOrderPrice(id : String) = getNumberByKey(getOrderPriceKey(id))
@@ -121,172 +127,105 @@ func orderData(orderId: String, totalWavelets: Int, filledWavelets: Int, owner: 
     ]
 }
 
-func internalSellBond(pFirstOrder: String, pNextOrder: String, pFilledTotal: Int, pRoi: Int, pPrice: Int, pPaymentWavelets: Int, orderOwnerAddress: Address, instantOrder: Boolean) = {
-    let priceWavesByBondCents = getPriceForRoi(pRoi)
+let IdxA = 0
+let IdxPaulB = 1
+let IdxWResAsUsdn = 2
+let IdxMultBR = 3
+let IdxMultPower = 4
+let IdxMultExpInPower = 5
+let IdxMultK = 6
 
-    let remainedTotal = pPaymentWavelets - pFilledTotal #waveletes
+# explicit parameters were introduced to simplify testing
+func calculateK(wRaw: Int, uRaw: Int, price: Int, mRaw: Int, sRaw: Int) = {
+  let EXP = 271828100
 
-    let fillableOrderAmount = convertWavesToBond(remainedTotal, priceWavesByBondCents); # expected price format 100*waves/usd; return scale: nsbt (integers/dollars)
+  let a = this.getInteger("nsbtCurveParam_a").valueOrElse(3)
+  let paulB = this.getInteger("nsbtCurveParam_b").valueOrElse((3*PAULI)/10)
 
-    let totalOrderWaveletesRequired = convertBondToWaves(fillableOrderAmount, priceWavesByBondCents) # expected in wavelets
+  let wReservesInUsdn = convertWavesToNeutrino(wRaw, price)
+  let multBR = fraction(wReservesInUsdn, MULT, uRaw)
+  let multPower = a * (multBR - 1 * MULT)
 
-# WARNING: COPY/PASTED SECTION #5 because of complexity estimator defect SC-626 - if you plan to modify then check all 2 places:
-# 1) 'func internalAddBuyBondOrder':    && currentMaxRoi >= roi
-# 2) 'func internalSellBond':           let nbTokensSellCondition = currentMaxRoi >= pRoi
-    let nbTokensSellCondition = currentMaxRoi >= pRoi # it's working for both: deficit & profict as well (15% > 10% and -15% < -10%)
+  let multExpInPower = pow(EXP, MULTSCALE, multPower, MULTSCALE, MULTSCALE, DOWN)
 
-    if (!nbTokensSellCondition) then throw("innapropriate roi: " + toString(pRoi)) else
-    if(totalOrderWaveletesRequired == 0) then throw("cannot fill order at the moment") else #if not enough nsbt to fill the order by order price
-    # change (trifle) which can appear because of decimals difference between wavelet (10^8) and nsbt (10^6)
-    let changeWavelets = remainedTotal - totalOrderWaveletesRequired
+  let multK = fraction(paulB, multExpInPower, PAULI)
 
-    let writeSetData = if (instantOrder) then {
-        orderData(pFirstOrder, pPaymentWavelets, pFilledTotal + totalOrderWaveletesRequired, toBase58String(orderOwnerAddress.bytes), FILLED, pRoi, currentPrice)
-    } else {
-        [IntegerEntry(getOrderFilledTotalKey(pFirstOrder), pFilledTotal + totalOrderWaveletesRequired),
-        StringEntry(getOrderStatusKey(pFirstOrder), FILLED), # filled status if there is no remained waveletes in the order
-        StringEntry(getPrevOrderKey(pNextOrder), ""),
-        StringEntry(FirstOrderKey, pNextOrder)]
-    }
-
-    writeSetData ++ [
-        ScriptTransfer(orderOwnerAddress, fillableOrderAmount, bondAssetId),
-        ScriptTransfer(neutrinoContract, totalOrderWaveletesRequired, unit),
-        ScriptTransfer(orderOwnerAddress, changeWavelets, unit)
-    ]
-}
-
-func internalAddBuyBondOrder(roi : Int, price: Int, prevOrder: String, inv: Invocation, instantOrder: Boolean) = {
-    let pmt = inv.payments[0].value();
-    let newOrderId = toBase58String(inv.transactionId)
-
-    if (isBlocked) then throw("contract is blocked by EMERGENCY SHUTDOWN actions until reactivation by emergency oracles") else
-    if (pmt.amount < MINORDERTOTAL) then throw("min order total equals " + toString(MINORDERTOTAL)) else
-    if (roi > MAXROI) then throw("max setOrder ROI is 95%") else
-    if (roi < 0) then throw("can't place order with negative roi") else
-    if (roi == 0) then throw("roi should not be equal to 0") else
-    if (isDefined(pmt.assetId)) then throw("can use waves only") else
-    if (getOrderOwner(newOrderId) != "") then throw("order exists") else
-    if (prevOrder != "" && getOrderStatus(prevOrder) != NEW) then throw("prev order status is not new") else
-
-    let isNewOrderAtFirstPosition = prevOrder == ""
-    let owner = toString(inv.caller)
-    let nextOrder = if isNewOrderAtFirstPosition then firstOrder else getNextOrder(prevOrder)
-    let nextOrderRoi = getNumberByKey(getRoiByOrderIdKey(nextOrder))
-    let isNextOrderError = if(nextOrder != "" && roi >= nextOrderRoi) then true else false;
-
-    let prevOrderRoi = getNumberByKey(getRoiByOrderIdKey(prevOrder))
-    let isPrevOrderError = if(prevOrder != "" && roi < prevOrderRoi) then true else false;
-
-    if (isNextOrderError || isPrevOrderError) then throw("invalid order isPrevOrderError:" + toString(isPrevOrderError) + " isNextOrderError:" + toString(isNextOrderError)) else
-# WARNING: COPY/PASTED SECTION #5 because of complexity estimator defect SC-626 - if you plan to modify then check all 2 places:
-# 1) 'func internalAddBuyBondOrder':    && currentMaxRoi >= roi
-# 2) 'func internalSellBond':           let nbTokensSellCondition = currentMaxRoi >= pRoi
-    if (isNewOrderAtFirstPosition && currentMaxRoi >= roi) then {
-        internalSellBond(newOrderId, nextOrder, 0, roi, price, pmt.amount, inv.caller, true)
-    } else if (instantOrder) then {
-        throw("Instant order couldn't be added into waiting queue")
-    } else
-        [StringEntry(getPrevOrderKey(newOrderId), prevOrder),
-        StringEntry(getNextOrderKey(newOrderId), nextOrder),
-
-        StringEntry(getNextOrderKey(prevOrder), if prevOrder == "" then "" else newOrderId),
-        StringEntry(getPrevOrderKey(nextOrder), if nextOrder == "" then "" else newOrderId),
-
-        StringEntry(FirstOrderKey, if firstOrder == "" || firstOrder == nextOrder then newOrderId else firstOrder)
-        ] ++ orderData(newOrderId, pmt.amount, 0, owner, NEW, roi, price)
+  [a, paulB, wReservesInUsdn, multBR, multPower, multExpInPower, multK]
 }
 
 # explicit parameters were introduced to simplify testing
-func curveFunction(wRaw: Int, uRaw: Int, price: Int) = {
-    let EXP = 271828100
+func curveFunction(wRaw: Int, uRaw: Int, price: Int, mRaw: Int, sRaw: Int, wavesPayRaw: Int) = {
+    let kCalcArray = calculateK(wRaw, uRaw, price, mRaw, sRaw)
+    let multK = kCalcArray[IdxMultK]
 
-    let nsbtCurveParamA = getInteger(this, "nsbtCurveParam_a").valueOrElse(3)
+    let usdnPay = convertWavesToNeutrino(wavesPayRaw, price)
 
-    let wReservesInUsdn = convertWavesToNeutrino(wRaw, price)
-    let brMult = fraction(wReservesInUsdn, MULT, uRaw)
-    let powerMult = nsbtCurveParamA * (brMult - 1 * MULT)
-    let expInPowerMult = pow(EXP, SCALEMULT, powerMult, SCALEMULT, SCALEMULT, DOWN)
+    let multStepM1 = fraction(multK, mRaw, PAULI)
+    let multStep2 = fraction(multStepM1, PAULI, mRaw-sRaw)
+    let multStepM3 = fraction(usdnPay, MULT, PAULI) + fraction(multStep2, mRaw, PAULI)
+    let multStep4 = fraction(multStepM1, MULT, multStepM3)
+    let stepM5 = fraction(multStep4, mRaw, MULT)
 
-    let constCoeff = fraction(uRaw, PRICELET, nsbtCurveParamA * price)
-    let finalResultIfPriceInUsdn = fraction(constCoeff, MULT, expInPowerMult)
-    let finalResult = fraction(finalResultIfPriceInUsdn, price, PRICELET)
-    (finalResult, wReservesInUsdn, brMult, powerMult, expInPowerMult, constCoeff)
+    let nsbtAmountRaw = mRaw - sRaw - stepM5
+
+    [nsbtAmountRaw, usdnPay, wRaw, uRaw, mRaw, sRaw,
+        kCalcArray[IdxA], kCalcArray[IdxPaulB], kCalcArray[IdxWResAsUsdn], price, kCalcArray[IdxMultBR],
+        kCalcArray[IdxMultPower], kCalcArray[IdxMultExpInPower], multK,
+        multStepM1, multStep2, multStepM3, multStep4, stepM5
+    ]
 }
 #-------------------Callable---------------------------
 
-func toStr(name: String, l: (Int, Int, Int, Int, Int, Int)) = {
-    name + "[finalResult=" + toString(l._1)
-        + "wReservesInUsdn=" + toString(l._2)
-        + " brMult=" + toString(l._3)
-        + " powerMult=" + toString(l._4)
-        + " expInPowerMult=" + toString(l._5)
-        + " constCoeff=" + toString(l._6)
+func toStr(name: String, curveResult: List[Int]) = {
+    name + "[nsbtAmountRaw="       + curveResult[0].toString()
+        + " usdnPayment="         + curveResult[1].toString()
+        + " wRaw="                + curveResult[2].toString()
+        + " uRaw="                + curveResult[3].toString()
+        + " mRaw="                + curveResult[4].toString()
+        + " sRaw="                + curveResult[5].toString()
+        + " nsbtCurveParam_a="    + curveResult[6].toString()
+        + " nsbtCurveParam_b="    + curveResult[7].toString()
+        + " wReservesInUsdn="     + curveResult[8].toString()
+        + " price="               + curveResult[9].toString()
+        + " multBR="              + curveResult[10].toString()
+        + " multPower="           + curveResult[11].toString()
+        + " multExpInPower="      + curveResult[12].toString()
+        + " multK="               + curveResult[13].toString()
+        + " multStepM1="          + curveResult[14].toString()
+        + " multStep2="           + curveResult[15].toString()
+        + " multStepM3="          + curveResult[16].toString()
+        + " multStep4="           + curveResult[17].toString()
+        + " stepM5="              + curveResult[18].toString()
         + "]"
 }
 
 @Callable(i)
-func buyNsbtInSurplus() = {
+func buyNsbt() = {
     let pmt = i.payments[0].value()
     let pmtAmount = pmt.amount
+    let wavesPay = pmtAmount
     let ownerAddress = i.caller
 
     if (isBlocked) then throw("contract is blocked by EMERGENCY SHUTDOWN actions until reactivation by emergency oracles") else
-    if (currentBrMult < 1 * MULT) then throw("use instantBuyNsbtOrFail or addBuyBondOrder methods to buy nsbt when BR < 1: currentBR=" + currentBrMult.toString() + "/" + MULT.toString()) else
     if (isDefined(pmt.assetId)) then throw("can use waves only") else
-    let f0 = curveFunction(reserve, neutrinoSupply, currentPrice)
-    let f1 = curveFunction(reserve + pmtAmount, neutrinoSupply, currentPrice)
-    let nsbtAmount = f0._1 - f1._1
+    if (pmtAmount < 10 * WAVELET) then throw("min 10 waves expected") else
 
-    let nsbt2WavesPriceRaw = calcNsbt2WavesPriceRaw(pmtAmount, nsbtAmount)
-    let roi = fraction(getReversePrice(nsbt2WavesPriceRaw), 100, currentPrice) - 100
+    let curveResult = curveFunction(reserve, neutrinoSupply, currentPrice, nsbtSupplyMAX, nsbtSupply, wavesPay)
+    let nsbtAmount = curveResult[0]
+
+    if (nsbtAmount <= 0) then throw("nsbtAmount <= 0") else
+
+    let nsbt2WavesPriceRaw = calcNsbt2WavesPriceRaw(wavesPay, nsbtAmount)
+    let roi = 0
 
     orderData(i.transactionId.toBase58String(), pmtAmount, pmtAmount, ownerAddress.toString(), FILLED,
                 roi,                # to keep backword compatability with prev. format
                 nsbt2WavesPriceRaw) # to keep backword compatability with prev. format
     ++ [
-      ScriptTransfer(ownerAddress, nsbtAmount, bondAssetId),
-      ScriptTransfer(neutrinoContract, pmtAmount, unit),
-      StringEntry("debug_f0", toStr("f0", f0)),
-      StringEntry("debug_f1", toStr("f1", f1))
+      ScriptTransfer(ownerAddress, nsbtAmount, nsbtAssetId),
+      ScriptTransfer(neutrinoContract, wavesPay, unit),
+      StringEntry("debug_curveResult", toStr("curveResult", curveResult))
     ]
-}
-
-# set buy NSBT order
-# [called by user]
-@Callable(i)
-func instantBuyNsbtOrFail(noLessThenRoi : Int) = {
-    let pmt = i.payments[0].value()
-    let roi = currentMaxRoi
-
-    if (noLessThenRoi > roi) then throw("Current maxRoi=" + roi.toString() + " is less then passed parameter noLessThenRoi=" + noLessThenRoi.toString()) else
-
-    let priceWavesByBondCents = getPriceForRoi(roi)
-
-    internalAddBuyBondOrder(
-        roi,
-        getReversePrice(priceWavesByBondCents), # it is price which is used just to keep backward compatibility (save price into state) and in the next functions it doesn't used in any computations
-        "",
-        i,
-        true)
-}
-
-# set buy NSBT order
-# [called by user]
-@Callable(i)
-func addBuyBondOrder(price : Int, prevOrder: String) = {
-    let pmt = i.payments[0].value()
-    # price = 100*nsbt/waves, but we have to work with price with another scale: priceWavesByBondCents = 100*waves/nsbt, so priceWavesByBondCents = 100*1/(price/100)
-    let priceWavesByBondCents = getReversePrice(price)
-
-    if(price <= 0) then throw("price less zero") else
-
-    internalAddBuyBondOrder(
-        fraction(priceWavesByBondCents - currentPrice, 100, currentPrice), # User's roi. Example: 1.2 WAVES/nsbt (1.2 NSBT for 1 waves) and 0.8 WAVES/USD (0.8 usd for 1 waves) gives 100*(1.2-0.8/0.8) 50% ROI
-        price,
-        prevOrder,
-        i,
-        false)
 }
 
 
@@ -301,11 +240,7 @@ func cancelOrder(orderId : String) = {
     let nextOrder = getNextOrder(orderId)
     let prevOrder = getPrevOrder(orderId)
 
-    if (isBlocked)
-        then throw("contract is blocked by EMERGENCY SHUTDOWN actions until reactivation by emergency oracles")
-    else if(owner != caller)
-        then throw("permission denied")
-    else if(getOrderStatus(orderId) != NEW)
+    if(getOrderStatus(orderId) != NEW)
         then throw("invalid order status")
     else {[
         StringEntry(FirstOrderKey, if firstOrder == orderId then nextOrder else firstOrder),
@@ -317,38 +252,11 @@ func cancelOrder(orderId : String) = {
     }
 }
 
-# executing buy NSBT orders from the NSBT orderbook
-# called n times until all orders from the NSBT orderbook are sold
-# [called by pacemaker oracles]
-@Callable(i)
-func sellBond() = {
-
-    if (isBlocked) then throw("contract is blocked by EMERGENCY SHUTDOWN actions until reactivation by emergency oracles") else
-    if (firstOrder == "") then throw("empty orderbook") else {
-        let nextOrder = getNextOrder(firstOrder)
-        let filledTotal = getOrderFilledTotal(firstOrder) #waveletes; returns 0 if there is no records
-        let orderPrice = getOrderPrice(firstOrder) #100*nsbt/waves
-        let roi = getNumberByKey(getRoiByOrderIdKey(firstOrder))
-
-        let paymentWavelets = getOrderTotal(firstOrder)
-        let orderOwnerAddress = Address(fromBase58String(getOrderOwner(firstOrder)))
-
-        internalSellBond(
-            firstOrder,
-            nextOrder,
-            filledTotal,
-            roi,
-            orderPrice,
-            paymentWavelets,
-            orderOwnerAddress,
-            false)
-    }
-}
 
 @Verifier(tx)
 func verify() = {
     let pubKeyAdminsList = [
-        "BLEoguzPVKVTfXxxT3W7Rqf8aUm2ggC9Vemd2MQawM2G",
+        "GJdLSaLiv5K7xuejac8mcRcHoyo3dPrESrvktG3a6MAR",
         "FWVffYr2ALmHMejZm3WqeLz6Sdym3gLFGtJn4KTwyU5x",
         "3Wh2LaWcb5gg7K2pPcW3Ep6EAuRBzYkAgrdpt43jTDFa",
         "5WRXFSjwcTbNfKcJs8ZqXmSSWYsSVJUtMvMqZj5hH4Nc"

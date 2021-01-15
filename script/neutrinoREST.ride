@@ -35,6 +35,8 @@ let LISTDATASYMBOL = "+"
 let WAVELET = 100000000
 let PAULI = 1000000
 let PRICELET = 1000000 # 10^6
+let MULT = 100000000 #10^8
+let MULTSCALE = 8
 
 #-------------------Constructor-------------------------
 let NeutrinoAssetIdKey = "neutrino_asset_id"
@@ -95,7 +97,8 @@ let balanceWavesLockInterval = getNumberByKey(BalanceWavesLockIntervalKey)
 let balanceNeutrinoLockInterval = getNumberByKey(BalanceNeutrinoLockIntervalKey)
 let minWavesSwapAmount = getNumberByKey(MinWavesSwapAmountKey)
 let minNeutrinoSwapAmount = getNumberByKey(MinNeutrinoSwapAmountKey)
-let bondAssetId = fromBase58String("6nSpVyNH7yM69eg446wrQR94ipbbcmZMU1ENPwanC97g") # NSBT with 6 decimals as USDN does
+let nsbtAssetIdStr = neutrinoContract.getStringValue(BondAssetIdKey)
+let nsbtAssetId = nsbtAssetIdStr.fromBase58String()
 let deprecatedBondAssetId = fromBase58String("975akZBfnMj513U7MZaHKzQrmsEx5aE3wdWKTrHBhbjF") # USDNB with 0 decimals
 
 
@@ -111,7 +114,58 @@ let surplus = reservesInUsdn - neutrinoSupply
 let surplusPercent = fraction(surplus, PAULI, neutrinoSupply) * 100
 let BR = fraction(reservesInUsdn, PAULI, neutrinoSupply)
 
+let auctionAddress = addressFromStringValue(auctionContract)
 
+#-----------------------------------------------
+#-------------Auction logic Copy/Past-----------
+# NSBT data
+let nsbtSupplyMAX =  assetInfo(nsbtAssetId).value().quantity
+let nsbtSupply = nsbtSupplyMAX - auctionAddress.assetBalance(nsbtAssetId)
+
+let IdxA = 0
+let IdxPaulB = 1
+let IdxWResAsUsdn = 2
+let IdxMultBR = 3
+let IdxMultPower = 4
+let IdxMultExpInPower = 5
+let IdxMultK = 6
+
+# explicit parameters were introduced to simplify testing
+func calculateK(wRaw: Int, uRaw: Int, price: Int, mRaw: Int, sRaw: Int) = {
+  let EXP = 271828100
+
+  let a = this.getInteger("nsbtCurveParam_a").valueOrElse(3)
+  let paulB = this.getInteger("nsbtCurveParam_b").valueOrElse((3*PAULI)/10)
+
+  let wReservesInUsdn = convertWavesToNeutrino(wRaw, price)
+  let multBR = fraction(wReservesInUsdn, MULT, uRaw)
+  let multPower = a * (multBR - 1 * MULT)
+
+  let multExpInPower = pow(EXP, MULTSCALE, multPower, MULTSCALE, MULTSCALE, DOWN)
+
+  let multK = fraction(paulB, multExpInPower, PAULI)
+
+  [a, paulB, wReservesInUsdn, multBR, multPower, multExpInPower, multK]
+}
+
+func privateNsbtPriceREST() = {
+ let kCalcArray = calculateK(reservesInWaves, neutrinoSupply, currentPrice, nsbtSupplyMAX, nsbtSupply)
+ let multK = kCalcArray[IdxMultK]
+
+ let multStep1 = fraction(nsbtSupplyMAX, MULT, nsbtSupplyMAX - nsbtSupply)
+ let multStep2 = fraction(multStep1, multStep1, MULT)
+
+ let multNsbt2usdnPrice = fraction(multK, multStep2, MULT)
+ let nsbt2usdnPrice = fraction(multNsbt2usdnPrice, PAULI, MULT)
+ let nsbt2wavesPrice = fraction(nsbt2usdnPrice, PAULI, currentPrice)
+
+ (
+    IntegerEntry("nsbt2usdnPrice",  nsbt2usdnPrice),
+    IntegerEntry("nsbt2wavesPrice", nsbt2wavesPrice)
+  )
+}
+
+#-----------------------------------------------
 #-------------------REST -------------------------
 @Callable(i)
 func neutrinoStateREST() = {
@@ -126,6 +180,26 @@ func neutrinoStateREST() = {
           neutrinoSupply.toString(),        # 6
           surplus.toString(),               # 7
           surplusPercent.toString(),        # 8
-          BR.toString()],                   # 9
+          BR.toString(),                    # 9
+          nsbtSupply.toString()             # 10
+          ],
     "__"))
+}
+
+@Callable(i)
+func nsbtPriceREST() = {
+  let nsbtPriceTuple = privateNsbtPriceREST()
+
+  let nsbt2usdnPrice  = nsbtPriceTuple._1.value
+  let nsbt2wavesPrice = nsbtPriceTuple._2.value
+
+  let restData = makeString([
+        "startNsbtPriceREST",       #0
+        nsbt2usdnPrice.toString(),  #1
+        nsbt2wavesPrice.toString(), #2
+        "endNsbtPriceREST"          #3
+        ],
+    "__")
+
+  throw(restData)
 }
