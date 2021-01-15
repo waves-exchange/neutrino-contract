@@ -199,39 +199,6 @@ func toStr(name: String, curveResult: List[Int]) = {
         + "]"
 }
 
-func privateNsbtPriceREST() = {
- let kCalcArray = calculateK(reserve, neutrinoSupply, currentPrice, nsbtSupplyMAX, nsbtSupply)
- let multK = kCalcArray[IdxMultK]
-
- let multStep1 = fraction(nsbtSupplyMAX, MULT, nsbtSupplyMAX - nsbtSupply)
- let multStep2 = fraction(multStep1, multStep1, MULT)
-
- let multNsbt2usdnPrice = fraction(multK, multStep2, MULT)
- let nsbt2usdnPrice = fraction(multNsbt2usdnPrice, PAULI, MULT)
- let nsbt2wavesPrice = fraction(nsbt2usdnPrice, PAULI, currentPrice)
-
- (
-    IntegerEntry("nsbt2usdnPrice",  nsbt2usdnPrice),
-    IntegerEntry("nsbt2wavesPrice", nsbt2wavesPrice)
-  )
-}
-
-@Callable(i)
-func nsbtPriceREST() = {
-  let nsbtPriceTuple = privateNsbtPriceREST()
-
-  let nsbt2usdnPrice  = nsbtPriceTuple._1.value
-  let nsbt2wavesPrice = nsbtPriceTuple._2.value
-
-  let restData = makeString(["startNsbtPriceREST",
-    nsbt2usdnPrice.toString(),
-    nsbt2wavesPrice.toString(),
-    "endNsbtPriceREST"],
-  "__")
-
-  throw(restData)
-}
-
 @Callable(i)
 func buyNsbt() = {
     let pmt = i.payments[0].value()
