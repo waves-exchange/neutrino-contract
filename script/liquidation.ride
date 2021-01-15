@@ -37,6 +37,8 @@ let PriceKey = "price"
 let BondAssetIdKey = "bond_asset_id"
 let NeutrinoAssetIdKey = "neutrino_asset_id"
 let ControlContractKey = "control_contract"
+let AuctionContractKey = "auction_contract"
+
 let BalanceLockedkKey = "balance_lock_"
 let WavesLockedBalanceKey = BalanceLockedkKey + "waves"
 let NeutrinoLockedBalanceKey = BalanceLockedkKey + "neutrino"
@@ -62,7 +64,9 @@ func convertWavesToBond(amount: Int, price: Int) = convertWavesToNeutrino(amount
 #-------------------Global vars -------------------------
 let neutrinoContract = addressFromStringValue(getStringByKey(NeutrinoContractKey))
 let controlContract = addressFromStringValue(getStringByAddressAndKey(neutrinoContract, ControlContractKey)) ## The value from neutrino.ride
+let auctionContract = addressFromStringValue(getStringByAddressAndKey(neutrinoContract, AuctionContractKey))
 let liquidationContract = this
+
 let neutrinoAssetId = fromBase58String(getStringByAddressAndKey(neutrinoContract, NeutrinoAssetIdKey)) # Assets ids. The value from neutrino.ride
 let bondAssetId = fromBase58String("6nSpVyNH7yM69eg446wrQR94ipbbcmZMU1ENPwanC97g") # NSBT with 6 decimals as USDN does
 let firstOrder = getStringByKey(FirstOrderKey)
@@ -278,7 +282,7 @@ func liquidateBond() = {
             StringEntry(CurrentDefaultOrderKey, if(newStatus == NEW) then currentDefaultOrder else computeCurrentDefaultOrder(firstOrder)),
 
             ScriptTransfer(addressFromStringValue(getOrderOwner(firstOrder)), fillableOrderAmount, neutrinoAssetId),
-            ScriptTransfer(neutrinoContract, finalNBTFillable, bondAssetId)]
+            ScriptTransfer(auctionContract, finalNBTFillable, bondAssetId)]
         }
     }
 }
@@ -288,7 +292,7 @@ func liquidateBond() = {
 @Verifier(tx)
 func verify() = {
        let pubKeyAdminsList = [
-        "BLEoguzPVKVTfXxxT3W7Rqf8aUm2ggC9Vemd2MQawM2G",
+        "GJdLSaLiv5K7xuejac8mcRcHoyo3dPrESrvktG3a6MAR",
         "FWVffYr2ALmHMejZm3WqeLz6Sdym3gLFGtJn4KTwyU5x",
         "3Wh2LaWcb5gg7K2pPcW3Ep6EAuRBzYkAgrdpt43jTDFa",
         "5WRXFSjwcTbNfKcJs8ZqXmSSWYsSVJUtMvMqZj5hH4Nc"
