@@ -265,7 +265,7 @@ func liquidateBond() = {
         let finalNBTFillable = fraction(fillableOrderAmountX100, 1, nsbt2UsdnPrice) #bt value
         let fillableOrderAmount = fillableOrderAmountX100 / 100
 
-        let nbTokensLiquidateCondition = fraction(surplus + neutrinoSupply, 100, neutrinoSupply) >= nsbt2UsdnPrice
+        let nbTokensLiquidateCondition = surplus >= fraction(neutrinoSupply, nsbt2UsdnPrice, 100) - neutrinoSupply
 
         if (!nbTokensLiquidateCondition)
             then throw("innapropriate surplus: " + toString(surplus))
