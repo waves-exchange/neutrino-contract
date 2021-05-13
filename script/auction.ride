@@ -1,4 +1,4 @@
-{-# STDLIB_VERSION 4 #-}
+{-# STDLIB_VERSION 5 #-}
 {-# CONTENT_TYPE DAPP #-}
 {-# SCRIPT_TYPE ACCOUNT #-}
 #
@@ -29,10 +29,12 @@ func getNumberByAddressAndKey(address: Address, key: String) = {
 #-------------------Constants---------------------------
 let WAVELET = 100000000
 let PAULI = 1000000
-let PAULISCALE = 6
+let BIGPAULI = 1000000.toBigInt()
 let PRICELET = 1000000 # 10^6
 let MULT = 100000000 #10^8
-let MULTSCALE = 8
+let BIGMULT16 = 10000000000000000.toBigInt() #10^16
+let SCALE8 = 8
+let SCALE16 = 16
 
 let MINORDERTOTAL = 10*WAVELET
 let MAXROI = 95
@@ -127,75 +129,62 @@ func orderData(orderId: String, totalWavelets: Int, filledWavelets: Int, owner: 
     ]
 }
 
-let IdxA = 0
-let IdxPaulB = 1
-let IdxWResAsUsdn = 2
-let IdxMultBR = 3
-let IdxMultPower = 4
-let IdxMultExpInPower = 5
-let IdxMultK = 6
-
 # explicit parameters were introduced to simplify testing
 func calculateK(wRaw: Int, uRaw: Int, price: Int, mRaw: Int, sRaw: Int) = {
-  let EXP = 271828100
+  let EXP = 2718281.toBigInt()
+  let EXPSCALE = 6
 
   let a = this.getInteger("nsbtCurveParam_a").valueOrElse(3)
   let paulB = this.getInteger("nsbtCurveParam_b").valueOrElse((3*PAULI)/10)
 
   let wReservesInUsdn = convertWavesToNeutrino(wRaw, price)
   let multBR = fraction(wReservesInUsdn, MULT, uRaw)
-  let multPower = a * (multBR - 1 * MULT)
+  if (multBR > 10678564816) then throw("BR > 10678.564816% will overflow exponent") else
 
-  let multExpInPower = pow(EXP, MULTSCALE, multPower, MULTSCALE, MULTSCALE, DOWN)
+  let multPower = a * (multBR - MULT)
+  let multExpInPower = pow(EXP, EXPSCALE, toBigInt(multPower), SCALE8, SCALE16, DOWN)
+  let multK = fraction(toBigInt(paulB), multExpInPower, BIGPAULI)
 
-  let multK = fraction(paulB, multExpInPower, PAULI)
-
-  [a, paulB, wReservesInUsdn, multBR, multPower, multExpInPower, multK]
+  (a, paulB, wReservesInUsdn, multBR, multPower, multExpInPower, multK)
 }
 
 # explicit parameters were introduced to simplify testing
 func curveFunction(wRaw: Int, uRaw: Int, price: Int, mRaw: Int, sRaw: Int, wavesPayRaw: Int) = {
     let kCalcArray = calculateK(wRaw, uRaw, price, mRaw, sRaw)
-    let multK = kCalcArray[IdxMultK]
+    let multK = kCalcArray._7
 
     let usdnPay = convertWavesToNeutrino(wavesPayRaw, price)
+    let bigMaxNsbtSupply = toBigInt(mRaw)
+    let bigNsbtSupply = toBigInt(mRaw-sRaw)
 
-    let multStepM1 = fraction(multK, mRaw, PAULI)
-    let multStep2 = fraction(multStepM1, PAULI, mRaw-sRaw)
-    let multStepM3 = fraction(usdnPay, MULT, PAULI) + fraction(multStep2, mRaw, PAULI)
-    let multStep4 = fraction(multStepM1, MULT, multStepM3)
-    let stepM5 = fraction(multStep4, mRaw, MULT)
+    let step1 = fraction(toBigInt(usdnPay), BIGMULT16, multK)
+    let step2 = fraction(step1, bigNsbtSupply, bigMaxNsbtSupply)
+    let step3 = fraction(bigNsbtSupply, bigMaxNsbtSupply, step2 + bigMaxNsbtSupply).toInt()
+    let nsbtAmountRaw = mRaw - sRaw - step3
 
-    let nsbtAmountRaw = mRaw - sRaw - stepM5
-
-    [nsbtAmountRaw, usdnPay, wRaw, uRaw, mRaw, sRaw,
-        kCalcArray[IdxA], kCalcArray[IdxPaulB], kCalcArray[IdxWResAsUsdn], price, kCalcArray[IdxMultBR],
-        kCalcArray[IdxMultPower], kCalcArray[IdxMultExpInPower], multK,
-        multStepM1, multStep2, multStepM3, multStep4, stepM5
-    ]
+    (nsbtAmountRaw, usdnPay, wRaw, uRaw, mRaw, sRaw, kCalcArray._1, kCalcArray._2, kCalcArray._3, price,
+     kCalcArray._4, kCalcArray._5, kCalcArray._6, multK, step1, step2, step3)
 }
 #-------------------Callable---------------------------
 
-func toStr(name: String, curveResult: List[Int]) = {
-    name + "[nsbtAmountRaw="       + curveResult[0].toString()
-        + " usdnPayment="         + curveResult[1].toString()
-        + " wRaw="                + curveResult[2].toString()
-        + " uRaw="                + curveResult[3].toString()
-        + " mRaw="                + curveResult[4].toString()
-        + " sRaw="                + curveResult[5].toString()
-        + " nsbtCurveParam_a="    + curveResult[6].toString()
-        + " nsbtCurveParam_b="    + curveResult[7].toString()
-        + " wReservesInUsdn="     + curveResult[8].toString()
-        + " price="               + curveResult[9].toString()
-        + " multBR="              + curveResult[10].toString()
-        + " multPower="           + curveResult[11].toString()
-        + " multExpInPower="      + curveResult[12].toString()
-        + " multK="               + curveResult[13].toString()
-        + " multStepM1="          + curveResult[14].toString()
-        + " multStep2="           + curveResult[15].toString()
-        + " multStepM3="          + curveResult[16].toString()
-        + " multStep4="           + curveResult[17].toString()
-        + " stepM5="              + curveResult[18].toString()
+func toStr(name: String, curveResult: (Int, Int, Int, Int, Int, Int, Int, Int, Int, Int, Int, Int, BigInt, BigInt, BigInt, BigInt, Int)) = {
+    name + "[nsbtAmountRaw="    + curveResult._1.toString()
+        + " usdnPayment="       + curveResult._2.toString()
+        + " wRaw="              + curveResult._3.toString()
+        + " uRaw="              + curveResult._4.toString()
+        + " mRaw="              + curveResult._5.toString()
+        + " sRaw="              + curveResult._6.toString()
+        + " nsbtCurveParam_a="  + curveResult._7.toString()
+        + " nsbtCurveParam_b="  + curveResult._8.toString()
+        + " wReservesInUsdn="   + curveResult._9.toString()
+        + " price="             + curveResult._10.toString()
+        + " multBR="            + curveResult._11.toString()
+        + " multPower="         + curveResult._12.toString()
+        + " multExpInPower="    + curveResult._13.toString()
+        + " multK="             + curveResult._14.toString()
+        + " step1="             + curveResult._15.toString()
+        + " step2="             + curveResult._16.toString()
+        + " step3="             + curveResult._17.toString()
         + "]"
 }
 
@@ -211,21 +200,23 @@ func buyNsbt() = {
     if (pmtAmount < 10 * WAVELET) then throw("min 10 waves expected") else
 
     let curveResult = curveFunction(reserve, neutrinoSupply, currentPrice, nsbtSupplyMAX, nsbtSupply, wavesPay)
-    let nsbtAmount = curveResult[0]
+    let nsbtAmount = curveResult._1
 
     if (nsbtAmount <= 0) then throw("nsbtAmount <= 0") else
+    if (nsbtAmount * 9223372 < wavesPay) then throw("Nsbt2Waves price exceeds MAX_INT: " + toString(wavesPay) + "/" + toString(nsbtAmount)) else
 
     let nsbt2WavesPriceRaw = calcNsbt2WavesPriceRaw(wavesPay, nsbtAmount)
     let roi = 0
 
-    orderData(i.transactionId.toBase58String(), pmtAmount, pmtAmount, ownerAddress.toString(), FILLED,
+    (orderData(i.transactionId.toBase58String(), pmtAmount, pmtAmount, ownerAddress.toString(), FILLED,
                 roi,                # to keep backword compatability with prev. format
                 nsbt2WavesPriceRaw) # to keep backword compatability with prev. format
     ++ [
       ScriptTransfer(ownerAddress, nsbtAmount, nsbtAssetId),
       ScriptTransfer(neutrinoContract, wavesPay, unit),
       StringEntry("debug_curveResult", toStr("curveResult", curveResult))
-    ]
+    ],
+    nsbtAmount)
 }
 
 
