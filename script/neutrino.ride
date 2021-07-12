@@ -128,7 +128,7 @@ let bondAssetId = fromBase58String("6nSpVyNH7yM69eg446wrQR94ipbbcmZMU1ENPwanC97g
 let deprecatedBondAssetId = fromBase58String("975akZBfnMj513U7MZaHKzQrmsEx5aE3wdWKTrHBhbjF") # USDNB with 0 decimals
 
 let rsaPub = this.getString(RsaRandPublic58Key).valueOrErrorMessage("RSA public key has not been specified")
-  .fromBase58String()
+  .fromBase64String()
 
 let neutrinoContract = this
 #-------------------Global vars deficit, locked & supply -------------------------
