@@ -257,6 +257,15 @@ func randUnlockHeightOrFail(txId: String, rsaSig: ByteVector, swapType: String, 
   startHeight + randLockInterval
 }
 
+# LEGACY - REMOVE
+let BalanceLockedkKey = "balance_lock_"
+let WavesLockedBalanceKey = BalanceLockedkKey + "waves"
+let NeutrinoLockedBalanceKey = BalanceLockedkKey + "neutrino"
+func getWavesLockedBalanceKey(owner: String) = WavesLockedBalanceKey + "_" + owner
+func getNeutrinoLockedBalanceKey(owner: String) = NeutrinoLockedBalanceKey + "_" + owner
+func getWavesLockedBalance(owner: String) =  getNumberByKey(getWavesLockedBalanceKey(owner))
+func getNeutrinoLockedBalance(owner: String) =  getNumberByKey(getNeutrinoLockedBalanceKey(owner))
+
 #-------------------MAIN LOGIC----------------------
 
 # @param swapType - swap "waves" OR "neutrino"
@@ -388,6 +397,26 @@ func transferToAuction() = {
         throw("bond were generated or do not need it. Deficit:" + toString(auctionNBAmount) + "|" + toString(0) + ". Surplus:" + toString(surplusWithLiquidation) + "|" + toString(surplus))
 }
 
+@Callable(i)
+func cancel(account: String) = {
+
+  let userAddress = account.addressFromStringValue()
+  let userWavesLockedBalance = getWavesLockedBalance(account)
+  let userNeutrinoLockedBalance = getNeutrinoLockedBalance(account)
+
+  if (i.caller.toString() != "3PLGyPgA9ERwiHfLkkvrVSdsV26qgdr3aqn") then throw("permissions denied") else
+  if (userWavesLockedBalance == 0 && userNeutrinoLockedBalance == 0) then throw("nothing to cancel") else
+
+  [IntegerEntry(getWavesLockedBalanceKey(account), 0),
+  IntegerEntry(getNeutrinoLockedBalanceKey(account), 0),
+
+  IntegerEntry(WavesLockedBalanceKey, wavesLockedBalance - userWavesLockedBalance),
+  IntegerEntry(NeutrinoLockedBalanceKey, neutrinoLockedBalance - userNeutrinoLockedBalance),
+
+  ScriptTransfer(userAddress,       userWavesLockedBalance, unit),
+  ScriptTransfer(userAddress,       userNeutrinoLockedBalance, neutrinoAssetId)
+  ]
+}
 
 # LeaseCancelTransaction depends from swapNeutrinoToWaves() result i.e. waves amount is not enought for future swaps
 # or end of leasing time
