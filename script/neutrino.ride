@@ -59,7 +59,7 @@ let NodeOracleProviderPubKeyKey = "node_oracle_provider"
 let NeutrinoOutFeePartKey = "neutrinoOut_swap_feePart"
 let WavesOutFeePartKey = "wavesOut_swap_feePart"
 let FeesManagerAddressKey = "fees_manager_address"
-let RsaRandPublic58Key = "rsa_rand_public"
+let RsaRandPublic58Key = "rand_rsa_public"
 
 #------Common----------------
 
@@ -80,6 +80,7 @@ func minSwapAmountKEY(swapType: String) = "min_" + swapType + "_swap_amount"
 func totalLockedKEY(swapType: String) = "balance_lock_" + swapType
 func totalLockedByUserKEY(swapType: String, owner: String) = makeString(["balance_lock", swapType, owner], "_")
 func balanceLockIntervalKEY(swapType: String) = "balance_" + swapType + "_lock_interval"
+func minBalanceLockIntervalKEY(swapType: String) = "balance_" + swapType + "_lock_interval_minimum"
 func outFeePartKEY(swapType: String) = swapType + "Out_swap_feePart"
 
 #-------------------State Reeding functions-------------------
@@ -87,6 +88,7 @@ func minSwapAmountREAD(swapType: String) = this.getInteger(minSwapAmountKEY(swap
 func totalLockedREAD(swapType: String) = this.getInteger(totalLockedKEY(swapType)).valueOrElse(0)
 func totalLockedByUserREAD(swapType: String, owner: String) = this.getInteger(totalLockedByUserKEY(swapType, owner)).valueOrElse(0)
 func balanceLockIntervalREAD(swapType: String) = this.getInteger(balanceLockIntervalKEY(swapType)).valueOrElse(1440)
+func minBalanceLockIntervalREAD(swapType: String) = this.getInteger(minBalanceLockIntervalKEY(swapType)).valueOrElse(60)
 
 func feeManagerAddressREAD() = this.getString(FeesManagerAddressKey)
           .valueOrErrorMessage(FeesManagerAddressKey + " is not specified")
@@ -171,14 +173,16 @@ let sIdxStartTimestamp           = 8
 let sIdxEndHeight                = 9
 let sIdxEndTimestamp             = 10
 let sIdxSelfUnlockHeight         = 11
+let sIdxRandUnlockHeight         = 12
 
 func swapKEY(userAddress: String, txId: String) = {
   makeString(["%s%s", userAddress, txId], SEP)
 }
 
 func strSwapDATA(swapType: String, status: String, inAmount: String, price: String, outNetAmount: String, outFeeAmount: String,
-                 startHeight: String, startTimestamp: String, endHeight: String, endTimestamp: String, selfUnlockHeight: String) = {
-  makeString(["%s%s%d%d%d%d%d%d%d%d%d",
+                 startHeight: String, startTimestamp: String, endHeight: String, endTimestamp: String,
+                 selfUnlockHeight: String, randUnlockHeight: String) = {
+  makeString(["%s%s%d%d%d%d%d%d%d%d%d%d",
       swapType,                     # 1
       status,                       # 2
       inAmount,                     # 3
@@ -189,7 +193,8 @@ func strSwapDATA(swapType: String, status: String, inAmount: String, price: Stri
       startTimestamp,               # 8
       endHeight,                    # 9
       endTimestamp,                 # 10
-      selfUnlockHeight              # 11
+      selfUnlockHeight,             # 11
+      randUnlockHeight              # 12
       ],
   SEP)
 }
@@ -206,11 +211,12 @@ func pendingSwapDATA(swapType: String, inAssetAmount: Int, selfUnlockHeight: Int
       lastBlock.timestamp.toString(), # 8
       "0",                            # 9
       "0",                            # 10
-      selfUnlockHeight.toString()     # 11
+      selfUnlockHeight.toString(),    # 11
+      "0"                             # 12
   )
 }
 
-func finishSwapDATA(dataArray: List[String], price: Int, outNetAmount: Int, outFeeAmount: Int) = {
+func finishSwapDATA(dataArray: List[String], price: Int, outNetAmount: Int, outFeeAmount: Int, randUnlockHeight: Int) = {
   strSwapDATA(
       dataArray[sIdxSwapType],        # 1
       "FINISHED",                     # 2
@@ -222,7 +228,8 @@ func finishSwapDATA(dataArray: List[String], price: Int, outNetAmount: Int, outF
       dataArray[sIdxStartTimestamp],  # 8
       height.toString(),              # 9
       lastBlock.timestamp.toString(), # 10
-      dataArray[sIdxSelfUnlockHeight] # 11
+      dataArray[sIdxSelfUnlockHeight],# 11
+      randUnlockHeight.toString()     # 12
   )
 }
 
@@ -238,13 +245,16 @@ func applyFees(amountGross: Int, feePart: Int) = {
   [amountGross - feeAmount, feeAmount, amountGross]
 }
 
-func randOrFail(txId: ByteVector, rsaSig58: String, min: Int, max: Int) = {
-  let rsaSig = rsaSig58.fromBase58String()
-  let isRsaValid = rsaVerify_16Kb(SHA256, txId, rsaSig, rsaPub)
+func randUnlockHeightOrFail(txId: String, rsaSig: ByteVector, swapType: String, startHeight: Int) = {
+  let isRsaValid = rsaVerify_16Kb(SHA256, txId.fromBase58String(), rsaSig, rsaPub)
   if (!isRsaValid) then throw("invalid RSA signature") else
 
-  let rand = toInt(sha256_16Kb(rsaSig)) % (max - min)
-  min + if rand < 0 then -rand else rand
+  let maxBalanceLockInterval = balanceLockIntervalREAD(swapType)
+  let minBalanceLockInterval = minBalanceLockIntervalREAD(swapType)
+
+  let rand = toInt(sha256_16Kb(rsaSig)) % (maxBalanceLockInterval - minBalanceLockInterval)
+  let randLockInterval = minBalanceLockInterval + if rand < 0 then -rand else rand
+  startHeight + randLockInterval
 }
 
 #-------------------MAIN LOGIC----------------------
@@ -272,7 +282,7 @@ func commonSwap(swapType: String, i: Invocation) = {
     pendingSwapDATA(swapType, pmt.amount, selfUnlockHeight))]
 }
 
-func commonWithdraw(account : String, index: Int, swapTxId: String, i: Invocation) = {
+func commonWithdraw(account : String, index: Int, swapTxId: String, rsaSigOrUnit: ByteVector|Unit, i: Invocation) = {
     let userAddress = addressFromStringValue(account)
     let feeManagerAddress = feeManagerAddressREAD()
 
@@ -281,13 +291,16 @@ func commonWithdraw(account : String, index: Int, swapTxId: String, i: Invocatio
     let swapType          = dataArray[sIdxSwapType]
     let inAmount          = dataArray[sIdxInAmount].parseIntValue()
     let swapStatus        = dataArray[sIdxStatus]
+    let startHeight       = dataArray[sIdxStartHeight].parseIntValue()
 
     let outFeePart        = this.getInteger(outFeePartKEY(swapType)).valueOrElse(DEFAULTSWAPFEE)
     let totalLocked       = totalLockedREAD(swapType)
     let totalLockedByUser = totalLockedByUserREAD(swapType, account)
 
-    # TODO - need to migrate
-    let unlockHeight = selfUnlockHeight
+    let unlockHeight = match rsaSigOrUnit {
+      case rsaSig: ByteVector => randUnlockHeightOrFail(swapTxId, rsaSig, swapType, startHeight)
+      case _:      Unit       => selfUnlockHeight
+    }
 
     let indexHeight = getHeightPriceByIndex(index)
     let prevIndexHeight = getHeightPriceByIndex(index-1)
@@ -319,7 +332,7 @@ func commonWithdraw(account : String, index: Int, swapTxId: String, i: Invocatio
 
     StringEntry(
       swapKEY(account, swapTxId),
-      finishSwapDATA(dataArray, priceByIndex, outNetAmount, outFeeAmount))
+      finishSwapDATA(dataArray, priceByIndex, outNetAmount, outFeeAmount, unlockHeight))
     ]
 }
 
@@ -350,12 +363,12 @@ func swapNeutrinoToWaves() = {
 # [called by user]
 @Callable(i)
 func withdraw(account: String, index: Int, swapTxId: String) = {
-    commonWithdraw(account, index, swapTxId, i)
+    commonWithdraw(account, index, swapTxId, unit, i)
 }
 
 @Callable(i)
 func withdrawRand(account: String, index: Int, swapTxId: String, rsaSig: ByteVector) = {
-    throw("not implemented")
+    commonWithdraw(account, index, swapTxId, rsaSig, i)
 }
 
 # Transfers bonds from neutrino.ride to auction.ride to fulfill 'buy bonds' orders
