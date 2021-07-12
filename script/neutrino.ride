@@ -246,7 +246,7 @@ func applyFees(amountGross: Int, feePart: Int) = {
 }
 
 func randUnlockHeightOrFail(txId: String, rsaSig: ByteVector, swapType: String, startHeight: Int) = {
-  let isRsaValid = rsaVerify_16Kb(SHA256, txId.fromBase58String(), rsaSig, rsaPub)
+  let isRsaValid = rsaVerify_16Kb(SHA256, txId.toBytes(), rsaSig, rsaPub)
   if (!isRsaValid) then throw("invalid RSA signature") else
 
   let maxBalanceLockInterval = balanceLockIntervalREAD(swapType)
