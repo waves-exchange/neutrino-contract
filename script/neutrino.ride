@@ -34,9 +34,7 @@ let pubKeyAdminsList = [
 ]
 
 #-------------------Constants---------------------------
-let SENDTXEXPIRE = 30
-let LISTSPLITSYMBOL = "_"
-let LISTDATASYMBOL = "+"
+let SEP = "__"
 let WAVELET = 100000000
 let PAULI = 1000000
 let PRICELET = 1000000 # 10^6
@@ -44,6 +42,7 @@ let DEFAULTSWAPFEE = 20000 # 0.02 * 1000000 or 2%
 
 let IdxNetAmount = 0
 let IdxFeeAmount = 1
+let IdxGrossAmount = 2
 
 #-------------------Constructor-------------------------
 let NeutrinoAssetIdKey = "neutrino_asset_id"
@@ -60,11 +59,10 @@ let NodeOracleProviderPubKeyKey = "node_oracle_provider"
 let NeutrinoOutFeePartKey = "neutrinoOut_swap_feePart"
 let WavesOutFeePartKey = "wavesOut_swap_feePart"
 let FeesManagerAddressKey = "fees_manager_address"
+let RsaRandPublic58Key = "rand_rsa_public"
 
 #------Common----------------
-let RPDBalanceKey = "rpd_balance"
-#------RPD contract----------
-func getRPDContractBalanceKey(assetId: ByteVector) = RPDBalanceKey + "_" + toBase58String(assetId)
+
 #------Control contract-------
 let PriceKey = "price"
 
@@ -72,17 +70,30 @@ let PriceIndexKey = "price_index"
 let IsBlockedKey = "is_blocked"
 func getPriceHistoryKey(block: Int) = PriceKey + "_" + toString(block)
 func getHeightPriceByIndexKey(index: Int) = PriceIndexKey + "_" + toString(index)
-#------This contract----------
-let BalanceLockedkKey = "balance_lock_"
-let WavesLockedBalanceKey = BalanceLockedkKey + "waves"
-let NeutrinoLockedBalanceKey = BalanceLockedkKey + "neutrino"
 
-func getRPDSnapshotContractBalanceKey(count: Int, assetId: ByteVector) = RPDBalanceKey + "_" + toBase58String(assetId) + "_" + toString(count)
-func getCancelLeaseTxReserveFeeKey(hash: String) = "cancel_lease_tx_reserve_fee" + "_" + hash
-func getWavesLockedBalanceKey(owner: String) = WavesLockedBalanceKey + "_" + owner
-func getNeutrinoLockedBalanceKey(owner: String) = NeutrinoLockedBalanceKey + "_" + owner
+#------This contract----------
+#-------------------Keys-------------------
+# TODO need to move into zero
 func getBalanceUnlockBlockKey(owner: String) = "balance_unlock_block_" + owner
-func getRPDProfitKey(count: Int) = "rpd_profit" + "_" + toString(count)
+
+func minSwapAmountKEY(swapType: String) = "min_" + swapType + "_swap_amount"
+func totalLockedKEY(swapType: String) = "balance_lock_" + swapType
+func totalLockedByUserKEY(swapType: String, owner: String) = makeString(["balance_lock", swapType, owner], "_")
+func balanceLockIntervalKEY(swapType: String) = "balance_" + swapType + "_lock_interval"
+func minBalanceLockIntervalKEY(swapType: String) = "balance_" + swapType + "_lock_interval_minimum"
+func outFeePartKEY(swapType: String) = swapType + "Out_swap_feePart"
+
+#-------------------State Reeding functions-------------------
+func minSwapAmountREAD(swapType: String) = this.getInteger(minSwapAmountKEY(swapType)).valueOrElse(0)
+func totalLockedREAD(swapType: String) = this.getInteger(totalLockedKEY(swapType)).valueOrElse(0)
+func totalLockedByUserREAD(swapType: String, owner: String) = this.getInteger(totalLockedByUserKEY(swapType, owner)).valueOrElse(0)
+func balanceLockIntervalREAD(swapType: String) = this.getInteger(balanceLockIntervalKEY(swapType)).valueOrElse(1440)
+func minBalanceLockIntervalREAD(swapType: String) = this.getInteger(minBalanceLockIntervalKEY(swapType)).valueOrElse(60)
+
+func feeManagerAddressREAD() = this.getString(FeesManagerAddressKey)
+          .valueOrErrorMessage(FeesManagerAddressKey + " is not specified")
+          .addressFromString()
+          .valueOrErrorMessage(FeesManagerAddressKey + " invalid address format")
 
 #-------------------Convert functions-------------------
 func convertNeutrinoToWaves(amount: Int, price: Int) = fraction(fraction(amount, PRICELET, price),WAVELET, PAULI)
@@ -92,29 +103,38 @@ func convertJsonArrayToList(jsonArray: String) = {
    jsonArray.split(",") #jsonArray.take(size(jsonArray)-1).drop(1).split(",")
 }
 
+#-------------------Failures-------------------
+func minSwapAmountFAIL(swapType: String, minSwapAmount: Int) = throw("The specified amount in " + swapType + " swap is less than the required minimum of " + toString(minSwapAmount))
+func emergencyShutdownFAIL() = throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles")
+
+func priceIndexFAIL(index: Int, priceIndex: Int, indexHeight: Int, unlockHeight: Int, prevIndexHeight: Int) =
+            throw("invalid price history index: index=" + toString(index)
+                + " priceIndex=" + toString(priceIndex)
+                + " indexHeight=" + toString(indexHeight)
+                + " unlockHeight=" + toString(unlockHeight)
+                + " prevIndexHeight=" + toString(prevIndexHeight))
+
 #-------------------Global vars-------------------------
 
 let liquidationContract = getStringByKey(LiquidationContractKey)
-let neutrinoAssetIdString = getStringByKey(NeutrinoAssetIdKey)
-let neutrinoAssetId = fromBase58String(neutrinoAssetIdString)
+let neutrinoAssetId = getStringByKey(NeutrinoAssetIdKey).fromBase58String()
 let auctionContract = getStringByKey(AuctionContractKey)
 let rpdContract = getStringByKey(RPDContractKey)
 let controlContract = getStringByKey(ContolContractKey)
 let priceIndex = getNumberByAddressAndKey(controlContract, PriceIndexKey) # Last price history iterator from control.ride
 let isBlocked = getBoolByAddressAndKey(controlContract,IsBlockedKey) # Checks for contract locks that might happen after attacks.  The var is read from control contract
 let nodeOracleProviderPubKey = fromBase58String(getStringByKey(NodeOracleProviderPubKeyKey))
-let balanceWavesLockInterval = getNumberByKey(BalanceWavesLockIntervalKey)
-let balanceNeutrinoLockInterval = getNumberByKey(BalanceNeutrinoLockIntervalKey)
-let minWavesSwapAmount = getNumberByKey(MinWavesSwapAmountKey)
-let minNeutrinoSwapAmount = getNumberByKey(MinNeutrinoSwapAmountKey)
 let bondAssetId = fromBase58String("6nSpVyNH7yM69eg446wrQR94ipbbcmZMU1ENPwanC97g") # NSBT with 6 decimals as USDN does
 let deprecatedBondAssetId = fromBase58String("975akZBfnMj513U7MZaHKzQrmsEx5aE3wdWKTrHBhbjF") # USDNB with 0 decimals
+
+let rsaPub = this.getString(RsaRandPublic58Key).valueOrErrorMessage("RSA public key has not been specified")
+  .fromBase64String()
 
 let neutrinoContract = this
 #-------------------Global vars deficit, locked & supply -------------------------
 let currentPrice = getNumberByAddressAndKey(controlContract, PriceKey) # The value from control.ride
-let neutrinoLockedBalance = getNumberByKey(NeutrinoLockedBalanceKey) #locked balance from USDN -> WAVES swap
-let wavesLockedBalance = getNumberByKey(WavesLockedBalanceKey) #locked balance from WAVES -> USDN swap
+let neutrinoLockedBalance = totalLockedREAD("neutrino") #locked balance from USDN -> WAVES swap
+let wavesLockedBalance = totalLockedREAD("waves") #locked balance from WAVES -> USDN swap
 let reserve = wavesBalance(neutrinoContract).regular - wavesLockedBalance #waves reserves to cover USDN supply
 let neutrinoSupply = neutrinoLockedBalance + assetInfo(neutrinoAssetId).value().quantity - assetBalance(neutrinoContract, neutrinoAssetId)
     - assetBalance(addressFromStringValue(liquidationContract), neutrinoAssetId) # supply outside main sc or liquidation contract
@@ -135,50 +155,196 @@ func checkIsValidMinSponsoredFee(tx: SponsorFeeTransaction) = {
     inputFee >= minNeutrinoFee && inputFee <= maxNeutrinoFee && tx.assetId == neutrinoAssetId
 }
 
-#-------------------Get functions----------------------
-#------RPD contract---------
-# The func is reading balances from rpd.ride
-func getRPDContractBalance(assetId: ByteVector) = getNumberByAddressAndKey(rpdContract, getRPDContractBalanceKey(assetId))
 #------Control contract------
 # The func is reading price from control.ride price history
 func getPriceHistory(block: Int) = getNumberByAddressAndKey(controlContract, getPriceHistoryKey(block))
 # The func is reading from control.ride price history heights
 func getHeightPriceByIndex(index: Int) = getNumberByAddressAndKey(controlContract, getHeightPriceByIndexKey(index))
+
 #------This contract---------
-func getCancelLeaseTxReserveFee(hash: String) = getNumberByKey(getCancelLeaseTxReserveFeeKey(hash))
-func getWavesLockedBalance(owner: String) =  getNumberByKey(getWavesLockedBalanceKey(owner))
-func getNeutrinoLockedBalance(owner: String) =  getNumberByKey(getNeutrinoLockedBalanceKey(owner))
-func getUnlockBalanceBlock(owner : String) = getNumberByKey(getBalanceUnlockBlockKey(owner))
-func getRPDProfit(count: Int) = getNumberByKey(getRPDProfitKey(count))
-#-------------------Callable----------------------
+let sIdxSwapType                 = 1
+let sIdxStatus                   = 2
+let sIdxInAmount                 = 3
+let sIdxPrice                    = 4
+let sIdxOutNetAmount             = 5
+let sIdxOutFeeAmount             = 6
+let sIdxStartHeight              = 7
+let sIdxStartTimestamp           = 8
+let sIdxEndHeight                = 9
+let sIdxEndTimestamp             = 10
+let sIdxSelfUnlockHeight         = 11
+let sIdxRandUnlockHeight         = 12
+
+func swapKEY(userAddress: String, txId: String) = {
+  makeString(["%s%s", userAddress, txId], SEP)
+}
+
+func strSwapDATA(swapType: String, status: String, inAmount: String, price: String, outNetAmount: String, outFeeAmount: String,
+                 startHeight: String, startTimestamp: String, endHeight: String, endTimestamp: String,
+                 selfUnlockHeight: String, randUnlockHeight: String) = {
+  makeString(["%s%s%d%d%d%d%d%d%d%d%d%d",
+      swapType,                     # 1
+      status,                       # 2
+      inAmount,                     # 3
+      price,                        # 4
+      outNetAmount,                 # 5
+      outFeeAmount,                 # 6
+      startHeight,                  # 7
+      startTimestamp,               # 8
+      endHeight,                    # 9
+      endTimestamp,                 # 10
+      selfUnlockHeight,             # 11
+      randUnlockHeight              # 12
+      ],
+  SEP)
+}
+
+func pendingSwapDATA(swapType: String, inAssetAmount: Int, selfUnlockHeight: Int) = {
+  strSwapDATA(
+      swapType,                       # 1
+      "PENDING",                      # 2
+      inAssetAmount.toString(),       # 3
+      "0",                            # 4
+      "0",                            # 5
+      "0",                            # 6
+      height.toString(),              # 7
+      lastBlock.timestamp.toString(), # 8
+      "0",                            # 9
+      "0",                            # 10
+      selfUnlockHeight.toString(),    # 11
+      "0"                             # 12
+  )
+}
+
+func finishSwapDATA(dataArray: List[String], price: Int, outNetAmount: Int, outFeeAmount: Int, randUnlockHeight: Int) = {
+  strSwapDATA(
+      dataArray[sIdxSwapType],        # 1
+      "FINISHED",                     # 2
+      dataArray[sIdxInAmount],        # 3
+      price.toString(),               # 4
+      outNetAmount.toString(),        # 5
+      outFeeAmount.toString(),        # 6
+      dataArray[sIdxStartHeight],     # 7
+      dataArray[sIdxStartTimestamp],  # 8
+      height.toString(),              # 9
+      lastBlock.timestamp.toString(), # 10
+      dataArray[sIdxSelfUnlockHeight],# 11
+      randUnlockHeight.toString()     # 12
+  )
+}
+
+func swapDataFailOrREAD(userAddress: String, swapTxId: String) = {
+  let swapKey = swapKEY(userAddress, swapTxId)
+  this.getString(swapKey)
+    .valueOrErrorMessage("no swap data for " + swapKey)
+    .split(SEP)
+}
 
 func applyFees(amountGross: Int, feePart: Int) = {
   let feeAmount = fraction(amountGross, feePart, PAULI)
-  [amountGross - feeAmount, feeAmount]
+  [amountGross - feeAmount, feeAmount, amountGross]
 }
 
+func randUnlockHeightOrFail(txId: String, rsaSig: ByteVector, swapType: String, startHeight: Int) = {
+  let isRsaValid = rsaVerify_16Kb(SHA256, txId.toBytes(), rsaSig, rsaPub)
+  if (!isRsaValid) then throw("invalid RSA signature") else
+
+  let maxBalanceLockInterval = balanceLockIntervalREAD(swapType)
+  let minBalanceLockInterval = minBalanceLockIntervalREAD(swapType)
+
+  let rand = toInt(sha256_16Kb(rsaSig)) % (maxBalanceLockInterval - minBalanceLockInterval)
+  let randLockInterval = minBalanceLockInterval + if rand < 0 then -rand else rand
+  startHeight + randLockInterval
+}
+
+#-------------------MAIN LOGIC----------------------
+
+# @param swapType - swap "waves" OR "neutrino"
+func commonSwap(swapType: String, i: Invocation) = {
+  let pmt = i.payments[0].value()
+  let account = i.caller.toString()
+  let txId58 = i.transactionId.toBase58String()
+
+  let minSwapAmount = minSwapAmountREAD(swapType)
+  let totalLocked = totalLockedREAD(swapType)
+  let totalLockedByUser = totalLockedByUserREAD(swapType, account)
+  let balanceLockMaxInterval = balanceLockIntervalREAD(swapType)
+  let selfUnlockHeight = height + balanceLockMaxInterval
+
+  if (pmt.amount < minSwapAmount) then minSwapAmountFAIL(swapType, minSwapAmount) else
+  if (isBlocked) then emergencyShutdownFAIL() else # see control.ride
+
+  [IntegerEntry(totalLockedByUserKEY(swapType, account), totalLockedByUser + pmt.amount),
+  IntegerEntry(getBalanceUnlockBlockKey(account), height + balanceLockMaxInterval),
+  IntegerEntry(totalLockedKEY(swapType), totalLocked + pmt.amount),
+  StringEntry(
+    swapKEY(account, txId58),
+    pendingSwapDATA(swapType, pmt.amount, selfUnlockHeight))]
+}
+
+func commonWithdraw(account : String, index: Int, swapTxId: String, rsaSigOrUnit: ByteVector|Unit, i: Invocation) = {
+    let userAddress = addressFromStringValue(account)
+    let feeManagerAddress = feeManagerAddressREAD()
+
+    let dataArray = swapDataFailOrREAD(account, swapTxId)
+    let selfUnlockHeight  = dataArray[sIdxSelfUnlockHeight].parseIntValue()
+    let swapType          = dataArray[sIdxSwapType]
+    let inAmount          = dataArray[sIdxInAmount].parseIntValue()
+    let swapStatus        = dataArray[sIdxStatus]
+    let startHeight       = dataArray[sIdxStartHeight].parseIntValue()
+
+    let outFeePart        = this.getInteger(outFeePartKEY(swapType)).valueOrElse(DEFAULTSWAPFEE)
+    let totalLocked       = totalLockedREAD(swapType)
+    let totalLockedByUser = totalLockedByUserREAD(swapType, account)
+
+    let unlockHeight = match rsaSigOrUnit {
+      case rsaSig: ByteVector => randUnlockHeightOrFail(swapTxId, rsaSig, swapType, startHeight)
+      case _:      Unit       => selfUnlockHeight
+    }
+
+    let indexHeight = getHeightPriceByIndex(index)
+    let prevIndexHeight = getHeightPriceByIndex(index-1)
+    let priceByIndex = getPriceHistory(indexHeight)
+
+    let outAmountGrossTuple =
+        if (swapType == "waves")    then (convertWavesToNeutrino(inAmount, priceByIndex), neutrinoAssetId) else
+        if (swapType == "neutrino") then (convertNeutrinoToWaves(inAmount, priceByIndex), unit) else
+        throw("Unsupported swap type " + swapType)
+
+    let payoutsArray = applyFees(outAmountGrossTuple._1, outFeePart)
+    let outNetAmount = payoutsArray[IdxNetAmount]
+    let outFeeAmount = payoutsArray[IdxFeeAmount]
+
+    if (isBlocked) then emergencyShutdownFAIL() else
+    if (swapStatus != "PENDING") then throw("swap has been already processed") else
+    if (unlockHeight > height) then throw("please wait for: " + toString(unlockHeight) + " block height to withdraw funds") else
+    if (index > priceIndex
+          || indexHeight < unlockHeight
+          || (prevIndexHeight != 0 && unlockHeight <= prevIndexHeight)) then priceIndexFAIL(index, priceIndex, indexHeight, unlockHeight, prevIndexHeight) else
+    if (payoutsArray[IdxGrossAmount] <= 0) then throw("balance equals zero") else
+    if (outFeePart < 0 || outFeePart >= PAULI) then throw("invalid outFeePart config for " + swapType + " swap: outFeePart=" + outFeePart.toString()) else
+
+    [IntegerEntry(totalLockedByUserKEY(swapType, account), totalLockedByUser - inAmount),
+    IntegerEntry(totalLockedKEY(swapType), totalLocked - inAmount),
+
+    ScriptTransfer(userAddress,       outNetAmount, outAmountGrossTuple._2),
+    ScriptTransfer(feeManagerAddress, outFeeAmount, outAmountGrossTuple._2),
+
+    StringEntry(
+      swapKEY(account, swapTxId),
+      finishSwapDATA(dataArray, priceByIndex, outNetAmount, outFeeAmount, unlockHeight))
+    ]
+}
+
+#-------------------Callable----------------------
 # Instant swap of WAVES to Neutrino token at the current price on the smart contract
 # [called by user]
 @Callable(i)
 func swapWavesToNeutrino() = {
     let pmt = i.payments[0].value()
-    let account = toString(i.caller)
 
-    if (pmt.amount < minWavesSwapAmount)
-        then throw("The specified Waves amount is less than the required minimum of " + toString(minWavesSwapAmount) + " wavelets.")
-    else if (isDefined(pmt.assetId))
-        then throw("Only Waves token is allowed for swapping.")
-    else if(isBlocked)
-        then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles") # see control.ride
-    else if(getUnlockBalanceBlock(account) > height)
-        then throw("await " + toString(getUnlockBalanceBlock(account) - height) + " blocks")
-    else if (getNeutrinoLockedBalance(account) != 0 || getWavesLockedBalance(account) != 0)
-        then throw("please withdraw locked funds first")
-    else {
-      [IntegerEntry(getWavesLockedBalanceKey(account), pmt.amount),
-      IntegerEntry(getBalanceUnlockBlockKey(account), height + balanceWavesLockInterval),
-      IntegerEntry(WavesLockedBalanceKey, wavesLockedBalance + pmt.amount)]
-    }
+    if (isDefined(pmt.assetId)) then throw("Only Waves token is allowed for swapping.") else
+    commonSwap("waves", i)
 }
 
 # Swap request of Neutrino to WAVES. After {balanceLockInterval} blocks, WAVES tokens will be available for withdrawal
@@ -187,79 +353,22 @@ func swapWavesToNeutrino() = {
 @Callable(i)
 func swapNeutrinoToWaves() = {
     let pmt = i.payments[0].value()
-    let account = toString(i.caller)
-    if (pmt.amount < minNeutrinoSwapAmount)
-        then throw("The specified Neutrino amount is less than the required minimum of " + toString(minNeutrinoSwapAmount) + " Neutrino cents.")
-    else if(isBlocked)
-        then throw("The contract is blocked by EMERGENCY SHUTDOWN. Please wait for reactivation by emergency oracles.") # see control.ride
-    else if (pmt.assetId != neutrinoAssetId)
-        then throw("Only appropriate Neutrino tokens are allowed for swapping.")
-    else if(getUnlockBalanceBlock(account) > height)
-        then throw("await " + toString(getUnlockBalanceBlock(account) - height) + " blocks")
-    else if (getNeutrinoLockedBalance(account) != 0 || getWavesLockedBalance(account) != 0)
-        then throw("please withdraw locked funds first")
-    else {
-        [IntegerEntry(getNeutrinoLockedBalanceKey(account), pmt.amount),
-        IntegerEntry(getBalanceUnlockBlockKey(account), height + balanceNeutrinoLockInterval),
-        IntegerEntry(NeutrinoLockedBalanceKey, neutrinoLockedBalance + pmt.amount)]
-    }
+
+    if (pmt.assetId != neutrinoAssetId) then throw("Only appropriate Neutrino tokens are allowed for swapping.") else
+    commonSwap("neutrino", i)
 }
 
 # Withdraw WAVES from smart contract after {swapNeutrinoToWaves()} request has reached {balanceLockInterval} height
 # at the price that is current at the time when {balanceLockInterval} is reached
 # [called by user]
 @Callable(i)
-func withdraw(account : String, index: Int) = {
-    let userAddress = addressFromStringValue(account)
+func withdraw(account: String, index: Int, swapTxId: String) = {
+    commonWithdraw(account, index, swapTxId, unit, i)
+}
 
-    let feeManagerAddress = this.getString(FeesManagerAddressKey)
-          .valueOrErrorMessage(FeesManagerAddressKey + " is not specified")
-          .addressFromString().valueOrErrorMessage(FeesManagerAddressKey + " invalid address format")
-
-    let unlockHeight = getUnlockBalanceBlock(account)
-    let userWavesLockedBalance = getWavesLockedBalance(account)
-    let userNeutrinoLockedBalance = getNeutrinoLockedBalance(account)
-
-    let indexHeight = getHeightPriceByIndex(index)
-    let prevIndexHeight = getHeightPriceByIndex(index-1)
-    let priceByIndex = getPriceHistory(indexHeight)
-
-    let neutrinoAmountGross   = convertWavesToNeutrino(userWavesLockedBalance, priceByIndex)
-    let wavesAmountGross      = convertNeutrinoToWaves(userNeutrinoLockedBalance, priceByIndex)
-
-    let neutrinoOutFeePart    = this.getInteger(NeutrinoOutFeePartKey).valueOrElse(DEFAULTSWAPFEE)
-    let wavesOutFeePart       = this.getInteger(WavesOutFeePartKey).valueOrElse(DEFAULTSWAPFEE)
-
-    let neutrinoPayoutsArray  = applyFees(neutrinoAmountGross, neutrinoOutFeePart)
-    let wavesPayoutsArray     = applyFees(wavesAmountGross, wavesOutFeePart)
-
-    if(isBlocked)
-        then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles") # see control.ride
-    else if(unlockHeight > height)
-        then throw("please wait for: " + toString(unlockHeight) + " block height to withdraw WAVES funds")
-    else if(index > priceIndex  || indexHeight < unlockHeight || (prevIndexHeight != 0 && unlockHeight <= prevIndexHeight))
-        then throw("invalid price history index: index=" + toString(index)
-                + " priceIndex=" + toString(priceIndex)
-                + " indexHeight=" + toString(indexHeight)
-                + " unlockHeight=" + toString(unlockHeight)
-                + " prevIndexHeight=" + toString(prevIndexHeight))
-    else if(neutrinoAmountGross <= 0 && wavesAmountGross <= 0)
-        then throw("balance equals zero")
-    else if (neutrinoOutFeePart < 0 || neutrinoOutFeePart >= PAULI || wavesOutFeePart < 0 || wavesOutFeePart >= PAULI)
-        then throw("invalid fees data: neutrinoOutFeePart=" + neutrinoOutFeePart.toString() + " wavesOutFeePart=" + wavesOutFeePart.toString())
-    else {
-      [IntegerEntry(getWavesLockedBalanceKey(account), 0),
-      IntegerEntry(getNeutrinoLockedBalanceKey(account), 0),
-
-      IntegerEntry(WavesLockedBalanceKey, wavesLockedBalance - userWavesLockedBalance),
-      IntegerEntry(NeutrinoLockedBalanceKey, neutrinoLockedBalance - userNeutrinoLockedBalance),
-
-      ScriptTransfer(userAddress,       wavesPayoutsArray[IdxNetAmount], unit),
-      ScriptTransfer(feeManagerAddress, wavesPayoutsArray[IdxFeeAmount], unit),
-
-      ScriptTransfer(userAddress,       neutrinoPayoutsArray[IdxNetAmount], neutrinoAssetId),
-      ScriptTransfer(feeManagerAddress, neutrinoPayoutsArray[IdxFeeAmount], neutrinoAssetId)]
-    }
+@Callable(i)
+func withdrawRand(account: String, index: Int, swapTxId: String, rsaSig: ByteVector) = {
+    commonWithdraw(account, index, swapTxId, rsaSig, i)
 }
 
 # Transfers bonds from neutrino.ride to auction.ride to fulfill 'buy bonds' orders
@@ -278,7 +387,6 @@ func transferToAuction() = {
     else
         throw("bond were generated or do not need it. Deficit:" + toString(auctionNBAmount) + "|" + toString(0) + ". Surplus:" + toString(surplusWithLiquidation) + "|" + toString(surplus))
 }
-
 
 # LeaseCancelTransaction depends from swapNeutrinoToWaves() result i.e. waves amount is not enought for future swaps
 # or end of leasing time
