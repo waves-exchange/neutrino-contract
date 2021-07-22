@@ -1,4 +1,4 @@
-{-# STDLIB_VERSION 4 #-}
+{-# STDLIB_VERSION 5 #-}
 {-# CONTENT_TYPE DAPP #-}
 {-# SCRIPT_TYPE ACCOUNT #-}
 
@@ -124,12 +124,12 @@ func internalLockNeutrino(stakingType: String, i: Invocation, receiver: String, 
         let end = if isNewConfig then height else 0
         let start = if isNewConfig then height else getNumberByKey(getRewardsConfigStartKey(newCurrentConfig, true))
 
-        [IntegerEntry(getContractBalanceKey(assetIdString), getContractBalance(assetIdString) + pmt.amount),
+        ([IntegerEntry(getContractBalanceKey(assetIdString), getContractBalance(assetIdString) + pmt.amount),
         IntegerEntry(getUserBalanceKey(account, assetIdString), getUserBalance(account, assetIdString) + pmt.amount),
         IntegerEntry(getRewardsConfigStartKey(currentConfig, false), end), #if there is no current config it leads to dead state key
         IntegerEntry(getRewardsConfigStartKey(newCurrentConfig, true), start),
         IntegerEntry(getRewardConfigInitialShare(account), correctInitialShare),
-        StringEntry(getCurrentRewardsConfigKey(account), newCurrentConfig)]
+        StringEntry(getCurrentRewardsConfigKey(account), newCurrentConfig)], unit)
     }
 }
 
@@ -141,10 +141,9 @@ func internalUnlock(stakingType: String, i: Invocation, unlockAmount: Int, asset
   let balance = getUserBalance(account, assetIdString) - unlockAmount
   if (balance < 0) then throw("invalid amount") else
 
-  [IntegerEntry(getContractBalanceKey(assetIdString), getContractBalance(assetIdString) - unlockAmount),
+  ([IntegerEntry(getContractBalanceKey(assetIdString), getContractBalance(assetIdString) - unlockAmount),
   IntegerEntry(getUserBalanceKey(account, assetIdString), balance),
-  ScriptTransfer(addressFromStringValue(account), unlockAmount, assetId)]
-
+  ScriptTransfer(addressFromStringValue(account), unlockAmount, assetId)], unit)
 }
 
 #-------------------Callable----------------------

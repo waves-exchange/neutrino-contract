@@ -1,4 +1,4 @@
-{-# STDLIB_VERSION 4 #-}
+{-# STDLIB_VERSION 5 #-}
 {-# CONTENT_TYPE DAPP #-}
 {-# SCRIPT_TYPE ACCOUNT #-}
 #
@@ -24,6 +24,9 @@ func getStringByAddressAndKey(address: String, key: String) = {
 }
 func getBoolByAddressAndKey(address: String, key: String) = {
      getBoolean(addressFromStringValue(address), key).valueOrElse(false)
+}
+func getBinaryByKey(key: String) = {
+    getBinaryValue(this, key)
 }
 
 let pubKeyAdminsList = [
@@ -70,11 +73,14 @@ let PriceIndexKey = "price_index"
 let IsBlockedKey = "is_blocked"
 func getPriceHistoryKey(block: Int) = PriceKey + "_" + toString(block)
 func getHeightPriceByIndexKey(index: Int) = PriceIndexKey + "_" + toString(index)
+func getStakingNodeByIndex(idx: Int) = getStringByKey(if (idx == 0) then "node_address" else "node1_address")
 
 #------This contract----------
 #-------------------Keys-------------------
 # TODO need to move into zero
 func getBalanceUnlockBlockKey(owner: String) = "balance_unlock_block_" + owner
+func getLeaseIdKey(nodeIndex: Int) = "lease_id_" + toString(nodeIndex)
+func getLeaseAmountKey(nodeIndex: Int) = "lease_amount_" + toString(nodeIndex)
 
 func minSwapAmountKEY(swapType: String) = "min_" + swapType + "_swap_amount"
 func totalLockedKEY(swapType: String) = "balance_lock_" + swapType
@@ -257,6 +263,24 @@ func randUnlockHeightOrFail(txId: String, rsaSig: ByteVector, swapType: String, 
   startHeight + randLockInterval
 }
 
+func abs(x: Int) = if (x < 0) then -x else x
+
+# newWavesAmount = availableWaves - wavesAmountGross
+func getNodeIndex(newWavesAmount: Int) = {
+    let oldLeased0 = getNumberByKey(getLeaseAmountKey(0))
+    let oldLeased1 = getNumberByKey(getLeaseAmountKey(1))
+    let newLeased0 = newWavesAmount + oldLeased0
+    let newLeased1 = newWavesAmount + oldLeased1
+    if (newLeased0 <= 0 && newLeased1 <= 0) then throw("Not enough waves on neutrino and leasing nodes")
+    else if (newLeased0 <= 0) then 1
+    else if (newLeased1 <= 0) then 0
+    else { # balancing the nodes
+        let delta0 = abs(newLeased0 - oldLeased1)
+        let delta1 = abs(newLeased1 - oldLeased0)
+        if (delta0 < delta1) then 0 else 1
+    }
+}
+
 #-------------------MAIN LOGIC----------------------
 
 # @param swapType - swap "waves" OR "neutrino"
@@ -272,14 +296,33 @@ func commonSwap(swapType: String, i: Invocation) = {
   let selfUnlockHeight = height + balanceLockMaxInterval
 
   if (pmt.amount < minSwapAmount) then minSwapAmountFAIL(swapType, minSwapAmount) else
-  if (isBlocked) then emergencyShutdownFAIL() else # see control.ride
+  if (isBlocked) then emergencyShutdownFAIL() else { # see control.ride
+    let leasePart = if (swapType == "waves") then {
+      let availableWaves = wavesBalance(neutrinoContract).available
+      let nodeIndex = getNodeIndex(availableWaves - pmt.amount)
+      let leaseIdKey = getLeaseIdKey(nodeIndex)
+      if (getBinary(this, leaseIdKey) == unit) then throw("Lease does not exist for node index " + toString(nodeIndex))
+      else {
+        let oldLeaseId = getBinaryByKey(leaseIdKey)
+        let leaseAmountKey = getLeaseAmountKey(nodeIndex)
+        let newLeaseAmount = getNumberByKey(leaseAmountKey) + availableWaves - pmt.amount
+        let lease = Lease(addressFromStringValue(getStakingNodeByIndex(nodeIndex)), newLeaseAmount)
 
-  [IntegerEntry(totalLockedByUserKEY(swapType, account), totalLockedByUser + pmt.amount),
-  IntegerEntry(getBalanceUnlockBlockKey(account), height + balanceLockMaxInterval),
-  IntegerEntry(totalLockedKEY(swapType), totalLocked + pmt.amount),
-  StringEntry(
-    swapKEY(account, txId58),
-    pendingSwapDATA(swapType, pmt.amount, selfUnlockHeight))]
+        [LeaseCancel(oldLeaseId),
+        lease,
+        BinaryEntry(leaseIdKey, calculateLeaseId(lease)),
+        IntegerEntry(leaseAmountKey, newLeaseAmount)]
+      }
+    } else []
+
+    ([IntegerEntry(totalLockedByUserKEY(swapType, account), totalLockedByUser + pmt.amount),
+      IntegerEntry(getBalanceUnlockBlockKey(account), height + balanceLockMaxInterval),
+      IntegerEntry(totalLockedKEY(swapType), totalLocked + pmt.amount),
+      StringEntry(
+        swapKEY(account, txId58),
+        pendingSwapDATA(swapType, pmt.amount, selfUnlockHeight))
+    ] ++ leasePart, unit)
+    }
 }
 
 func commonWithdraw(account : String, index: Int, swapTxId: String, rsaSigOrUnit: ByteVector|Unit, i: Invocation) = {
@@ -324,7 +367,26 @@ func commonWithdraw(account : String, index: Int, swapTxId: String, rsaSigOrUnit
     if (payoutsArray[IdxGrossAmount] <= 0) then throw("balance equals zero") else
     if (outFeePart < 0 || outFeePart >= PAULI) then throw("invalid outFeePart config for " + swapType + " swap: outFeePart=" + outFeePart.toString()) else
 
-    [IntegerEntry(totalLockedByUserKEY(swapType, account), totalLockedByUser - inAmount),
+    let leasePart = if (outAmountGrossTuple._2 == unit && outAmountGrossTuple._1 > 0) then {
+      let availableWaves = wavesBalance(neutrinoContract).available
+      let nodeIndex = getNodeIndex(availableWaves - outAmountGrossTuple._1)
+      let leaseIdKey = getLeaseIdKey(nodeIndex)
+      if (getBinary(this, leaseIdKey) == unit) then throw("Lease does not exist for node index " + toString(nodeIndex))
+      else {
+        let oldLeaseId = getBinaryByKey(leaseIdKey)
+        let leaseAmountKey = getLeaseAmountKey(nodeIndex)
+        let newLeaseAmount = getNumberByKey(leaseAmountKey) + availableWaves - outAmountGrossTuple._1
+        let lease = Lease(addressFromStringValue(getStakingNodeByIndex(nodeIndex)), newLeaseAmount)
+
+        [LeaseCancel(oldLeaseId),
+        lease,
+        BinaryEntry(leaseIdKey, calculateLeaseId(lease)),
+        IntegerEntry(leaseAmountKey, newLeaseAmount)]
+      }
+    }
+    else []
+
+    (leasePart ++ [IntegerEntry(totalLockedByUserKEY(swapType, account), totalLockedByUser - inAmount),
     IntegerEntry(totalLockedKEY(swapType), totalLocked - inAmount),
 
     ScriptTransfer(userAddress,       outNetAmount, outAmountGrossTuple._2),
@@ -333,7 +395,7 @@ func commonWithdraw(account : String, index: Int, swapTxId: String, rsaSigOrUnit
     StringEntry(
       swapKEY(account, swapTxId),
       finishSwapDATA(dataArray, priceByIndex, outNetAmount, outFeeAmount, unlockHeight))
-    ]
+    ], unit)
 }
 
 #-------------------Callable----------------------
@@ -388,7 +450,7 @@ func transferToAuction() = {
         throw("bond were generated or do not need it. Deficit:" + toString(auctionNBAmount) + "|" + toString(0) + ". Surplus:" + toString(surplusWithLiquidation) + "|" + toString(surplus))
 }
 
-# LeaseCancelTransaction depends from swapNeutrinoToWaves() result i.e. waves amount is not enought for future swaps
+# LeaseCancelTransaction depends on swapNeutrinoToWaves() result i.e. waves amount is not enought for future swaps
 # or end of leasing time
 @Verifier(tx)
  func verify() = {
