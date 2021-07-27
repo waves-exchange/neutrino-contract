@@ -73,14 +73,14 @@ let PriceIndexKey = "price_index"
 let IsBlockedKey = "is_blocked"
 func getPriceHistoryKey(block: Int) = PriceKey + "_" + toString(block)
 func getHeightPriceByIndexKey(index: Int) = PriceIndexKey + "_" + toString(index)
-func getStakingNodeByIndex(idx: Int) = getStringByKey(if (idx == 0) then "node_address" else "node1_address")
+func getStakingNodeByIndex(idx: Int) = getStringByKey(makeString(["%s%d%s", "lease", toString(idx), "nodeAddress"], SEP))
 
 #------This contract----------
 #-------------------Keys-------------------
 # TODO need to move into zero
 func getBalanceUnlockBlockKey(owner: String) = "balance_unlock_block_" + owner
-func getLeaseIdKey(nodeIndex: Int) = "lease_id_" + toString(nodeIndex)
-func getLeaseAmountKey(nodeIndex: Int) = "lease_amount_" + toString(nodeIndex)
+func getLeaseIdKey(nodeIndex: Int) = makeString(["%s%d%s", "lease", toString(nodeIndex), "id"], SEP)
+func getLeaseAmountKey(nodeIndex: Int) = makeString(["%s%d%s", "lease", toString(nodeIndex), "amount"], SEP)
 
 func minSwapAmountKEY(swapType: String) = "min_" + swapType + "_swap_amount"
 func totalLockedKEY(swapType: String) = "balance_lock_" + swapType
@@ -265,7 +265,7 @@ func randUnlockHeightOrFail(txId: String, rsaSig: ByteVector, swapType: String, 
 
 func abs(x: Int) = if (x < 0) then -x else x
 
-# newWavesAmount = availableWaves - wavesAmountGross
+# newWavesAmount is amount safe to lease (all available except ones we should send)
 func getNodeIndex(newWavesAmount: Int) = {
     let oldLeased0 = getNumberByKey(getLeaseAmountKey(0))
     let oldLeased1 = getNumberByKey(getLeaseAmountKey(1))
@@ -278,6 +278,24 @@ func getNodeIndex(newWavesAmount: Int) = {
         let delta0 = abs(newLeased0 - oldLeased1)
         let delta1 = abs(newLeased1 - oldLeased0)
         if (delta0 < delta1) then 0 else 1
+    }
+}
+
+# prepare list of actions to lease available waves
+func prepareLease(amountToLease: Int) = {
+    let nodeIndex = getNodeIndex(amountToLease) # balancing waves by 2 nodes
+    let leaseIdKey = getLeaseIdKey(nodeIndex)
+    if (getBinary(this, leaseIdKey) == unit) then throw("Lease does not exist for node index " + toString(nodeIndex))
+    else {
+        let oldLeaseId = getBinaryByKey(leaseIdKey)
+        let leaseAmountKey = getLeaseAmountKey(nodeIndex)
+        let newLeaseAmount = getNumberByKey(leaseAmountKey) + amountToLease
+        let lease = Lease(addressFromStringValue(getStakingNodeByIndex(nodeIndex)), newLeaseAmount)
+
+        [LeaseCancel(oldLeaseId),
+        lease,
+        BinaryEntry(leaseIdKey, calculateLeaseId(lease)),
+        IntegerEntry(leaseAmountKey, newLeaseAmount)]
     }
 }
 
@@ -297,23 +315,7 @@ func commonSwap(swapType: String, i: Invocation) = {
 
   if (pmt.amount < minSwapAmount) then minSwapAmountFAIL(swapType, minSwapAmount) else
   if (isBlocked) then emergencyShutdownFAIL() else { # see control.ride
-    let leasePart = if (swapType == "waves") then {
-      let availableWaves = wavesBalance(neutrinoContract).available
-      let nodeIndex = getNodeIndex(availableWaves - pmt.amount)
-      let leaseIdKey = getLeaseIdKey(nodeIndex)
-      if (getBinary(this, leaseIdKey) == unit) then throw("Lease does not exist for node index " + toString(nodeIndex))
-      else {
-        let oldLeaseId = getBinaryByKey(leaseIdKey)
-        let leaseAmountKey = getLeaseAmountKey(nodeIndex)
-        let newLeaseAmount = getNumberByKey(leaseAmountKey) + availableWaves - pmt.amount
-        let lease = Lease(addressFromStringValue(getStakingNodeByIndex(nodeIndex)), newLeaseAmount)
-
-        [LeaseCancel(oldLeaseId),
-        lease,
-        BinaryEntry(leaseIdKey, calculateLeaseId(lease)),
-        IntegerEntry(leaseAmountKey, newLeaseAmount)]
-      }
-    } else []
+    let leasePart = if (swapType == "waves") then prepareLease(wavesBalance(neutrinoContract).available) else []
 
     ([IntegerEntry(totalLockedByUserKEY(swapType, account), totalLockedByUser + pmt.amount),
       IntegerEntry(getBalanceUnlockBlockKey(account), height + balanceLockMaxInterval),
@@ -367,24 +369,9 @@ func commonWithdraw(account : String, index: Int, swapTxId: String, rsaSigOrUnit
     if (payoutsArray[IdxGrossAmount] <= 0) then throw("balance equals zero") else
     if (outFeePart < 0 || outFeePart >= PAULI) then throw("invalid outFeePart config for " + swapType + " swap: outFeePart=" + outFeePart.toString()) else
 
-    let leasePart = if (outAmountGrossTuple._2 == unit && outAmountGrossTuple._1 > 0) then {
-      let availableWaves = wavesBalance(neutrinoContract).available
-      let nodeIndex = getNodeIndex(availableWaves - outAmountGrossTuple._1)
-      let leaseIdKey = getLeaseIdKey(nodeIndex)
-      if (getBinary(this, leaseIdKey) == unit) then throw("Lease does not exist for node index " + toString(nodeIndex))
-      else {
-        let oldLeaseId = getBinaryByKey(leaseIdKey)
-        let leaseAmountKey = getLeaseAmountKey(nodeIndex)
-        let newLeaseAmount = getNumberByKey(leaseAmountKey) + availableWaves - outAmountGrossTuple._1
-        let lease = Lease(addressFromStringValue(getStakingNodeByIndex(nodeIndex)), newLeaseAmount)
-
-        [LeaseCancel(oldLeaseId),
-        lease,
-        BinaryEntry(leaseIdKey, calculateLeaseId(lease)),
-        IntegerEntry(leaseAmountKey, newLeaseAmount)]
-      }
-    }
-    else []
+    let leasePart = if (swapType == "neutrino" && outAmountGrossTuple._1 > 0)
+        then prepareLease(wavesBalance(neutrinoContract).available - outAmountGrossTuple._1)
+        else []
 
     (leasePart ++ [IntegerEntry(totalLockedByUserKEY(swapType, account), totalLockedByUser - inAmount),
     IntegerEntry(totalLockedKEY(swapType), totalLocked - inAmount),
@@ -450,8 +437,22 @@ func transferToAuction() = {
         throw("bond were generated or do not need it. Deficit:" + toString(auctionNBAmount) + "|" + toString(0) + ". Surplus:" + toString(surplusWithLiquidation) + "|" + toString(surplus))
 }
 
-# LeaseCancelTransaction depends on swapNeutrinoToWaves() result i.e. waves amount is not enought for future swaps
-# or end of leasing time
+# Accept waves from auction.ride after buyNsbt() to lease them immediately
+@Callable(i)
+func leaseWaves() = {
+    if (toBase58String(i.caller.bytes) != auctionContract)
+        then throw("Currently only auction contract is allowed to call")
+    else {
+        let pmt = i.payments[0].value()
+        if (isDefined(pmt.assetId)) then throw("Only waves are allowed for leasing")
+        else if (pmt.amount < 10 * WAVELET) then throw("min of 10 waves expected") # current auction limitation
+        else {
+            let availableWaves = wavesBalance(neutrinoContract).available
+            (prepareLease(availableWaves), availableWaves)
+        }
+    }
+}
+
 @Verifier(tx)
  func verify() = {
     let id = toBase58String(tx.id)
@@ -461,8 +462,6 @@ func transferToAuction() = {
         (if(sigVerify(tx.bodyBytes, tx.proofs[2], fromBase58String(pubKeyAdminsList[2]))) then 1 else 0) +
         (if(sigVerify(tx.bodyBytes, tx.proofs[3], fromBase58String(pubKeyAdminsList[3]))) then 2 else 0)
     match tx {
-        case leasingTx: LeaseTransaction | LeaseCancelTransaction =>
-            sigVerify(leasingTx.bodyBytes, leasingTx.proofs[0], nodeOracleProviderPubKey)
         case sponsorTx: SponsorFeeTransaction =>
             checkIsValidMinSponsoredFee(sponsorTx) && count >= 3
         case _ => {
