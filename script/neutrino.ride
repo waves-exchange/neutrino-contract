@@ -25,10 +25,9 @@ func getStringByAddressAndKey(address: String, key: String) = {
 func getBoolByAddressAndKey(address: String, key: String) = {
      getBoolean(addressFromStringValue(address), key).valueOrElse(false)
 }
-func getBinaryByKey(key: String) = {
-    getBinaryValue(this, key)
+func getBinaryOrFail(key: String) = {
+    getBinary(this, key).valueOrErrorMessage("No data for this.key=" + key)
 }
-
 let pubKeyAdminsList = [
     "GJdLSaLiv5K7xuejac8mcRcHoyo3dPrESrvktG3a6MAR",
     "FWVffYr2ALmHMejZm3WqeLz6Sdym3gLFGtJn4KTwyU5x",
@@ -73,7 +72,8 @@ let PriceIndexKey = "price_index"
 let IsBlockedKey = "is_blocked"
 func getPriceHistoryKey(block: Int) = PriceKey + "_" + toString(block)
 func getHeightPriceByIndexKey(index: Int) = PriceIndexKey + "_" + toString(index)
-func getStakingNodeByIndex(idx: Int) = getStringByKey(makeString(["%s%d%s", "lease", toString(idx), "nodeAddress"], SEP))
+func getStakingNodeByIndex(idx: Int) =
+    addressFromStringValue(getStringByKey(makeString(["%s%d%s", "lease", toString(idx), "nodeAddress"], SEP)))
 
 #------This contract----------
 #-------------------Keys-------------------
@@ -282,21 +282,19 @@ func getNodeIndex(newWavesAmount: Int) = {
 }
 
 # prepare list of actions to lease available waves
-func prepareLease(amountToLease: Int) = {
+func prepareUnleaseAndLease(unleaseAmount: Int) = {
+    let amountToLease = wavesBalance(neutrinoContract).available - unleaseAmount
     let nodeIndex = getNodeIndex(amountToLease) # balancing waves by 2 nodes
     let leaseIdKey = getLeaseIdKey(nodeIndex)
-    if (getBinary(this, leaseIdKey) == unit) then throw("Lease does not exist for node index " + toString(nodeIndex))
-    else {
-        let oldLeaseId = getBinaryByKey(leaseIdKey)
-        let leaseAmountKey = getLeaseAmountKey(nodeIndex)
-        let newLeaseAmount = getNumberByKey(leaseAmountKey) + amountToLease
-        let lease = Lease(addressFromStringValue(getStakingNodeByIndex(nodeIndex)), newLeaseAmount)
+    let oldLeaseId = getBinaryOrFail(leaseIdKey)
+    let leaseAmountKey = getLeaseAmountKey(nodeIndex)
+    let newLeaseAmount = getNumberByKey(leaseAmountKey) + amountToLease
+    let lease = Lease(getStakingNodeByIndex(nodeIndex), newLeaseAmount)
 
-        [LeaseCancel(oldLeaseId),
-        lease,
-        BinaryEntry(leaseIdKey, calculateLeaseId(lease)),
-        IntegerEntry(leaseAmountKey, newLeaseAmount)]
-    }
+    [LeaseCancel(oldLeaseId),
+    lease,
+    BinaryEntry(leaseIdKey, calculateLeaseId(lease)),
+    IntegerEntry(leaseAmountKey, newLeaseAmount)]
 }
 
 #-------------------MAIN LOGIC----------------------
@@ -315,7 +313,7 @@ func commonSwap(swapType: String, i: Invocation) = {
 
   if (pmt.amount < minSwapAmount) then minSwapAmountFAIL(swapType, minSwapAmount) else
   if (isBlocked) then emergencyShutdownFAIL() else { # see control.ride
-    let leasePart = if (swapType == "waves") then prepareLease(wavesBalance(neutrinoContract).available) else []
+    let leasePart = if (swapType == "waves") then prepareUnleaseAndLease(0) else []
 
     ([IntegerEntry(totalLockedByUserKEY(swapType, account), totalLockedByUser + pmt.amount),
       IntegerEntry(getBalanceUnlockBlockKey(account), height + balanceLockMaxInterval),
@@ -370,7 +368,7 @@ func commonWithdraw(account : String, index: Int, swapTxId: String, rsaSigOrUnit
     if (outFeePart < 0 || outFeePart >= PAULI) then throw("invalid outFeePart config for " + swapType + " swap: outFeePart=" + outFeePart.toString()) else
 
     let leasePart = if (swapType == "neutrino" && outAmountGrossTuple._1 > 0)
-        then prepareLease(wavesBalance(neutrinoContract).available - outAmountGrossTuple._1)
+        then prepareUnleaseAndLease(outAmountGrossTuple._1)
         else []
 
     (leasePart ++ [IntegerEntry(totalLockedByUserKEY(swapType, account), totalLockedByUser - inAmount),
@@ -440,17 +438,10 @@ func transferToAuction() = {
 # Accept waves from auction.ride after buyNsbt() to lease them immediately
 @Callable(i)
 func leaseWaves() = {
-    if (toBase58String(i.caller.bytes) != auctionContract)
+    if (i.caller != addressFromStringValue(auctionContract))
         then throw("Currently only auction contract is allowed to call")
-    else {
-        let pmt = i.payments[0].value()
-        if (isDefined(pmt.assetId)) then throw("Only waves are allowed for leasing")
-        else if (pmt.amount < 10 * WAVELET) then throw("min of 10 waves expected") # current auction limitation
-        else {
-            let availableWaves = wavesBalance(neutrinoContract).available
-            (prepareLease(availableWaves), availableWaves)
-        }
-    }
+    else
+        (prepareUnleaseAndLease(0), wavesBalance(neutrinoContract).available)
 }
 
 @Verifier(tx)
