@@ -209,22 +209,16 @@ func buyNsbt() = {
 
         # replacement of ScriptTransfer(neutrinoContract, wavesPay, unit)
         # now Neutrino callable leaseWaves() puts all waves to leasing immediately
-        strict a = invoke(neutrinoContract, "leaseWaves", nil, i.payments)
-        if ((a != a)) then throw("Strict value is not equal to itself.") else {
-            let amountLeased = match a {
-                case a: Int => a
-                case _ => throw("Neutrino leaseWaves() should return integer")
-            }
+        strict amountLeased = invoke(neutrinoContract, "leaseWaves", nil, i.payments)
 
-            (orderData(i.transactionId.toBase58String(), pmtAmount, pmtAmount, ownerAddress.toString(), FILLED,
-                        roi,                # to keep backward compatability with prev. format
-                        nsbt2WavesPriceRaw) # to keep backward compatability with prev. format
-            ++ [
-              ScriptTransfer(ownerAddress, nsbtAmount, nsbtAssetId),
-              StringEntry("debug_curveResult", toStr("curveResult", curveResult))
-            ],
-            nsbtAmount)
-        }
+        (orderData(i.transactionId.toBase58String(), pmtAmount, pmtAmount, ownerAddress.toString(), FILLED,
+            roi,                # to keep backward compatability with prev. format
+            nsbt2WavesPriceRaw) # to keep backward compatability with prev. format
+        ++ [
+          ScriptTransfer(ownerAddress, nsbtAmount, nsbtAssetId),
+          StringEntry("debug_curveResult", toStr("curveResult", curveResult))
+        ],
+        nsbtAmount)
     }
 }
 
