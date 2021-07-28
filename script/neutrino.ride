@@ -180,6 +180,8 @@ let sIdxEndHeight                = 9
 let sIdxEndTimestamp             = 10
 let sIdxSelfUnlockHeight         = 11
 let sIdxRandUnlockHeight         = 12
+let sIdxIndex                    = 13
+let sIdxWithdrawTxId             = 14
 
 func swapKEY(userAddress: String, txId: String) = {
   makeString(["%s%s", userAddress, txId], SEP)
@@ -187,8 +189,8 @@ func swapKEY(userAddress: String, txId: String) = {
 
 func strSwapDATA(swapType: String, status: String, inAmount: String, price: String, outNetAmount: String, outFeeAmount: String,
                  startHeight: String, startTimestamp: String, endHeight: String, endTimestamp: String,
-                 selfUnlockHeight: String, randUnlockHeight: String) = {
-  makeString(["%s%s%d%d%d%d%d%d%d%d%d%d",
+                 selfUnlockHeight: String, randUnlockHeight: String, index: String, withdrawTxId: String) = {
+  makeString(["%s%s%d%d%d%d%d%d%d%d%d%d%d%s",
       swapType,                     # 1
       status,                       # 2
       inAmount,                     # 3
@@ -200,7 +202,9 @@ func strSwapDATA(swapType: String, status: String, inAmount: String, price: Stri
       endHeight,                    # 9
       endTimestamp,                 # 10
       selfUnlockHeight,             # 11
-      randUnlockHeight              # 12
+      randUnlockHeight,             # 12
+      index,                        # 13
+      withdrawTxId                  # 14
       ],
   SEP)
 }
@@ -218,11 +222,13 @@ func pendingSwapDATA(swapType: String, inAssetAmount: Int, selfUnlockHeight: Int
       "0",                            # 9
       "0",                            # 10
       selfUnlockHeight.toString(),    # 11
-      "0"                             # 12
+      "0",                            # 12
+      "0",                            # 13
+      "NULL"                          # 14
   )
 }
 
-func finishSwapDATA(dataArray: List[String], price: Int, outNetAmount: Int, outFeeAmount: Int, randUnlockHeight: Int) = {
+func finishSwapDATA(dataArray: List[String], price: Int, outNetAmount: Int, outFeeAmount: Int, randUnlockHeight: Int, index: Int, withdrawTxId: String) = {
   strSwapDATA(
       dataArray[sIdxSwapType],        # 1
       "FINISHED",                     # 2
@@ -235,7 +241,9 @@ func finishSwapDATA(dataArray: List[String], price: Int, outNetAmount: Int, outF
       height.toString(),              # 9
       lastBlock.timestamp.toString(), # 10
       dataArray[sIdxSelfUnlockHeight],# 11
-      randUnlockHeight.toString()     # 12
+      randUnlockHeight.toString(),    # 12
+      index.toString,                 # 13
+      withdrawTxId                    # 14
   )
 }
 
@@ -379,7 +387,7 @@ func commonWithdraw(account : String, index: Int, swapTxId: String, rsaSigOrUnit
 
     StringEntry(
       swapKEY(account, swapTxId),
-      finishSwapDATA(dataArray, priceByIndex, outNetAmount, outFeeAmount, unlockHeight))
+      finishSwapDATA(dataArray, priceByIndex, outNetAmount, outFeeAmount, unlockHeight, index, i.transactionId.toBase58String()))
     ], unit)
 }
 
