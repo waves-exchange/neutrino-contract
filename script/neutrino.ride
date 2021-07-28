@@ -75,6 +75,9 @@ func getHeightPriceByIndexKey(index: Int) = PriceIndexKey + "_" + toString(index
 func getStakingNodeByIndex(idx: Int) =
     addressFromStringValue(getStringByKey(makeString(["%s%d%s", "lease", toString(idx), "nodeAddress"], SEP)))
 
+func getReservedAmountForSponsorship() =
+    getInteger(this, makeString(["%s%s", "lease", "sponsorshipWavesReserve"], SEP)).valueOrElse(1000 * WAVELET)
+
 #------This contract----------
 #-------------------Keys-------------------
 # TODO need to move into zero
@@ -291,7 +294,7 @@ func getNodeIndex(newWavesAmount: Int) = {
 
 # prepare list of actions to lease available waves
 func prepareUnleaseAndLease(unleaseAmount: Int) = {
-    let amountToLease = wavesBalance(neutrinoContract).available - unleaseAmount
+    let amountToLease = wavesBalance(neutrinoContract).available - unleaseAmount - getReservedAmountForSponsorship()
     let nodeIndex = getNodeIndex(amountToLease) # balancing waves by 2 nodes
     let leaseIdKey = getLeaseIdKey(nodeIndex)
     let oldLeaseId = getBinaryOrFail(leaseIdKey)
