@@ -245,7 +245,7 @@ func finishSwapDATA(dataArray: List[String], price: Int, outNetAmount: Int, outF
       lastBlock.timestamp.toString(), # 10
       dataArray[sIdxSelfUnlockHeight],# 11
       randUnlockHeight.toString(),    # 12
-      index.toString,                 # 13
+      index.toString(),               # 13
       withdrawTxId                    # 14
   )
 }
