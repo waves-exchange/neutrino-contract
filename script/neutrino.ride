@@ -273,7 +273,7 @@ func randUnlockHeightOrFail(txId: String, rsaSig: ByteVector, swapType: String, 
 
 func abs(x: Int) = if (x < 0) then -x else x
 
-func calcNodeOrder(unleaseAmount: Int) = {
+func selectNode(unleaseAmount: Int) = {
     let amountToLease = wavesBalance(neutrinoContract).available - unleaseAmount - getReservedAmountForSponsorship()
 
     let oldLeased0 = getNumberByKey(getLeaseAmountKey(0))
@@ -292,7 +292,7 @@ func calcNodeOrder(unleaseAmount: Int) = {
 
 # prepare list of actions to lease available waves or cancel lease in case of usdn2waves swap
 func prepareUnleaseAndLease(unleaseAmount: Int) = {
-    let nodeTuple       = calcNodeOrder(unleaseAmount) # balancing waves by 2 nodes
+    let nodeTuple       = selectNode(unleaseAmount) # balancing waves by 2 nodes
     let nodeIndex       = nodeTuple._1
     let newLeaseAmount  = nodeTuple._2
 
