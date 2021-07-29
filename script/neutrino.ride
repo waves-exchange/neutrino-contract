@@ -25,9 +25,6 @@ func getStringByAddressAndKey(address: String, key: String) = {
 func getBoolByAddressAndKey(address: String, key: String) = {
      getBoolean(addressFromStringValue(address), key).valueOrElse(false)
 }
-func getBinaryOrFail(key: String) = {
-    getBinary(this, key).valueOrErrorMessage("No data for this.key=" + key)
-}
 let pubKeyAdminsList = [
     "GJdLSaLiv5K7xuejac8mcRcHoyo3dPrESrvktG3a6MAR",
     "FWVffYr2ALmHMejZm3WqeLz6Sdym3gLFGtJn4KTwyU5x",
@@ -282,7 +279,7 @@ func getNodeIndex(newWavesAmount: Int) = {
     let oldLeased1 = getNumberByKey(getLeaseAmountKey(1))
     let newLeased0 = newWavesAmount + oldLeased0
     let newLeased1 = newWavesAmount + oldLeased1
-    if (newLeased0 <= 0 && newLeased1 <= 0) then throw("Not enough waves on neutrino and leasing nodes")
+    if (newLeased0 <= 0 && newLeased1 <= 0) then -1
     else if (newLeased0 <= 0) then 1
     else if (newLeased1 <= 0) then 0
     else { # balancing the nodes
@@ -296,16 +293,23 @@ func getNodeIndex(newWavesAmount: Int) = {
 func prepareUnleaseAndLease(unleaseAmount: Int) = {
     let amountToLease = wavesBalance(neutrinoContract).available - unleaseAmount - getReservedAmountForSponsorship()
     let nodeIndex = getNodeIndex(amountToLease) # balancing waves by 2 nodes
-    let leaseIdKey = getLeaseIdKey(nodeIndex)
-    let oldLeaseId = getBinaryOrFail(leaseIdKey)
-    let leaseAmountKey = getLeaseAmountKey(nodeIndex)
-    let newLeaseAmount = getNumberByKey(leaseAmountKey) + amountToLease
-    let lease = Lease(getStakingNodeByIndex(nodeIndex), newLeaseAmount)
+    if (nodeIndex < 0) then []
+    else {
+        let leaseIdKey = getLeaseIdKey(nodeIndex)
+        let oldLease = getBinary(this, leaseIdKey)
+        let unlease = if (oldLease.isDefined()) then [LeaseCancel(oldLease.value())] else []
+        let leaseAmountKey = getLeaseAmountKey(nodeIndex)
+        let newLeaseAmount = getNumberByKey(leaseAmountKey) + amountToLease
+        let lease = Lease(getStakingNodeByIndex(nodeIndex), newLeaseAmount)
 
-    [LeaseCancel(oldLeaseId),
-    lease,
-    BinaryEntry(leaseIdKey, calculateLeaseId(lease)),
-    IntegerEntry(leaseAmountKey, newLeaseAmount)]
+        unlease ++ [lease,
+        BinaryEntry(leaseIdKey, calculateLeaseId(lease)),
+        IntegerEntry(leaseAmountKey, newLeaseAmount)]
+    }
+}
+
+func getBinaryOrFail(key: String) = {
+    getBinary(this, key).valueOrErrorMessage("No data for this.key=" + key)
 }
 
 #-------------------MAIN LOGIC----------------------
