@@ -310,10 +310,6 @@ func prepareUnleaseAndLease(unleaseAmount: Int) = {
     } else []
 }
 
-func getBinaryOrFail(key: String) = {
-    getBinary(this, key).valueOrErrorMessage("No data for this.key=" + key)
-}
-
 #-------------------MAIN LOGIC----------------------
 
 # @param swapType - swap "waves" OR "neutrino"
