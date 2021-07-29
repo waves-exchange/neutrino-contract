@@ -25,9 +25,6 @@ func getStringByAddressAndKey(address: String, key: String) = {
 func getBoolByAddressAndKey(address: String, key: String) = {
      getBoolean(addressFromStringValue(address), key).valueOrElse(false)
 }
-func getBinaryOrFail(key: String) = {
-    getBinary(this, key).valueOrErrorMessage("No data for this.key=" + key)
-}
 let pubKeyAdminsList = [
     "GJdLSaLiv5K7xuejac8mcRcHoyo3dPrESrvktG3a6MAR",
     "FWVffYr2ALmHMejZm3WqeLz6Sdym3gLFGtJn4KTwyU5x",
@@ -74,6 +71,9 @@ func getPriceHistoryKey(block: Int) = PriceKey + "_" + toString(block)
 func getHeightPriceByIndexKey(index: Int) = PriceIndexKey + "_" + toString(index)
 func getStakingNodeByIndex(idx: Int) =
     addressFromStringValue(getStringByKey(makeString(["%s%d%s", "lease", toString(idx), "nodeAddress"], SEP)))
+
+func getReservedAmountForSponsorship() =
+    getInteger(this, makeString(["%s%s", "lease", "sponsorshipWavesReserve"], SEP)).valueOrElse(1000 * WAVELET)
 
 #------This contract----------
 #-------------------Keys-------------------
@@ -180,6 +180,8 @@ let sIdxEndHeight                = 9
 let sIdxEndTimestamp             = 10
 let sIdxSelfUnlockHeight         = 11
 let sIdxRandUnlockHeight         = 12
+let sIdxIndex                    = 13
+let sIdxWithdrawTxId             = 14
 
 func swapKEY(userAddress: String, txId: String) = {
   makeString(["%s%s", userAddress, txId], SEP)
@@ -187,8 +189,8 @@ func swapKEY(userAddress: String, txId: String) = {
 
 func strSwapDATA(swapType: String, status: String, inAmount: String, price: String, outNetAmount: String, outFeeAmount: String,
                  startHeight: String, startTimestamp: String, endHeight: String, endTimestamp: String,
-                 selfUnlockHeight: String, randUnlockHeight: String) = {
-  makeString(["%s%s%d%d%d%d%d%d%d%d%d%d",
+                 selfUnlockHeight: String, randUnlockHeight: String, index: String, withdrawTxId: String) = {
+  makeString(["%s%s%d%d%d%d%d%d%d%d%d%d%d%s",
       swapType,                     # 1
       status,                       # 2
       inAmount,                     # 3
@@ -200,7 +202,9 @@ func strSwapDATA(swapType: String, status: String, inAmount: String, price: Stri
       endHeight,                    # 9
       endTimestamp,                 # 10
       selfUnlockHeight,             # 11
-      randUnlockHeight              # 12
+      randUnlockHeight,             # 12
+      index,                        # 13
+      withdrawTxId                  # 14
       ],
   SEP)
 }
@@ -218,11 +222,13 @@ func pendingSwapDATA(swapType: String, inAssetAmount: Int, selfUnlockHeight: Int
       "0",                            # 9
       "0",                            # 10
       selfUnlockHeight.toString(),    # 11
-      "0"                             # 12
+      "0",                            # 12
+      "0",                            # 13
+      "NULL"                          # 14
   )
 }
 
-func finishSwapDATA(dataArray: List[String], price: Int, outNetAmount: Int, outFeeAmount: Int, randUnlockHeight: Int) = {
+func finishSwapDATA(dataArray: List[String], price: Int, outNetAmount: Int, outFeeAmount: Int, randUnlockHeight: Int, index: Int, withdrawTxId: String) = {
   strSwapDATA(
       dataArray[sIdxSwapType],        # 1
       "FINISHED",                     # 2
@@ -235,7 +241,9 @@ func finishSwapDATA(dataArray: List[String], price: Int, outNetAmount: Int, outF
       height.toString(),              # 9
       lastBlock.timestamp.toString(), # 10
       dataArray[sIdxSelfUnlockHeight],# 11
-      randUnlockHeight.toString()     # 12
+      randUnlockHeight.toString(),    # 12
+      index.toString(),               # 13
+      withdrawTxId                    # 14
   )
 }
 
@@ -271,7 +279,7 @@ func getNodeIndex(newWavesAmount: Int) = {
     let oldLeased1 = getNumberByKey(getLeaseAmountKey(1))
     let newLeased0 = newWavesAmount + oldLeased0
     let newLeased1 = newWavesAmount + oldLeased1
-    if (newLeased0 <= 0 && newLeased1 <= 0) then throw("Not enough waves on neutrino and leasing nodes")
+    if (newLeased0 <= 0 && newLeased1 <= 0) then -1
     else if (newLeased0 <= 0) then 1
     else if (newLeased1 <= 0) then 0
     else { # balancing the nodes
@@ -283,18 +291,26 @@ func getNodeIndex(newWavesAmount: Int) = {
 
 # prepare list of actions to lease available waves
 func prepareUnleaseAndLease(unleaseAmount: Int) = {
-    let amountToLease = wavesBalance(neutrinoContract).available - unleaseAmount
+    let amountToLease = wavesBalance(neutrinoContract).available - unleaseAmount - getReservedAmountForSponsorship()
     let nodeIndex = getNodeIndex(amountToLease) # balancing waves by 2 nodes
-    let leaseIdKey = getLeaseIdKey(nodeIndex)
-    let oldLeaseId = getBinaryOrFail(leaseIdKey)
-    let leaseAmountKey = getLeaseAmountKey(nodeIndex)
-    let newLeaseAmount = getNumberByKey(leaseAmountKey) + amountToLease
-    let lease = Lease(getStakingNodeByIndex(nodeIndex), newLeaseAmount)
+    if (nodeIndex < 0) then []
+    else {
 
-    [LeaseCancel(oldLeaseId),
-    lease,
-    BinaryEntry(leaseIdKey, calculateLeaseId(lease)),
-    IntegerEntry(leaseAmountKey, newLeaseAmount)]
+        let leaseIdKey = getLeaseIdKey(nodeIndex)
+        let oldLease = getBinary(this, leaseIdKey)
+        let unlease = if (oldLease.isDefined()) then [LeaseCancel(oldLease.value())] else []
+        let leaseAmountKey = getLeaseAmountKey(nodeIndex)
+        let newLeaseAmount = getNumberByKey(leaseAmountKey) + amountToLease
+        let lease = Lease(getStakingNodeByIndex(nodeIndex), newLeaseAmount)
+
+        unlease ++ [lease,
+        BinaryEntry(leaseIdKey, calculateLeaseId(lease)),
+        IntegerEntry(leaseAmountKey, newLeaseAmount)]
+    }
+}
+
+func getBinaryOrFail(key: String) = {
+    getBinary(this, key).valueOrErrorMessage("No data for this.key=" + key)
 }
 
 #-------------------MAIN LOGIC----------------------
@@ -379,7 +395,7 @@ func commonWithdraw(account : String, index: Int, swapTxId: String, rsaSigOrUnit
 
     StringEntry(
       swapKEY(account, swapTxId),
-      finishSwapDATA(dataArray, priceByIndex, outNetAmount, outFeeAmount, unlockHeight))
+      finishSwapDATA(dataArray, priceByIndex, outNetAmount, outFeeAmount, unlockHeight, index, i.transactionId.toBase58String()))
     ], unit)
 }
 
