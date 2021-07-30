@@ -208,8 +208,8 @@ func buyNsbt() = {
         let roi = 0
 
         # replacement of ScriptTransfer(neutrinoContract, wavesPay, unit)
-        # now Neutrino callable leaseWaves() puts all waves to leasing immediately
-        strict amountLeased = invoke(neutrinoContract, "leaseWaves", nil, i.payments)
+        # now Neutrino callable acceptWaves() receives waves and puts them to leasing immediately
+        strict amountLeased = invoke(neutrinoContract, "acceptWaves", nil, i.payments)
 
         (orderData(i.transactionId.toBase58String(), pmtAmount, pmtAmount, ownerAddress.toString(), FILLED,
             roi,                # to keep backward compatability with prev. format
