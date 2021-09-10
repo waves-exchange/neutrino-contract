@@ -69,8 +69,8 @@ let PriceIndexKey = "price_index"
 let IsBlockedKey = "is_blocked"
 func getPriceHistoryKey(block: Int) = PriceKey + "_" + toString(block)
 func getHeightPriceByIndexKey(index: Int) = PriceIndexKey + "_" + toString(index)
-func getStakingNodeByIndex(idx: Int) =
-    addressFromStringValue(getStringByKey(makeString(["%s%d%s", "lease", toString(idx), "nodeAddress"], SEP)))
+func getStakingNodeByIndex(idx: Int) = getStringByKey(makeString(["%s%d%s", "lease", toString(idx), "nodeAddress"], SEP))
+func getStakingNodeAddressByIndex(idx: Int) = addressFromStringValue(getStakingNodeByIndex(idx))
 
 func getReservedAmountForSponsorship() =
     getInteger(this, makeString(["%s%s", "lease", "sponsorshipWavesReserve"], SEP)).valueOrElse(1000 * WAVELET)
@@ -87,6 +87,7 @@ func totalLockedKEY(swapType: String) = "balance_lock_" + swapType
 func totalLockedByUserKEY(swapType: String, owner: String) = makeString(["balance_lock", swapType, owner], "_")
 func balanceLockIntervalKEY(swapType: String) = "balance_" + swapType + "_lock_interval"
 func minBalanceLockIntervalKEY(swapType: String) = "balance_" + swapType + "_lock_interval_minimum"
+func nodeBalanceLockIntervalKEY() = "balance_node_lock_interval"
 func outFeePartKEY(swapType: String) = swapType + "Out_swap_feePart"
 
 #-------------------State Reeding functions-------------------
@@ -95,6 +96,7 @@ func totalLockedREAD(swapType: String) = this.getInteger(totalLockedKEY(swapType
 func totalLockedByUserREAD(swapType: String, owner: String) = this.getInteger(totalLockedByUserKEY(swapType, owner)).valueOrElse(0)
 func balanceLockIntervalREAD(swapType: String) = this.getInteger(balanceLockIntervalKEY(swapType)).valueOrElse(1440)
 func minBalanceLockIntervalREAD(swapType: String) = this.getInteger(minBalanceLockIntervalKEY(swapType)).valueOrElse(60)
+func nodeBalanceLockIntervalREAD() = this.getInteger(nodeBalanceLockIntervalKEY()).valueOrElse(1)
 
 func feeManagerAddressREAD() = this.getString(FeesManagerAddressKey)
           .valueOrErrorMessage(FeesManagerAddressKey + " is not specified")
@@ -182,6 +184,8 @@ let sIdxSelfUnlockHeight         = 11
 let sIdxRandUnlockHeight         = 12
 let sIdxIndex                    = 13
 let sIdxWithdrawTxId             = 14
+let sIdxMinRand                  = 15
+let sIdxMaxRand                  = 16
 
 func swapKEY(userAddress: String, txId: String) = {
   makeString(["%s%s", userAddress, txId], SEP)
@@ -189,7 +193,8 @@ func swapKEY(userAddress: String, txId: String) = {
 
 func strSwapDATA(swapType: String, status: String, inAmount: String, price: String, outNetAmount: String, outFeeAmount: String,
                  startHeight: String, startTimestamp: String, endHeight: String, endTimestamp: String,
-                 selfUnlockHeight: String, randUnlockHeight: String, index: String, withdrawTxId: String) = {
+                 selfUnlockHeight: String, randUnlockHeight: String, index: String, withdrawTxId: String,
+                 randMin: String, randMax: String) = {
   makeString(["%s%s%d%d%d%d%d%d%d%d%d%d%d%s",
       swapType,                     # 1
       status,                       # 2
@@ -204,7 +209,9 @@ func strSwapDATA(swapType: String, status: String, inAmount: String, price: Stri
       selfUnlockHeight,             # 11
       randUnlockHeight,             # 12
       index,                        # 13
-      withdrawTxId                  # 14
+      withdrawTxId,                 # 14
+      randMin,                      # 15
+      randMax                       # 16
       ],
   SEP)
 }
@@ -224,7 +231,9 @@ func pendingSwapDATA(swapType: String, inAssetAmount: Int, selfUnlockHeight: Int
       selfUnlockHeight.toString(),    # 11
       "0",                            # 12
       "0",                            # 13
-      "NULL"                          # 14
+      "NULL",                         # 14
+      minBalanceLockIntervalREAD(swapType).toString(), # 15
+      balanceLockIntervalREAD(swapType).toString()     # 16
   )
 }
 
@@ -243,7 +252,9 @@ func finishSwapDATA(dataArray: List[String], price: Int, outNetAmount: Int, outF
       dataArray[sIdxSelfUnlockHeight],# 11
       randUnlockHeight.toString(),    # 12
       index.toString(),               # 13
-      withdrawTxId                    # 14
+      withdrawTxId,                   # 14
+      if (dataArray.size() <= 15) then "60" else dataArray[sIdxMinRand],   # 15
+      if (dataArray.size() <= 15) then "1440" else dataArray[sIdxMaxRand]  # 16
   )
 }
 
@@ -259,12 +270,12 @@ func applyFees(amountGross: Int, feePart: Int) = {
   [amountGross - feeAmount, feeAmount, amountGross]
 }
 
-func randUnlockHeightOrFail(txId: String, rsaSig: ByteVector, swapType: String, startHeight: Int) = {
+func randUnlockHeightOrFail(txId: String, rsaSig: ByteVector, swapType: String, startHeight: Int, minMaxRandsTuple: (Int, Int)) = {
   let isRsaValid = rsaVerify_16Kb(SHA256, txId.toBytes(), rsaSig, rsaPub)
   if (!isRsaValid) then throw("invalid RSA signature") else
 
-  let maxBalanceLockInterval = balanceLockIntervalREAD(swapType)
-  let minBalanceLockInterval = minBalanceLockIntervalREAD(swapType)
+  let minBalanceLockInterval = minMaxRandsTuple._1
+  let maxBalanceLockInterval = minMaxRandsTuple._2
 
   let rand = toInt(sha256_16Kb(rsaSig)) % (maxBalanceLockInterval - minBalanceLockInterval)
   let randLockInterval = minBalanceLockInterval + if rand < 0 then -rand else rand
@@ -301,7 +312,7 @@ func prepareUnleaseAndLease(unleaseAmount: Int) = {
         let oldLease = getBinary(this, leaseIdKey)
         let unleaseOrEmpty = if (oldLease.isDefined()) then [LeaseCancel(oldLease.value())] else []
         let leaseAmountKey = getLeaseAmountKey(nodeIndex)
-        let lease = Lease(getStakingNodeByIndex(nodeIndex), newLeaseAmount)
+        let lease = Lease(getStakingNodeAddressByIndex(nodeIndex), newLeaseAmount)
 
         unleaseOrEmpty ++ [
             lease,
@@ -321,7 +332,8 @@ func commonSwap(swapType: String, i: Invocation) = {
   let minSwapAmount = minSwapAmountREAD(swapType)
   let totalLocked = totalLockedREAD(swapType)
   let totalLockedByUser = totalLockedByUserREAD(swapType, account)
-  let balanceLockMaxInterval = balanceLockIntervalREAD(swapType)
+  let nodeAddress = getStakingNodeByIndex(0)
+  let balanceLockMaxInterval = if (nodeAddress == account) then nodeBalanceLockIntervalREAD() else balanceLockIntervalREAD(swapType)
   let selfUnlockHeight = height + balanceLockMaxInterval
 
   if (pmt.amount < minSwapAmount) then minSwapAmountFAIL(swapType, minSwapAmount) else
@@ -329,7 +341,7 @@ func commonSwap(swapType: String, i: Invocation) = {
     let leasePart = if (swapType == "waves") then prepareUnleaseAndLease(0) else []
 
     ([IntegerEntry(totalLockedByUserKEY(swapType, account), totalLockedByUser + pmt.amount),
-      IntegerEntry(getBalanceUnlockBlockKey(account), height + balanceLockMaxInterval),
+      IntegerEntry(getBalanceUnlockBlockKey(account), selfUnlockHeight),
       IntegerEntry(totalLockedKEY(swapType), totalLocked + pmt.amount),
       StringEntry(
         swapKEY(account, txId58),
@@ -353,8 +365,12 @@ func commonWithdraw(account : String, index: Int, swapTxId: String, rsaSigOrUnit
     let totalLocked       = totalLockedREAD(swapType)
     let totalLockedByUser = totalLockedByUserREAD(swapType, account)
 
+    let minMaxRandsTuple  = if (dataArray.size() <= 15)
+        then (60, 1440)
+        else (dataArray[sIdxMinRand].parseIntValue(), dataArray[sIdxMaxRand].parseIntValue())
+
     let unlockHeight = match rsaSigOrUnit {
-      case rsaSig: ByteVector => randUnlockHeightOrFail(swapTxId, rsaSig, swapType, startHeight)
+      case rsaSig: ByteVector => randUnlockHeightOrFail(swapTxId, rsaSig, swapType, startHeight, minMaxRandsTuple)
       case _:      Unit       => selfUnlockHeight
     }
 
@@ -455,27 +471,6 @@ func acceptWaves() = {
         then throw("Currently only auction contract is allowed to call")
     else
         (prepareUnleaseAndLease(0), "success")
-}
-
-@Callable(i)
-func migrateActiveLeasings(leaseChunkTxId: String, chunkAmount: Int, nodeIndex: Int) = {
-    if (i.callerPublicKey != nodeOracleProviderPubKey) then throw("not authorized") else
-    let leaseAmountKEY = getLeaseAmountKey(nodeIndex)
-
-    let amountToAdd = wavesBalance(neutrinoContract).available + chunkAmount - getReservedAmountForSponsorship()
-    let oldLeasedAmount = getNumberByKey(leaseAmountKEY)
-    let newLeaseAmount = oldLeasedAmount + amountToAdd
-
-    let leaseIdKEY = getLeaseIdKey(nodeIndex)
-    let oldLeaseId = getBinary(this, leaseIdKEY)
-    let oldUnleaseOrEmpty = if (oldLeaseId.isDefined()) then [LeaseCancel(oldLeaseId.value())] else []
-    let lease = Lease(getStakingNodeByIndex(nodeIndex), newLeaseAmount)
-
-    oldUnleaseOrEmpty ++ [
-        LeaseCancel(leaseChunkTxId.fromBase58String()),
-        lease,
-        BinaryEntry(leaseIdKEY, calculateLeaseId(lease)),
-        IntegerEntry(leaseAmountKEY, newLeaseAmount)]
 }
 
 @Verifier(tx)
