@@ -3,17 +3,21 @@
 {-# SCRIPT_TYPE ACCOUNT #-}
 
 #-------------------Constants---------------------------
-let WAVELET          = 100_000_000
-let PAULI            = 1_000_000
 let PRICELET         = 1_000_000    # 10^6
-let MULT             = 100_000_000  # 10^8
 let MULTSCALE        = 8
+let EULERNUMBER      = 271828182      # 10ˆ8
+let scale6           = 1_000_000
+let scale6BigInt     = 1_000_000.toBigInt()
+let scale8           = 100_000_000
+let scale8BigInt     = 100_000_000.toBigInt()
+let scale18          = 1_000_000_000_000_000_000.toBigInt()
 let SEP              = "__"
 let dora2NsbtSymbol  = "NSBT-USDT"
 
 #-------this keys---------
 func keyNeutrinoAddress()  = "%s%s__config__neutrinoAddress"
 func keyDoraAddress()      = "%s%s__config__doraAddress"
+func keySwapAmountAParam() = "%s%s__config__swapAParam"
 #-------neutrino keys------
 func keyNeutrinoAssetId() = "neutrino_asset_id"
 func keyLiquidationContractAddress() = "liquidation_contract"
@@ -34,6 +38,8 @@ func keyMathContract() = "%s__mathContract"
 func keyQuickSwapLimitDuration() = "%s__quickSwapLimitDuration"
 func keyUserLastQuickSwapHeight(userAddress: String) = ["%s%s", "userLastQuickSwapHeight", userAddress].makeString(SEP)
 func keyQuickSwapUserSpentInPeriod(userAddress: String) = ["%s%s", "quickSwapUserSpentInPeriod", userAddress].makeString(SEP)
+func keyBalanceWavesLockInterval() = "balance_waves_lock_interval"
+func keyBalanceNeutrinoLockInterval() = "balance_neutrino_lock_interval"
 
 #------control keys-------
 func keyPrice() = "price"
@@ -42,8 +48,8 @@ func keyPrice() = "price"
 func getStringOrFail(address: Address, key: String) = address.getString(key).valueOrErrorMessage(makeString(["mandatory ", address.toString(), ".", key, " is not defined"], ""))
 func getIntOrFail(address: Address, key: String) = address.getInteger(key).valueOrErrorMessage(makeString(["mandatory ", address.toString(), ".", key, " is not defined"], ""))
 func getBoolOrFail(address: Address, key: String) = address.getBoolean(key).valueOrErrorMessage(makeString(["mandatory ", address.toString(), ".", key, " is not defined"], ""))
-func convertNeutrinoToWaves(amount: Int, price: Int) = fraction(fraction(amount, PRICELET, price),WAVELET, PAULI)
-func convertWavesToNeutrino(amount: Int, price: Int) = fraction(fraction(amount, price, PRICELET), PAULI, WAVELET)
+func convertNeutrinoToWaves(amount: Int, price: Int) = fraction(fraction(amount, PRICELET, price),scale8, scale6)
+func convertWavesToNeutrino(amount: Int, price: Int) = fraction(fraction(amount, price, PRICELET), scale6, scale8)
 func asAnyList(val: Any) = {
   match val {
     case valAnyLyst: List[Any] => valAnyLyst
@@ -63,6 +69,10 @@ func asString(val: Any) = {
     case _ => throw("fail to cast into String")
   }
 }
+
+func toX18(origVal: Int, origScaleMult: Int)          = fraction(origVal.toBigInt(), scale18, origScaleMult.toBigInt())
+func fromX18(val: BigInt, resultScaleMult: Int)       = fraction(val, resultScaleMult.toBigInt(), scale18).toInt()
+
 
 # DORA2 Price Oracle
 func keyDora2Price(symbol: String) = ["%s%s", "price", symbol].makeString(SEP)
@@ -84,13 +94,15 @@ let nsbtAssetId = nsbtAssetIdStr.fromBase58String()
 #-------------------Global vars deficit, locked & supply -------------------------
 
 @Callable(i)
-func constructor(neutrinoAddress: String, doraAddress: String, nsbtLockAddress: String, mathAddress: String) = {
+# swapAmountAParam is scale8
+func constructor(neutrinoAddress: String, doraAddress: String, nsbtLockAddress: String, mathAddress: String, swapAmountAParam: Int) = {
   if (i.caller != this) then throw("not authorized") else
   [
       StringEntry(keyNeutrinoAddress(), neutrinoAddress),
       StringEntry(keyDoraAddress(), doraAddress),
       StringEntry(keyNsbtLockContract(), nsbtLockAddress),
-      StringEntry(keyMathContract(), mathAddress)
+      StringEntry(keyMathContract(), mathAddress),
+      IntegerEntry(keySwapAmountAParam(), swapAmountAParam)
   ]
 }
 
@@ -132,24 +144,15 @@ func neutrinoStatsREADONLY() = {
 }
 
 @Callable(i)
-func dora2NSBTInfoREADONLY() = {
-  let doraContract = this.getStringValue(keyDoraAddress()).addressFromStringValue()
-  let (nsbtPrice, nsbtPriceLastHeight) = (
-    doraContract.getInteger(keyDora2Price(dora2NsbtSymbol)).valueOrErrorMessage("DORA NSBT price is undefined"), # price
-    doraContract.getInteger(keyDora2LastHeight(dora2NsbtSymbol)).valueOrElse(0) # last height
-  )
-  ([], (nsbtPrice, nsbtPriceLastHeight))
-}
-
-@Callable(i)
-func calcTotalQuickSwapLimitREADONLY(gNsbtAmount: Int) = {
-  let dora2nsbtInfo = this.invoke("dora2NSBTInfoREADONLY", [], []).asAnyList()
-  let nsbtPrice = dora2nsbtInfo[1].asInt() 
-  let nsbtPriceLastHeight = dora2nsbtInfo[2].asInt() 
-  strict check = if (height - nsbtPriceLastHeight > neutrinoContract.getIntegerValue(keyDora2LastHeightLimit())) then throw("NSBT price is outdated") else true
+func calcSwapLimitREADONLY(gNsbtAmount: Int) = {
+  # limit = a * gNsbtAmount^e 
+  let usdnSwapDelayDuration  = this.getIntegerValue(keySwapAmountAParam()).valueOrErrorMessage("Swap parameter A missed.")
+  let gNsbtAmountBigInt = gNsbtAmount.toBigInt()
+  let limitPowPart = pow(gNsbtAmountBigInt, 0, EULERNUMBER.toBigInt(), 8, 0, DOWN)
+  let limit = fraction(usdnSwapDelayDuration.toBigInt(), limitPowPart, scale6BigInt)
   ([],  makeString([
           "%d",  
-          fraction(gNsbtAmount, nsbtPrice, WAVELET).toString()], SEP))
+          limit.toString()], SEP))
 }
 
 @Callable(i)
@@ -159,46 +162,64 @@ func swapInfoREADONLY(userAddressStr: String) = {
   let minUsdnSwapAmt         = neutrinoContract.getIntegerValue(keyMinNeutrinoSwapAmount())
   let waves2UsdnFee          = neutrinoContract.getIntegerValue(keyWavesOutFeePart())
   let usdn2WavesFee          = neutrinoContract.getIntegerValue(keyNeutrinoOutFeePart())
-  let usdnSwapDelayDuration  = neutrinoContract.getIntegerValue(keyNeutrinoOutFeePart())
-  let wavesSwapDelayDuration = neutrinoContract.getIntegerValue(keyNeutrinoOutFeePart())
+  let usdnSwapDelayDuration  = neutrinoContract.getIntegerValue(keyBalanceNeutrinoLockInterval())
+  let wavesSwapDelayDuration = neutrinoContract.getIntegerValue(keyBalanceWavesLockInterval())
+
   let (quickSwapUserSpent, 
-      currentUsdnLimit,
-      currentWavesLimit,
       blocks2LimitReset, 
       maxUsdnLimit, 
-      maxWavesLimit) = if(userAddressStr == "") then (0,0,0,0,0,0) else
+      maxWavesLimit) = if(userAddressStr == "") then (0,0,0,0) else
 
       strict userGNsbtAmount = this.getStringValue(keyNsbtLockContract()).addressFromStringValue()
         .invoke("nsbtStakingInfoWrapperREADONLY", [userAddressStr], []).asInt()
         
-      strict usdnLmtMax = this.invoke("calcTotalQuickSwapLimitREADONLY", [userGNsbtAmount], []).asString().split(SEP)[1].asInt()
+      strict usdnLmtMax = this.invoke("calcSwapLimitREADONLY", [userGNsbtAmount], []).asString().split(SEP)[1].asInt()
       let quickSwapResetBlocks = neutrinoContract.getIntegerValue(keyQuickSwapLimitDuration())
       let lastQuickSwapBlock = neutrinoContract.getInteger(keyUserLastQuickSwapHeight(userAddressStr)).valueOrElse(0)
       let isNewQuickSwapPeriod = height - lastQuickSwapBlock > quickSwapResetBlocks
       let quickSwapUserSpent = if (isNewQuickSwapPeriod) then 0 else neutrinoContract.getInteger(keyQuickSwapUserSpentInPeriod(userAddressStr)).valueOrElse(0)
       
-      let usdnLmtNow = usdnLmtMax - quickSwapUserSpent
-      let wavesLmtNow = convertNeutrinoToWaves(usdnLmtNow, currentPrice)
       let blcks2LmtReset = if (isNewQuickSwapPeriod) then 0 else quickSwapResetBlocks - (height - lastQuickSwapBlock)
       let wavesLmtMax = convertNeutrinoToWaves(usdnLmtMax, currentPrice)
-      (quickSwapUserSpent, usdnLmtNow, wavesLmtNow, blcks2LmtReset, usdnLmtMax, wavesLmtMax)
+      (quickSwapUserSpent, blcks2LmtReset, usdnLmtMax, wavesLmtMax)
 
   ([], 
     makeString([
-          "%d%d%d%d%d%d%d%d%d%d",      
+          "%d%d%d%d%d%d%d%d%d%d%d",      
           currentPrice.toString(), 
-          currentWavesLimit.toString(),
-          currentUsdnLimit.toString(),
-          blocks2LimitReset.toString(),
-          maxWavesLimit.toString(), # max allowed swap limit based on gnsbt balance
-          maxUsdnLimit.toString(),
-          quickSwapUserSpent.toString(),
           minWavesSwapAmt.toString(),
           minUsdnSwapAmt.toString(),
           waves2UsdnFee.toString(),
           usdn2WavesFee.toString(),
-          "1", # usdn swap delay duration
-          "1"  # waves swap delay duration
+          usdnSwapDelayDuration.toString(), # usdn swap delay duration
+          wavesSwapDelayDuration.toString(),  # waves swap delay duration          
+          blocks2LimitReset.toString(),
+          maxWavesLimit.toString(), # max allowed swap limit based on gnsbt balance
+          maxUsdnLimit.toString(),  # max allowed swap limit based on gnsbt balance
+          quickSwapUserSpent.toString()
+          ], SEP))
+}
+
+@Callable(i)
+func gnsbtInfoREADONLY(userAddressStr: String) = {
+  let gnsbtShare = 10000
+  let claimedTotalInUsdn = 10000;
+  let claimedUsdn = 10000
+  let claimedWaves = 10000
+  let unclaimedTotalInUsdn = 10000
+  let unclaimedUsdn = 10000
+  let unclaimedWaves = 10000
+
+  ([], 
+    makeString([
+          "%d%d%d%d%d%d%d",  
+          gnsbtShare.toString(),
+          claimedTotalInUsdn.toString(),
+          claimedUsdn.toString(),
+          claimedWaves.toString(),
+          unclaimedTotalInUsdn.toString(),
+          unclaimedUsdn.toString(),
+          unclaimedWaves.toString()
           # My gNSBT share
           # Already Claimed in USDN (calculate WAVES part to usdn by current rate)
           # Already Claimed USDN (calculate WAVES part to usdn by current rate)
@@ -209,4 +230,5 @@ func swapInfoREADONLY(userAddressStr: String) = {
           
           ], SEP))
 }
+
 
