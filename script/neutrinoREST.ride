@@ -109,6 +109,7 @@ func neutrinoStatsREADONLY() = {
   let surplusPercent         = neutrinoMetrics[8].asInt()
   let BR                     = neutrinoMetrics[9].asInt()
   let nsbtSupply             = neutrinoMetrics[10].asInt()
+  let maxNsbtSupply          = neutrinoMetrics[11].asInt()
   let nsbt2usdnPrice         = prices[1].asInt()
   let nsbt2wavesPrice        = prices[2].asInt()
   
@@ -124,8 +125,9 @@ func neutrinoStatsREADONLY() = {
           surplusPercent.toString(),        # 8
           BR.toString(),                    # 9
           nsbtSupply.toString(),            # 10
-          nsbt2usdnPrice.toString(),        # 11
-          nsbt2wavesPrice.toString()        # 12
+          maxNsbtSupply.toString(),         # 11
+          nsbt2usdnPrice.toString(),        # 12
+          nsbt2wavesPrice.toString()        # 13
           ], SEP))
 }
 
