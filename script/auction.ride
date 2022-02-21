@@ -26,6 +26,25 @@ func getNumberByAddressAndKey(address: Address, key: String) = {
     getInteger(address, key).valueOrElse(0)
 }
 
+func asAnyList(val: Any) = {
+  match val {
+    case valAnyLyst: List[Any] => valAnyLyst
+    case _ => throw("fail to cast into List[Any]")
+  }
+}
+func asString(val: Any) = {
+  match val {
+    case valStr: String => valStr
+    case _ => throw("fail to cast into String")
+  }
+}
+func asInt(val: Any) = {
+  match val {
+    case valInt: Int => valInt
+    case _ => throw("fail to cast into Int")
+  }
+}
+
 #-------------------Constants---------------------------
 let WAVELET = 100000000
 let PAULI = 1000000
@@ -53,6 +72,7 @@ let BalanceLockedkKey = "balance_lock_"
 let WavesLockedBalanceKey = BalanceLockedkKey + "waves"
 let NeutrinoLockedBalanceKey = BalanceLockedkKey + "neutrino"
 let FirstOrderKey = "order_first"
+let MathContractKey = "math_contract"
 
 func getRoiByOrderIdKey(orderId: String) = "debug_order_roi_" + orderId
 
@@ -72,33 +92,21 @@ func convertWavesToNeutrino(amount: Int, price: Int) = fraction(fraction(amount,
 func convertWavesToBond(amount: Int, price: Int) = convertWavesToNeutrino(amount, price)
 func convertBondToWaves(amount: Int, price: Int) = convertNeutrinoToWaves(amount, price)
 
+func toX16(origVal: Int, origScaleMult: Int)          = fraction(origVal.toBigInt(), BIGMULT16, origScaleMult.toBigInt())
+func fromX16(val: BigInt, resultScaleMult: Int)       = fraction(val, resultScaleMult.toBigInt(), BIGMULT16).toInt()
+
 #-------------------Global vars-------------------------
 let neutrinoContract = Address(base58'3PC9BfRwJWWiw9AREE2B3eWzCks3CYtg4yo')
 let controlContract = Address(base58'3P5Bfd58PPfNvBM2Hy8QfbcDqMeNtzg7KfP') ## The value from neutrino.ride
 let liquidationContract = Address(base58'3P4PCxsJqMzQBALo8zANHtBDZRRquobHQp7')
+let mathContract = getStringByKey(MathContractKey)
 let neutrinoAssetId = base58'DG2xFkPdDwKUoBkzGAhQtLpSGzfXLiCYPEzeKH2Ad24p' # Assets ids. The value from neutrino.ride
 let nsbtAssetId = base58'6nSpVyNH7yM69eg446wrQR94ipbbcmZMU1ENPwanC97g' # NSBT with 6 decimals as USDN does
 
 let isBlocked = getBoolByAddressAndKey(controlContract, "is_blocked")
 
 #-------------------Global vars deficit, locked & supply -------------------------
-let currentPrice = getNumberByAddressAndKey(controlContract, PriceKey) # The value from control.ride
-let neutrinoLockedBalance = getNumberByAddressAndKey(neutrinoContract, NeutrinoLockedBalanceKey) #locked balance from USDN -> WAVES swap
-#cannot be expressed by complexity limitations: let wavesLockedBalance = getNumberByAddressAndKey(neutrinoContract, WavesLockedBalanceKey) #locked balance from WAVES -> USDN swap
-let reserve = wavesBalance(neutrinoContract).regular -
-    getNumberByAddressAndKey(neutrinoContract, WavesLockedBalanceKey) #waves reserves to cover USDN supply
-let reservesInUsdn = convertWavesToNeutrino(reserve, currentPrice)
-let neutrinoSupply = neutrinoLockedBalance + assetInfo(neutrinoAssetId).value().quantity - assetBalance(neutrinoContract, neutrinoAssetId) - assetBalance(liquidationContract, neutrinoAssetId) # supply outside main sc or liquidation contract
-let deficit = neutrinoSupply - reservesInUsdn
-let currentMaxRoi = fraction(deficit, 100, neutrinoSupply)
-
-let currentBrMult = fraction(reservesInUsdn, MULT, neutrinoSupply)
 let firstOrder = getStringByKey(FirstOrderKey)
-
-# NSBT data
-let nsbtSupplyMAX =  assetInfo(nsbtAssetId).value().quantity
-let nsbtSupply = nsbtSupplyMAX - this.assetBalance(nsbtAssetId)
-
 
 #-------------------Get functions----------------------
 func getOrderPrice(id : String) = getNumberByKey(getOrderPriceKey(id))
@@ -108,16 +116,12 @@ func getOrderStatus(id : String) = getStringByKey(getOrderStatusKey(id))
 func getOrderFilledTotal(id : String) = getNumberByKey(getOrderFilledTotalKey(id))
 func getPrevOrder(id: String) = getStringByKey(getPrevOrderKey(id))
 func getNextOrder(id: String) = getStringByKey(getNextOrderKey(id))
-
-func getPriceForRoi(roiPercents: Int) = {fraction(100 + roiPercents, currentPrice, 100)}
 func getReversePrice(price: Int) = {PRICELET * PRICELET / price}
 
 func calcNsbt2WavesPriceRaw(spentWavesRaw: Int, receivedNsbtRaw: Int) = {fraction(spentWavesRaw, PAULI * PRICELET, receivedNsbtRaw)}
 
-#------------------- -------------
 #-------------------Any functions----------------------
-
-func orderData(orderId: String, totalWavelets: Int, filledWavelets: Int, owner: String, status: String, roi: Int, price: Int) = {
+func orderData(orderId: String, totalWavelets: Int, filledWavelets: Int, owner: String, status: String, roi: Int, price: Int, currentPrice: Int) = {
     [IntegerEntry(getOrderPriceKey(orderId), price), # currently it is kept for backwards compatibility with cache-updater: see https://github.com/waves-exchange/cache-updater/blob/master/src/entities/bondsorder.go#L143
      IntegerEntry(getOrderTotalKey(orderId), totalWavelets),
      IntegerEntry(getOrderFilledTotalKey(orderId), filledWavelets),
@@ -129,78 +133,50 @@ func orderData(orderId: String, totalWavelets: Int, filledWavelets: Int, owner: 
     ]
 }
 
-# explicit parameters were introduced to simplify testing
-func calculateK(wRaw: Int, uRaw: Int, price: Int, mRaw: Int, sRaw: Int) = {
-  let EXP = 2718281.toBigInt()
-  let EXPSCALE = 6
-
-  let a = this.getInteger("nsbtCurveParam_a").valueOrElse(3)
-  let paulB = this.getInteger("nsbtCurveParam_b").valueOrElse((3*PAULI)/10)
-
-  let wReservesInUsdn = convertWavesToNeutrino(wRaw, price)
-  let multBR = fraction(wReservesInUsdn, MULT, uRaw)
-  if (multBR > 10678564816) then throw("BR > 10678.564816% will overflow exponent") else
-
-  let multPower = a * (multBR - MULT)
-  let multExpInPower = pow(EXP, EXPSCALE, toBigInt(multPower), SCALE8, SCALE16, DOWN)
-  let multK = fraction(toBigInt(paulB), multExpInPower, BIGPAULI)
-
-  (a, paulB, wReservesInUsdn, multBR, multPower, multExpInPower, multK)
-}
-
-# explicit parameters were introduced to simplify testing
-func curveFunction(wRaw: Int, uRaw: Int, price: Int, mRaw: Int, sRaw: Int, wavesPayRaw: Int) = {
-    let kCalcArray = calculateK(wRaw, uRaw, price, mRaw, sRaw)
-    let multK = kCalcArray._7
-
-    let usdnPay = convertWavesToNeutrino(wavesPayRaw, price)
-    let bigMaxNsbtSupply = toBigInt(mRaw)
-    let bigNsbtSupply = toBigInt(mRaw-sRaw)
-
-    let step1 = fraction(toBigInt(usdnPay), BIGMULT16, multK)
-    let step2 = fraction(step1, bigNsbtSupply, bigMaxNsbtSupply)
-    let step3 = fraction(bigNsbtSupply, bigMaxNsbtSupply, step2 + bigMaxNsbtSupply).toInt()
-    let nsbtAmountRaw = mRaw - sRaw - step3
-
-    (nsbtAmountRaw, usdnPay, wRaw, uRaw, mRaw, sRaw, kCalcArray._1, kCalcArray._2, kCalcArray._3, price,
-     kCalcArray._4, kCalcArray._5, kCalcArray._6, multK, step1, step2, step3)
-}
-#-------------------Callable---------------------------
-
-func toStr(name: String, curveResult: (Int, Int, Int, Int, Int, Int, Int, Int, Int, Int, Int, Int, BigInt, BigInt, BigInt, BigInt, Int)) = {
-    name + "[nsbtAmountRaw="    + curveResult._1.toString()
-        + " usdnPayment="       + curveResult._2.toString()
-        + " wRaw="              + curveResult._3.toString()
-        + " uRaw="              + curveResult._4.toString()
-        + " mRaw="              + curveResult._5.toString()
-        + " sRaw="              + curveResult._6.toString()
-        + " nsbtCurveParam_a="  + curveResult._7.toString()
-        + " nsbtCurveParam_b="  + curveResult._8.toString()
-        + " wReservesInUsdn="   + curveResult._9.toString()
-        + " price="             + curveResult._10.toString()
-        + " multBR="            + curveResult._11.toString()
-        + " multPower="         + curveResult._12.toString()
-        + " multExpInPower="    + curveResult._13.toString()
-        + " multK="             + curveResult._14.toString()
-        + " step1="             + curveResult._15.toString()
-        + " step2="             + curveResult._16.toString()
-        + " step3="             + curveResult._17.toString()
+func toStr(name: String, curveResult: List[Any]) = {
+    name + "[nsbtAmountRaw="    + curveResult[1].asInt().toString()
+        + " usdnPayment="       + curveResult[2].asInt().toString()
+        + " wRaw="              + curveResult[3].asInt().toString()
+        + " uRaw="              + curveResult[4].asInt().toString()
+        + " mRaw="              + curveResult[5].asInt().toString()
+        + " sRaw="              + curveResult[6].asInt().toString()
+        + " nsbtCurveParam_a="  + curveResult[7].asInt().toString()
+        + " nsbtCurveParam_b="  + curveResult[8].asInt().toString()
+        + " wReservesInUsdn="   + curveResult[9].asInt().toString()
+        + " price="             + curveResult[10].asInt().toString()
+        + " multBR="            + curveResult[11].asInt().toString()
+        + " multPower="         + curveResult[12].asInt().toString()
+        + " multExpInPower="    + curveResult[13].asInt().toString()
+        + " multK="             + curveResult[14].asInt().toString()
+        + " step1="             + curveResult[15].asString()
+        + " step2="             + curveResult[16].asString()
+        + " step3="             + curveResult[17].asString()
         + "]"
 }
+
+#-------------------Callable---------------------------
 
 @Callable(i)
 func buyNsbt() = {
     let pmt = i.payments[0].value()
     let pmtAmount = pmt.amount
     let wavesPay = pmtAmount
-    let ownerAddress = i.caller
+    #let ownerAddress = i.caller
 
     if (isBlocked) then throw("contract is blocked by EMERGENCY SHUTDOWN actions until reactivation by emergency oracles") else
     if (isDefined(pmt.assetId)) then throw("can use waves only") else
     if (pmtAmount < 10 * WAVELET) then throw("min 10 waves expected") else
-
-    let curveResult = curveFunction(reserve, neutrinoSupply, currentPrice, nsbtSupplyMAX, nsbtSupply, wavesPay)
-    let nsbtAmount = curveResult._1
+    let ownerAddress = i.caller
+    # ([], (currentPrice, neutrinoLockedBalance, wavesLockedBalance, reserve, reservesInUsdn, neutrinoSupply, surplus, surplusPercent, BR, nsbtSupply))
+    strict neutrinoMetrics = addressFromStringValue(mathContract).invoke("calcNeutinoMetricsMATH", [], []).asAnyList()
+    let currentPrice           = neutrinoMetrics[1].asInt()
+    let reserve                = neutrinoMetrics[4].asInt()
+    let neutrinoSupply         = neutrinoMetrics[6].asInt()
+    let nsbtSupply             = neutrinoMetrics[10].asInt()
+    let nsbtSupplyMAX =  assetInfo(nsbtAssetId).value().quantity
+    strict curveResult = addressFromStringValue(mathContract).invoke("curveFunctionMATH", [reserve, neutrinoSupply, currentPrice, nsbtSupplyMAX, nsbtSupply, wavesPay], []).asAnyList()
+    
+    let nsbtAmount = curveResult[1].asInt()
 
     if (nsbtAmount <= 0) then throw("nsbtAmount <= 0") else
     if (nsbtAmount * 9223372 < wavesPay) then throw("Nsbt2Waves price exceeds MAX_INT: " + toString(wavesPay) + "/" + toString(nsbtAmount)) else {
@@ -213,7 +189,8 @@ func buyNsbt() = {
 
         (orderData(i.transactionId.toBase58String(), pmtAmount, pmtAmount, ownerAddress.toString(), FILLED,
             roi,                # to keep backward compatability with prev. format
-            nsbt2WavesPriceRaw) # to keep backward compatability with prev. format
+            nsbt2WavesPriceRaw, 
+            currentPrice) # to keep backward compatability with prev. format
         ++ [
           ScriptTransfer(ownerAddress, nsbtAmount, nsbtAssetId),
           StringEntry("debug_curveResult", toStr("curveResult", curveResult))
@@ -221,7 +198,6 @@ func buyNsbt() = {
         nsbtAmount)
     }
 }
-
 
 # cancel buy NSBT order or liquidation order
 # [called by user]
@@ -245,7 +221,6 @@ func cancelOrder(orderId : String) = {
         ScriptTransfer(i.caller, amount, unit)]
     }
 }
-
 
 @Verifier(tx)
 func verify() = {
