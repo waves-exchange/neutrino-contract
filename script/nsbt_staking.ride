@@ -9,7 +9,6 @@ let separator = "__"
 let SCALE = 1000
 let MULT8 = 1_0000_0000
 let HALF8 = 5000_0000
-let HALFLIFE = 259200
 
 # Neutrino Contract Keys
 func keyBondAsset() = "bond_asset_id"
@@ -17,15 +16,11 @@ func keyAuctionContractAddress() = "auction_contract"
 
 # NSBT Lock Contract Keys
 func keyNeutrinoContractAddress() = "%s__neutrinoContractAddress"
-func keyGNsbtContractAddress() = "%s__gNsbtContractAddress"
 func keyMinLockAmount() = "%s__minLockAmount"
-func keyNextUserNum() = "%s__nextUserNum"
-# User mapping
-func keyUser2NumMapping(userAddress: Address) = ["%s%s%s", "mapping", "user2num", userAddress.toString()].makeString(separator)
-func keyNum2UserMapping(num: Int) = ["%s%s%s", "mapping", "num2user", num.toString()].makeString(separator)
+func keyHalfLife() = "%s__halfLife"
 # Lock Params
-func keyLockParamUserAmount(userNum: Int) = ["%s%d%s", "paramByUserNum", userNum.toString(), "amount"].makeString(separator)
-func keyLockParamStartBlock(userNum: Int) = ["%s%d%s", "paramByUserNum", userNum.toString(), "start"].makeString(separator)
+func keyLockParamUserAmount(userAddress: Address) = ["%s%s%s", "paramByUser", userAddress.toString(), "amount"].makeString(separator)
+func keyLockParamStartBlock(userAddress: Address) = ["%s%s%s", "paramByUser", userAddress.toString(), "start"].makeString(separator)
 # History
 func keyHistoryRecord(type: String, userAddress: Address, txId: ByteVector) = ["%s%s%s%s", "history", type, userAddress.toString(), txId.toBase58String()].makeString(separator)
 # Stats
@@ -80,36 +75,32 @@ func StatsEntry(totalLockedInc: Int, lockCountInc: Int, usersCountInc: Int) = {
   ]
 }
 
-# TODO: free userNum
-func LockParamsEntry(userNum: Int, amount: Int, start: Int) = {
+func LockParamsEntry(userAddress: Address, amount: Int, start: Int) = {
   [
-    IntegerEntry(userNum.keyLockParamUserAmount(), amount),
-    IntegerEntry(userNum.keyLockParamStartBlock(), start)
+    IntegerEntry(userAddress.keyLockParamUserAmount(), amount),
+    IntegerEntry(userAddress.keyLockParamStartBlock(), start)
   ]
 }
 
 func getParamsOrFail() = {
   let neutrinoContract = keyNeutrinoContractAddress().getStringOrFail().addressFromStringValue()
   (
-    keyGNsbtContractAddress().getStringOrFail().addressFromStringValue(),
     neutrinoContract.getStringValue(keyAuctionContractAddress()).fromBase58String(),
     neutrinoContract.getStringValue(keyBondAsset()).fromBase58String(),
     keyMinLockAmount().getIntOrFail(),
-    keyNextUserNum().getIntOrFail()
+    keyHalfLife().getIntOrFail()
   )
 }
 
 func isUserExists(userAddress: Address) = {
-  this.getInteger(userAddress.keyUser2NumMapping()).isDefined()
+  this.getInteger(userAddress.keyLockParamStartBlock()).isDefined()
 }
 
 func getUserParamsOrUnit(userAddress: Address) = {
   if (userAddress.isUserExists()) then {
-    let userNum = userAddress.keyUser2NumMapping().getIntOrFail()
     (
-      userNum,
-      userNum.keyLockParamUserAmount().getIntOrFail(),
-      userNum.keyLockParamStartBlock().getIntOrFail()
+      userAddress.keyLockParamUserAmount().getIntOrFail(),
+      userAddress.keyLockParamStartBlock().getIntOrFail()
     )
   } else unit
 }
@@ -118,34 +109,31 @@ func getUserParamsOrFail(userAddress: Address) = {
   userAddress.getUserParamsOrUnit().valueOrErrorMessage("User " + userAddress.toString() + " is not defined")
 }
 
-func weighted(a: Int, h: Int) = {
-  fraction(a, MULT8, pow(2, 0, fraction(-h, MULT8, HALFLIFE), 8, 8, HALFUP))
-}
-
 # find out merged stake effective height
-func mergedHeight(amount1: Int, height1: Int, amount2: Int, height2: Int) = {
-  let v = fraction(amount1 + amount2, MULT8, weighted(amount1, height1) + weighted(amount2, height2))
-  (HALF8 - HALFLIFE * log(v, 8, 2, 0, 8, HALFUP)) / MULT8
+func mergedHeight(amount1: Int, height1: Int, amount2: Int, height2: Int, halfLife: Int) = {
+  let w = fraction(amount2, pow(2, 0, fraction(height2 - height1, MULT8, halfLife), 8, 8, HALFUP), MULT8)
+  let v = fraction(amount1 + amount2, MULT8, amount1 + w)
+  height1 + (HALF8 - halfLife * log(v, 8, 2, 0, 8, HALFUP)) / MULT8
 }
 
-func getUnstakeComissionAmount(amount: Int, startHeight: Int) = {
-  fraction(amount, pow(2, 0, fraction(-(height - startHeight), MULT8, HALFLIFE), 8, 8, HALFUP), MULT8)
+func getUnstakeComissionAmount(amount: Int, startHeight: Int, halfLife: Int) = {
+  fraction(amount, pow(2, 0, fraction(-(height - startHeight), MULT8, halfLife), 8, 8, HALFUP), MULT8)
 }
 
+# init halfLife with 259200
 @Callable(i)
-func constructor(neutrinoContractAddress: String, gNsbtContractAddress: String, minLockAmount: Int) = {
+func constructor(neutrinoContractAddress: String, minLockAmount: Int, halfLife: Int) = {
   if (i.caller != this) then throw("Permission denied") else
   [
     StringEntry(keyNeutrinoContractAddress(), neutrinoContractAddress),
-    StringEntry(keyGNsbtContractAddress(), gNsbtContractAddress),
     IntegerEntry(keyMinLockAmount(), minLockAmount),
-    IntegerEntry(keyNextUserNum(), 0)
+    IntegerEntry(keyHalfLife(), halfLife)
   ]
 }
 
 @Callable(i)
 func stake() = {
-  let (gNsbtContract, auctionContract, bondAssetId, minLockAmount, nextUserNum) = getParamsOrFail()
+  let (auctionContract, bondAssetId, minLockAmount, halfLife) = getParamsOrFail()
   if (i.payments.size() != 1) then throw("Invalid payments size") else
   let payment = i.payments[0]
   let amount = payment.amount
@@ -157,59 +145,76 @@ func stake() = {
   let userAddress = i.caller
 #  if (userAddress.scriptHash().isDefined()) then throw("Address is scripted. Access denied") else
 
-  let userParamsOrUnit = userAddress.getUserParamsOrUnit()
-  let (isNewUser, userNum, lockAmount, lockStartHeight) = match userParamsOrUnit {
-    case p: (Int, Int, Int) => (false, p._1, p._2, p._3)
-    case _: Unit => (true, nextUserNum, 0, -1)
+  let (isNewUser, lockAmount, lockStartHeight) = match userAddress.getUserParamsOrUnit() {
+    case p: (Int, Int) => (false, p._1, p._2)
+    case _: Unit => (true, 0, -1)
   }
 
   let mergedAmount = if (isNewUser) then amount else amount + lockAmount
-  let mergedStartHeight = if (isNewUser) then height else mergedHeight(amount, height, lockAmount, lockStartHeight)
+  let mergedStartHeight = if (isNewUser) then height else mergedHeight(amount, height, lockAmount, lockStartHeight, halfLife)
   if (mergedAmount < minLockAmount) then throw("Min lock amount is " + minLockAmount.toString()) else
 
-  let nextUserNumInc = if (isNewUser) then 1 else 0
-
   [
-    IntegerEntry(keyNextUserNum(), nextUserNum + nextUserNumInc),
-    IntegerEntry(userAddress.keyUser2NumMapping(), userNum),
-    StringEntry(userNum.keyNum2UserMapping(), userAddress.toString()),
     HistoryRecordEntry("stake", userAddress, i.transactionId, lockAmount, lockStartHeight, mergedAmount, mergedStartHeight)
   ]
-  ++ LockParamsEntry(userNum, mergedAmount, mergedStartHeight)
-  ++ StatsEntry(amount, 1, nextUserNumInc)
+  ++ LockParamsEntry(userAddress, mergedAmount, mergedStartHeight)
+  ++ StatsEntry(amount, 1, if (isNewUser) then 1 else 0)
 }
 
 @Callable(i)
 func unstake(amount: Int) = {
   let userAddress  = i.caller
-  let (gNsbtContract, auctionAddress, bondAssetId) = getParamsOrFail()
-  let (userNum, lockAmount, lockStart) = userAddress.getUserParamsOrFail()
+  let (auctionAddress, bondAssetId, minLockAmount, halfLife) = getParamsOrFail()
+  let (lockAmount, lockStart) = userAddress.getUserParamsOrFail()
 
   if (lockAmount <= 0) then throw("Nothing to unstake") else
   if (amount > lockAmount) then throw("Requested " + amount.toString() + ", but staked only " + lockAmount.toString()) else
 
-  let nextPeriod = gNsbtContract.getInteger(keyNextPeriod()).valueOrElse(0)
-  let comissionAmount = getUnstakeComissionAmount(amount, lockStart)
+  let comissionAmount = getUnstakeComissionAmount(amount, lockStart, halfLife)
   [
     ScriptTransfer(userAddress, amount - comissionAmount, bondAssetId),
     ScriptTransfer(auctionAddress.Address(), comissionAmount, bondAssetId),
     HistoryRecordEntry("unstake", userAddress, i.transactionId, lockAmount, lockStart, lockAmount - amount, lockStart)
   ]
-  ++ LockParamsEntry(userNum, lockAmount - amount, lockStart)
+  ++ LockParamsEntry(userAddress, lockAmount - amount, lockStart)
   ++ StatsEntry(-amount, if (amount == lockAmount) then -1 else 0, if (amount == lockAmount) then -1 else 0)
 }
 
+# User's gNSBT amount at current height
+@Callable(i)
+func gNsbtAmountREADONLY(userAddressStr: String) = {
+  let userAddress = userAddressStr.addressFromStringValue()
+  (
+    [],
+    if (userAddress.isUserExists()) then userAddress.getUserParamsOrFail()._1 else 0
+  )
+}
+
+# Contract settings
+# (Min staked amount)
+@Callable(i)
+func minStakedAmountREADONLY() = {
+  ([], getParamsOrFail()._3)
+}
+
+# handle for evaluating merged stake height
+@Callable(i)
+func mergedHeightREADONLY(amount1: Int, height1: Int, amount2: Int, height2: Int) = {
+  let h = mergedHeight(amount1, height1, amount2, height2, keyHalfLife().getIntOrFail())
+  ([], h)
+}
+
 # Staking params
-# (userNum, gNsbtAmount, stakingStartHeight)
+# (gNsbtAmount, stakingStartHeight)
 @Callable(i)
 func nsbtStakingInfoWrapperREADONLY(userAddressStr: String) = {
-  let (userNum, nsbtAmt, stakingStart) = if(userAddressStr == "") then (0,0,0) else
+  let (nsbtAmt, stakingStart) = if(userAddressStr == "") then (0,0) else
 
       let userAddress = userAddressStr.addressFromStringValue()
       if (userAddress.isUserExists()) then {
-        let (userNum, amount, start) = userAddress.getUserParamsOrFail()
-        (userNum, amount, start)
-      } else (0, 0, 0)
+        let (amount, start) = userAddress.getUserParamsOrFail()
+        ([], (amount, start))
+      } else ([], (0, 0))
 
-  ([], (userNum, nsbtAmt, stakingStart))
+  ([], (nsbtAmt, stakingStart))
 }
