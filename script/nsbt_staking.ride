@@ -1,0 +1,215 @@
+{-# STDLIB_VERSION 5 #-}
+{-# CONTENT_TYPE DAPP #-}
+{-# SCRIPT_TYPE ACCOUNT #-}
+
+# NSBT Staking Smart Contract
+
+let revisionNum = ""
+let separator = "__"
+let SCALE = 1000
+let MULT8 = 1_0000_0000
+let HALF8 = 5000_0000
+let HALFLIFE = 259200
+
+# Neutrino Contract Keys
+func keyBondAsset() = "bond_asset_id"
+func keyAuctionContractAddress() = "auction_contract"
+
+# NSBT Lock Contract Keys
+func keyNeutrinoContractAddress() = "%s__neutrinoContractAddress"
+func keyGNsbtContractAddress() = "%s__gNsbtContractAddress"
+func keyMinLockAmount() = "%s__minLockAmount"
+func keyNextUserNum() = "%s__nextUserNum"
+# User mapping
+func keyUser2NumMapping(userAddress: Address) = ["%s%s%s", "mapping", "user2num", userAddress.toString()].makeString(separator)
+func keyNum2UserMapping(num: Int) = ["%s%s%s", "mapping", "num2user", num.toString()].makeString(separator)
+# Lock Params
+func keyLockParamUserAmount(userNum: Int) = ["%s%d%s", "paramByUserNum", userNum.toString(), "amount"].makeString(separator)
+func keyLockParamStartBlock(userNum: Int) = ["%s%d%s", "paramByUserNum", userNum.toString(), "start"].makeString(separator)
+# History
+func keyHistoryRecord(type: String, userAddress: Address, txId: ByteVector) = ["%s%s%s%s", "history", type, userAddress.toString(), txId.toBase58String()].makeString(separator)
+# Stats
+func keyLockParamTotalAmount() = ["%s%s", "stats", "activeTotalLocked"].makeString(separator)
+func keyStatsLocksCount() = ["%s%s", "stats", "locksCount"].makeString(separator)
+func keyStatsUsersCount() = ["%s%s", "stats", "activeUsersCount"].makeString(separator)
+
+# Reward Payouts Distribution Keys
+func keyNextPeriod() = "%s__nextPeriod"
+
+func getIntOrZero(key: String) = {
+  this.getInteger(key).valueOrElse(0)
+}
+
+func getIntOrFail(key: String) = {
+  this.getInteger(key).valueOrErrorMessage("Mandatory this." + key + " is not defined")
+}
+
+func getStringOrFail(key: String) = {
+  this.getString(key).valueOrErrorMessage("Mandatory this." + key + " is not defined")
+}
+
+func formatHistoryRecord(oldAmount: Int, oldStart: Int, newAmount: Int, newStart: Int) = {
+  [
+    "%d%d%d%d%d%d",
+    lastBlock.height.toString(),
+    lastBlock.timestamp.toString(),
+    oldAmount.toString(),
+    oldStart.toString(),
+    newAmount.toString(),
+    newStart.toString()
+  ].makeString(separator)
+}
+
+func HistoryRecordEntry(type: String, userAddress: Address, txId: ByteVector, 
+    oldAmount: Int, oldStart: Int, newAmount: Int, newStart: Int) = {
+  StringEntry(
+    keyHistoryRecord(type, userAddress, txId),
+    formatHistoryRecord(oldAmount, oldStart, newAmount, newStart)
+  )
+}
+
+func StatsEntry(totalLockedInc: Int, lockCountInc: Int, usersCountInc: Int) = {
+  let locksCount = keyStatsLocksCount().getIntOrZero()
+  let usersCount = keyStatsUsersCount().getIntOrZero()
+  let totalAmount = keyLockParamTotalAmount().getIntOrZero()
+
+  [
+    IntegerEntry(keyStatsLocksCount(), locksCount + lockCountInc),
+    IntegerEntry(keyStatsUsersCount(), usersCount + usersCountInc),
+    IntegerEntry(keyLockParamTotalAmount(), totalAmount + totalLockedInc)
+  ]
+}
+
+# TODO: free userNum
+func LockParamsEntry(userNum: Int, amount: Int, start: Int) = {
+  [
+    IntegerEntry(userNum.keyLockParamUserAmount(), amount),
+    IntegerEntry(userNum.keyLockParamStartBlock(), start)
+  ]
+}
+
+func getParamsOrFail() = {
+  let neutrinoContract = keyNeutrinoContractAddress().getStringOrFail().addressFromStringValue()
+  (
+    keyGNsbtContractAddress().getStringOrFail().addressFromStringValue(),
+    neutrinoContract.getStringValue(keyAuctionContractAddress()).fromBase58String(),
+    neutrinoContract.getStringValue(keyBondAsset()).fromBase58String(),
+    keyMinLockAmount().getIntOrFail(),
+    keyNextUserNum().getIntOrFail()
+  )
+}
+
+func isUserExists(userAddress: Address) = {
+  this.getInteger(userAddress.keyUser2NumMapping()).isDefined()
+}
+
+func getUserParamsOrUnit(userAddress: Address) = {
+  if (userAddress.isUserExists()) then {
+    let userNum = userAddress.keyUser2NumMapping().getIntOrFail()
+    (
+      userNum,
+      userNum.keyLockParamUserAmount().getIntOrFail(),
+      userNum.keyLockParamStartBlock().getIntOrFail()
+    )
+  } else unit
+}
+
+func getUserParamsOrFail(userAddress: Address) = {
+  userAddress.getUserParamsOrUnit().valueOrErrorMessage("User " + userAddress.toString() + " is not defined")
+}
+
+func weighted(a: Int, h: Int) = {
+  fraction(a, MULT8, pow(2, 0, fraction(-h, MULT8, HALFLIFE), 8, 8, HALFUP))
+}
+
+# find out merged stake effective height
+func mergedHeight(amount1: Int, height1: Int, amount2: Int, height2: Int) = {
+  let v = fraction(amount1 + amount2, MULT8, weighted(amount1, height1) + weighted(amount2, height2))
+  (HALF8 - HALFLIFE * log(v, 8, 2, 0, 8, HALFUP)) / MULT8
+}
+
+func getUnstakeComissionAmount(amount: Int, startHeight: Int) = {
+  fraction(amount, pow(2, 0, fraction(-(height - startHeight), MULT8, HALFLIFE), 8, 8, HALFUP), MULT8)
+}
+
+@Callable(i)
+func constructor(neutrinoContractAddress: String, gNsbtContractAddress: String, minLockAmount: Int) = {
+  if (i.caller != this) then throw("Permission denied") else
+  [
+    StringEntry(keyNeutrinoContractAddress(), neutrinoContractAddress),
+    StringEntry(keyGNsbtContractAddress(), gNsbtContractAddress),
+    IntegerEntry(keyMinLockAmount(), minLockAmount),
+    IntegerEntry(keyNextUserNum(), 0)
+  ]
+}
+
+@Callable(i)
+func stake() = {
+  let (gNsbtContract, auctionContract, bondAssetId, minLockAmount, nextUserNum) = getParamsOrFail()
+  if (i.payments.size() != 1) then throw("Invalid payments size") else
+  let payment = i.payments[0]
+  let amount = payment.amount
+
+  let invalidAssetMessage = "Invalid asset. " + bondAssetId.toBase58String() + " is expected"
+  let assetId = payment.assetId.valueOrErrorMessage(invalidAssetMessage)
+  if (assetId != bondAssetId) then throw(invalidAssetMessage) else
+
+  let userAddress = i.caller
+#  if (userAddress.scriptHash().isDefined()) then throw("Address is scripted. Access denied") else
+
+  let userParamsOrUnit = userAddress.getUserParamsOrUnit()
+  let (isNewUser, userNum, lockAmount, lockStartHeight) = match userParamsOrUnit {
+    case p: (Int, Int, Int) => (false, p._1, p._2, p._3)
+    case _: Unit => (true, nextUserNum, 0, -1)
+  }
+
+  let mergedAmount = if (isNewUser) then amount else amount + lockAmount
+  let mergedStartHeight = if (isNewUser) then height else mergedHeight(amount, height, lockAmount, lockStartHeight)
+  if (mergedAmount < minLockAmount) then throw("Min lock amount is " + minLockAmount.toString()) else
+
+  let nextUserNumInc = if (isNewUser) then 1 else 0
+
+  [
+    IntegerEntry(keyNextUserNum(), nextUserNum + nextUserNumInc),
+    IntegerEntry(userAddress.keyUser2NumMapping(), userNum),
+    StringEntry(userNum.keyNum2UserMapping(), userAddress.toString()),
+    HistoryRecordEntry("stake", userAddress, i.transactionId, lockAmount, lockStartHeight, mergedAmount, mergedStartHeight)
+  ]
+  ++ LockParamsEntry(userNum, mergedAmount, mergedStartHeight)
+  ++ StatsEntry(amount, 1, nextUserNumInc)
+}
+
+@Callable(i)
+func unstake(amount: Int) = {
+  let userAddress  = i.caller
+  let (gNsbtContract, auctionAddress, bondAssetId) = getParamsOrFail()
+  let (userNum, lockAmount, lockStart) = userAddress.getUserParamsOrFail()
+
+  if (lockAmount <= 0) then throw("Nothing to unstake") else
+  if (amount > lockAmount) then throw("Requested " + amount.toString() + ", but staked only " + lockAmount.toString()) else
+
+  let nextPeriod = gNsbtContract.getInteger(keyNextPeriod()).valueOrElse(0)
+  let comissionAmount = getUnstakeComissionAmount(amount, lockStart)
+  [
+    ScriptTransfer(userAddress, amount - comissionAmount, bondAssetId),
+    ScriptTransfer(auctionAddress.Address(), comissionAmount, bondAssetId),
+    HistoryRecordEntry("unstake", userAddress, i.transactionId, lockAmount, lockStart, lockAmount - amount, lockStart)
+  ]
+  ++ LockParamsEntry(userNum, lockAmount - amount, lockStart)
+  ++ StatsEntry(-amount, if (amount == lockAmount) then -1 else 0, if (amount == lockAmount) then -1 else 0)
+}
+
+# Staking params
+# (userNum, gNsbtAmount, stakingStartHeight)
+@Callable(i)
+func nsbtStakingInfoWrapperREADONLY(userAddressStr: String) = {
+  let (userNum, nsbtAmt, stakingStart) = if(userAddressStr == "") then (0,0,0) else
+
+      let userAddress = userAddressStr.addressFromStringValue()
+      if (userAddress.isUserExists()) then {
+        let (userNum, amount, start) = userAddress.getUserParamsOrFail()
+        (userNum, amount, start)
+      } else (0, 0, 0)
+
+  ([], (userNum, nsbtAmt, stakingStart))
+}
