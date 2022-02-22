@@ -8,8 +8,8 @@ let MULTSCALE        = 8
 let EULERNUMBER      = 271828182      # 10ˆ8
 let scale6           = 1_000_000
 let scale6BigInt     = 1_000_000.toBigInt()
-let scale8           = 100_000_000
-let scale8BigInt     = 100_000_000.toBigInt()
+let scale8           = 1_0000_0000
+let scale8BigInt     = 1_0000_0000.toBigInt()
 let scale18          = 1_000_000_000_000_000_000.toBigInt()
 let SEP              = "__"
 let dora2NsbtSymbol  = "NSBT-USDT"
@@ -47,6 +47,7 @@ func keyPrice() = "price"
 #-------- nsbt staking keys-----------
 func keyLockParamUserAmount(userAddress: String) = ["%s%s%s", "paramByUser", userAddress, "amount"].makeString(SEP)
 func keyLockParamStartBlock(userAddress: String) = ["%s%s%s", "paramByUser", userAddress, "start"].makeString(SEP)
+func keyMinLockAmount() = "%s__minLockAmount"
 
 #------- auction keys------
 func keyMinWavesForNsbtBuy() = "min_waves_nsbt_buy"
@@ -59,10 +60,11 @@ func convertNeutrinoToWaves(amount: Int, price: Int) = fraction(fraction(amount,
 func convertWavesToNeutrino(amount: Int, price: Int) = fraction(fraction(amount, price, PRICELET), scale6, scale8)
 func asAnyList(val: Any) = {
   match val {
-    case valAnyLyst: List[Any] => valAnyLyst
+    case valAnyList: List[Any] => valAnyList
     case _ => throw("fail to cast into List[Any]")
   }
 }
+
 func asInt(val: Any) = {
   match val {
     case valInt: Int => valInt
@@ -232,4 +234,49 @@ func gnsbtInfoREADONLY(userAddressStr: String) = {
           ], SEP))
 }
 
+@Callable(i)
+func buyNsbtREADONLY(wavesPay: Int) = {
+  let minWavesAmountNsbtBuy = auctionContract.getInteger(keyMinWavesForNsbtBuy()).valueOrElse(10)
+  if (wavesPay < minWavesAmountNsbtBuy * scale8) then throw("min " + minWavesAmountNsbtBuy.toString() + " waves expected") else
 
+  strict neutrinoMetrics = mathContract.invoke("calcNeutinoMetricsMATH", [], []).asAnyList()
+  let currentPrice   = neutrinoMetrics[1].asInt()
+  let reserve        = neutrinoMetrics[4].asInt()
+  let neutrinoSupply = neutrinoMetrics[6].asInt()
+  let nsbtSupply     = neutrinoMetrics[10].asInt()
+  let nsbtSupplyMAX  = assetInfo(nsbtAssetId).value().quantity
+  strict curveResult = mathContract.invoke("curveFunctionMATH", [reserve, neutrinoSupply, currentPrice, nsbtSupplyMAX, nsbtSupply, wavesPay], []).asAnyList()
+  
+  let nsbtAmount = curveResult[1].asInt()
+
+  if (nsbtAmount <= 0) then throw("nsbtAmount <= 0") else
+  if (nsbtAmount * 9223372 < wavesPay) then throw("Nsbt2Waves price exceeds MAX_INT: " + toString(wavesPay) + "/" + toString(nsbtAmount)) else
+
+  ([], makeString(["%d", nsbtAmount.toString()], SEP))
+}
+
+# (Min staked amount for NSBT staking)
+@Callable(i)
+func minStakedAmountREADONLY() = {
+  ([], makeString([
+    "%d", 
+    nsbtStakingContract.getIntOrFail(keyMinLockAmount()).toString()
+    ], SEP))
+}
+
+# for evaluating merged stake height and amount
+@Callable(i)
+func mergedStakeREADONLY(amount1: Int, height1: Int, amount2: Int, height2: Int) = {
+  strict h = nsbtStakingContract.invoke("mergedHeightREADONLY", [amount1, height1, amount2, height2], []).asInt()
+  ([], makeString([
+    "%d%d", 
+    (amount1 + amount2).toString(), 
+    h.toString()
+    ], SEP))
+}
+
+@Callable(i)
+func unstakeComissionAmountREADONLY(amount: Int, startHeight: Int) = {
+  strict a = nsbtStakingContract.invoke("unstakeComissionAmountREADONLY", [amount, startHeight], []).asInt()
+  ([], makeString(["%d", a.toString()], SEP))
+}
