@@ -3,16 +3,17 @@
 {-# SCRIPT_TYPE ACCOUNT #-}
 
 #-------------------Constants---------------------------
-let WAVELET          = 100_000_000
+let WAVELET          = 1_0000_0000
 let PAULI            = 1_000_000
 let BIGPAULI         = 1_000_000.toBigInt()
 let PRICELET         = 1_000_000    # 10^6
-let MULT             = 100_000_000  # 10^8
-let BIGMULT16        = 10000000000000000.toBigInt() #10^16
+let MULT             = 1_0000_0000  # 10^8
+let BIGMULT16        = 1_0000_0000_0000_0000.toBigInt() #10^16
 let MULTSCALE        = 8
 let SCALE16          = 16
 let SEP              = "__"
 let dora2NsbtSymbol  = "NSBT-USDT"
+let HALF8            = 5000_0000 # 0.5
 
 #-------this keys---------
 func keyNeutrinoAddress()  = "%s%s__config__neutrinoAddress"
@@ -39,6 +40,9 @@ func keyQuickSwapUserSpentInPeriod(userAddress: String) = ["%s%s", "quickSwapUse
 
 #------control keys-------
 func keyPrice() = "price"
+
+#------staking keys-------
+func keyHalfLife() = "%s__halfLife"
 
 #-------------------Base functions----------------------
 func getStringOrFail(address: Address, key: String) = address.getString(key).valueOrErrorMessage(makeString(["mandatory ", address.toString(), ".", key, " is not defined"], ""))
@@ -78,6 +82,7 @@ let controlContract  = addressFromStringValue(neutrinoContract.getStringOrFail(k
 let auctionContract = addressFromStringValue(neutrinoContract.getStringOrFail(keyAuctionContract()))
 let liquidationContract = neutrinoContract.getStringOrFail(keyLiquidationContractAddress())
 let rpdContract = neutrinoContract.getStringOrFail(keyRPDContract())
+let nsbtStakingContract = addressFromStringValue(this.getStringOrFail(keyNsbtLockContract()))
 
 let neutrinoAssetIdString = neutrinoContract.getStringOrFail(keyNeutrinoAssetId())
 let neutrinoAssetId = fromBase58String(neutrinoAssetIdString)
@@ -175,8 +180,7 @@ func calcTotalQuickSwapLimitMATH(gNsbtAmount: Int) = {
 
 @Callable(i)
 func calcUserSwapLimitsMATH(userAddressStr: String) = {
-  strict userGNsbtAmount = this.getStringValue(keyNsbtLockContract()).addressFromStringValue()
-        .invoke("nsbtStakingInfoWrapperREADONLY", [userAddressStr], []).asInt()
+  strict userGNsbtAmount = nsbtStakingContract.invoke("nsbtStakingInfoWrapperREADONLY", [userAddressStr], []).asInt()
         
   strict usdnLmtMax = this.invoke("calcTotalQuickSwapLimitMATH", [userGNsbtAmount], []).asInt()
   let quickSwapResetBlocks = neutrinoContract.getIntegerValue(keyQuickSwapLimitDuration())
@@ -205,4 +209,19 @@ func calcNeutinoMetricsMATH() = {
   let nsbtSupply = nsbtSupplyMAX - auctionContract.assetBalance(nsbtAssetId)
 
   ([], (currentPrice, neutrinoLockedBalance, wavesLockedBalance, reserve, reservesInUsdn, neutrinoSupply, surplus, surplusPercent, BR, nsbtSupply, nsbtSupplyMAX))
+}
+
+@Callable(i)
+func getUnstakeComissionAmountMATH(amount: Int, startHeight: Int) = {
+  let halfLife = nsbtStakingContract.getIntOrFail(keyHalfLife());
+  ([], fraction(amount, pow(2, 0, fraction(-(height - startHeight), MULT, halfLife), 8, 8, HALFUP), MULT))
+}
+
+# find out merged stake effective height
+@Callable(i)
+func mergeStakesMATH(amount1: Int, height1: Int, amount2: Int, height2: Int) = {
+  let halfLife = nsbtStakingContract.getIntOrFail(keyHalfLife());
+  let w = fraction(amount2, pow(2, 0, fraction(height2 - height1, MULT, halfLife), 8, 8, HALFUP), MULT)
+  let v = fraction(amount1 + amount2, MULT, amount1 + w)
+  ([], height1 + (HALF8 - halfLife * log(v, 8, 2, 0, 8, HALFUP)) / MULT)
 }

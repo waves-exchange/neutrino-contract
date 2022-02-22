@@ -267,7 +267,7 @@ func minStakedAmountREADONLY() = {
 # for evaluating merged stake height and amount
 @Callable(i)
 func mergedStakeREADONLY(amount1: Int, height1: Int, amount2: Int, height2: Int) = {
-  strict h = nsbtStakingContract.invoke("mergedHeightREADONLY", [amount1, height1, amount2, height2], []).asInt()
+  strict h = mathContract.invoke("mergeStakesMATH", [amount1, height1, amount2, height2], []).asInt()
   ([], makeString([
     "%d%d", 
     (amount1 + amount2).toString(), 
@@ -277,6 +277,6 @@ func mergedStakeREADONLY(amount1: Int, height1: Int, amount2: Int, height2: Int)
 
 @Callable(i)
 func unstakeComissionAmountREADONLY(amount: Int, startHeight: Int) = {
-  strict a = nsbtStakingContract.invoke("unstakeComissionAmountREADONLY", [amount, startHeight], []).asInt()
+  strict a = mathContract.invoke("getUnstakeComissionAmountMATH", [amount, startHeight], []).asInt()
   ([], makeString(["%d", a.toString()], SEP))
 }

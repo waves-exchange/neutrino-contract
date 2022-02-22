@@ -6,9 +6,7 @@
 
 let revisionNum = ""
 let separator = "__"
-let SCALE = 1000
 let MULT8 = 1_0000_0000
-let HALF8 = 5000_0000
 
 # Neutrino Contract Keys
 func keyBondAsset() = "bond_asset_id"
@@ -16,6 +14,7 @@ func keyAuctionContractAddress() = "auction_contract"
 
 # NSBT Lock Contract Keys
 func keyNeutrinoContractAddress() = "%s__neutrinoContractAddress"
+func keyMathContractAddress() = "%s__mathContract"
 func keyMinLockAmount() = "%s__minLockAmount"
 func keyHalfLife() = "%s__halfLife"
 # Lock Params
@@ -41,6 +40,13 @@ func getIntOrFail(key: String) = {
 
 func getStringOrFail(key: String) = {
   this.getString(key).valueOrErrorMessage("Mandatory this." + key + " is not defined")
+}
+
+func asInt(val: Any) = {
+  match val {
+    case valInt: Int => valInt
+    case _ => throw("fail to cast into Int")
+  }
 }
 
 func formatHistoryRecord(oldAmount: Int, oldStart: Int, newAmount: Int, newStart: Int) = {
@@ -109,23 +115,13 @@ func getUserParamsOrFail(userAddress: Address) = {
   userAddress.getUserParamsOrUnit().valueOrErrorMessage("User " + userAddress.toString() + " is not defined")
 }
 
-# find out merged stake effective height
-func mergedHeight(amount1: Int, height1: Int, amount2: Int, height2: Int, halfLife: Int) = {
-  let w = fraction(amount2, pow(2, 0, fraction(height2 - height1, MULT8, halfLife), 8, 8, HALFUP), MULT8)
-  let v = fraction(amount1 + amount2, MULT8, amount1 + w)
-  height1 + (HALF8 - halfLife * log(v, 8, 2, 0, 8, HALFUP)) / MULT8
-}
-
-func getUnstakeComissionAmount(amount: Int, startHeight: Int, halfLife: Int) = {
-  fraction(amount, pow(2, 0, fraction(-(height - startHeight), MULT8, halfLife), 8, 8, HALFUP), MULT8)
-}
-
 # init halfLife with 259200
 @Callable(i)
-func constructor(neutrinoContractAddress: String, minLockAmount: Int, halfLife: Int) = {
+func constructor(neutrinoContractAddress: String, mathContractAddress: String, minLockAmount: Int, halfLife: Int) = {
   if (i.caller != this) then throw("Permission denied") else
   [
     StringEntry(keyNeutrinoContractAddress(), neutrinoContractAddress),
+    StringEntry(keyMathContractAddress(), mathContractAddress),
     IntegerEntry(keyMinLockAmount(), minLockAmount),
     IntegerEntry(keyHalfLife(), halfLife)
   ]
@@ -151,7 +147,11 @@ func stake() = {
   }
 
   let mergedAmount = if (isNewUser) then amount else amount + lockAmount
-  let mergedStartHeight = if (isNewUser) then height else mergedHeight(amount, height, lockAmount, lockStartHeight, halfLife)
+
+  let mergedStartHeight = if (isNewUser) then height else {
+    let mathContract = addressFromStringValue(getStringOrFail(keyMathContractAddress()))
+    mathContract.invoke("mergeStakesMATH", [amount, height, lockAmount, lockStartHeight], []).asInt()
+  }
   if (mergedAmount < minLockAmount) then throw("Min lock amount is " + minLockAmount.toString()) else
 
   [
@@ -170,7 +170,8 @@ func unstake(amount: Int) = {
   if (lockAmount <= 0) then throw("Nothing to unstake") else
   if (amount > lockAmount) then throw("Requested " + amount.toString() + ", but staked only " + lockAmount.toString()) else
 
-  let comissionAmount = getUnstakeComissionAmount(amount, lockStart, halfLife)
+  let mathContract = addressFromStringValue(getStringOrFail(keyMathContractAddress()))
+  let comissionAmount = mathContract.invoke("getUnstakeComissionAmountMATH", [amount, lockStart], []).asInt()
   [
     ScriptTransfer(userAddress, amount - comissionAmount, bondAssetId),
     ScriptTransfer(auctionAddress.Address(), comissionAmount, bondAssetId),
@@ -190,13 +191,6 @@ func gNsbtAmountREADONLY(userAddressStr: String) = {
   )
 }
 
-# handle for evaluating merged stake height
-@Callable(i)
-func mergedHeightREADONLY(amount1: Int, height1: Int, amount2: Int, height2: Int) = {
-  let h = mergedHeight(amount1, height1, amount2, height2, keyHalfLife().getIntOrFail())
-  ([], h)
-}
-
 # Staking params
 # (gNsbtAmount, stakingStartHeight)
 @Callable(i)
@@ -210,10 +204,4 @@ func nsbtStakingInfoWrapperREADONLY(userAddressStr: String) = {
       } else ([], (0, 0))
 
   ([], (nsbtAmt, stakingStart))
-}
-
-@Callable(i)
-func unstakeComissionAmountREADONLY(amount: Int, startHeight: Int) = {
-  let a = getUnstakeComissionAmount(amount, startHeight, keyHalfLife().getIntOrFail())
-  ([], a)
 }
