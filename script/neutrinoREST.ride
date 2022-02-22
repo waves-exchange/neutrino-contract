@@ -44,6 +44,13 @@ func keyBalanceNeutrinoLockInterval() = "balance_neutrino_lock_interval"
 #------control keys-------
 func keyPrice() = "price"
 
+#-------- nsbt staking keys-----------
+func keyLockParamUserAmount(userAddress: String) = ["%s%s%s", "paramByUser", userAddress, "amount"].makeString(SEP)
+func keyLockParamStartBlock(userAddress: String) = ["%s%s%s", "paramByUser", userAddress, "start"].makeString(SEP)
+
+#------- auction keys------
+func keyMinWavesForNsbtBuy() = "min_waves_nsbt_buy"
+
 #-------------------Base functions----------------------
 func getStringOrFail(address: Address, key: String) = address.getString(key).valueOrErrorMessage(makeString(["mandatory ", address.toString(), ".", key, " is not defined"], ""))
 func getIntOrFail(address: Address, key: String) = address.getInteger(key).valueOrErrorMessage(makeString(["mandatory ", address.toString(), ".", key, " is not defined"], ""))
@@ -85,6 +92,7 @@ let auctionContract = addressFromStringValue(neutrinoContract.getStringOrFail(ke
 let liquidationContract = neutrinoContract.getStringOrFail(keyLiquidationContractAddress())
 let rpdContract = neutrinoContract.getStringOrFail(keyRPDContract())
 let mathContract = addressFromStringValue(this.getStringOrFail(keyMathContract()))
+let nsbtStakingContract = addressFromStringValue(this.getStringOrFail(keyNsbtLockContract()))
 
 let neutrinoAssetIdString = neutrinoContract.getStringOrFail(keyNeutrinoAssetId())
 let neutrinoAssetId = fromBase58String(neutrinoAssetIdString)
@@ -124,9 +132,10 @@ func neutrinoStatsREADONLY() = {
   let maxNsbtSupply          = neutrinoMetrics[11].asInt()
   let nsbt2usdnPrice         = prices[1].asInt()
   let nsbt2wavesPrice        = prices[2].asInt()
+  let minWaves4NsbtBuy       = auctionContract.getIntegerValue(keyMinWavesForNsbtBuy())
   
   ([], makeString([
-          "%d%d%d%d%d%d%d%d%d%d%d%d",       # 0
+          "%d%d%d%d%d%d%d%d%d%d%d%d%d",     # 0
           currentPrice.toString(),          # 1
           neutrinoLockedBalance.toString(), # 2
           wavesLockedBalance.toString(),    # 3
@@ -139,7 +148,8 @@ func neutrinoStatsREADONLY() = {
           nsbtSupply.toString(),            # 10
           maxNsbtSupply.toString(),         # 11
           nsbt2usdnPrice.toString(),        # 12
-          nsbt2wavesPrice.toString()        # 13
+          nsbt2wavesPrice.toString(),       # 13
+          minWaves4NsbtBuy.toString()       # 14        
           ], SEP))
 }
 
@@ -170,8 +180,7 @@ func swapInfoREADONLY(userAddressStr: String) = {
       maxUsdnLimit, 
       maxWavesLimit) = if(userAddressStr == "") then (0,0,0,0) else
 
-      strict userGNsbtAmount = this.getStringValue(keyNsbtLockContract()).addressFromStringValue()
-        .invoke("nsbtStakingInfoWrapperREADONLY", [userAddressStr], []).asInt()
+      strict userGNsbtAmount = nsbtStakingContract.getInteger(keyLockParamUserAmount(userAddressStr)).valueOrElse(0)
         
       strict usdnLmtMax = this.invoke("calcSwapLimitREADONLY", [userGNsbtAmount], []).asString().split(SEP)[1].asInt()
       let quickSwapResetBlocks = neutrinoContract.getIntegerValue(keyQuickSwapLimitDuration())
@@ -219,15 +228,7 @@ func gnsbtInfoREADONLY(userAddressStr: String) = {
           claimedWaves.toString(),
           unclaimedTotalInUsdn.toString(),
           unclaimedUsdn.toString(),
-          unclaimedWaves.toString()
-          # My gNSBT share
-          # Already Claimed in USDN (calculate WAVES part to usdn by current rate)
-          # Already Claimed USDN (calculate WAVES part to usdn by current rate)
-          # Already Claimed WAVES (calculate WAVES part to usdn by current rate)
-          # UNClaimed in USDN (calculate WAVES part to usdn by current rate)
-          # UNClaimed USDN (calculate WAVES part to usdn by current rate)
-          # UNClaimed WAVES (calculate WAVES part to usdn by current rate)
-          
+          unclaimedWaves.toString()        
           ], SEP))
 }
 
