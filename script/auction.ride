@@ -73,6 +73,7 @@ let WavesLockedBalanceKey = BalanceLockedkKey + "waves"
 let NeutrinoLockedBalanceKey = BalanceLockedkKey + "neutrino"
 let FirstOrderKey = "order_first"
 let MathContractKey = "math_contract"
+let MinWavesForNsbtBuyKey = "min_waves_nsbt_buy"
 
 func getRoiByOrderIdKey(orderId: String) = "debug_order_roi_" + orderId
 
@@ -104,6 +105,7 @@ let neutrinoAssetId = base58'DG2xFkPdDwKUoBkzGAhQtLpSGzfXLiCYPEzeKH2Ad24p' # Ass
 let nsbtAssetId = base58'6nSpVyNH7yM69eg446wrQR94ipbbcmZMU1ENPwanC97g' # NSBT with 6 decimals as USDN does
 
 let isBlocked = getBoolByAddressAndKey(controlContract, "is_blocked")
+let minWavesAmountNsbtBuy = this.getInteger(MinWavesForNsbtBuyKey).valueOrElse(10)
 
 #-------------------Global vars deficit, locked & supply -------------------------
 let firstOrder = getStringByKey(FirstOrderKey)
@@ -165,7 +167,7 @@ func buyNsbt() = {
 
     if (isBlocked) then throw("contract is blocked by EMERGENCY SHUTDOWN actions until reactivation by emergency oracles") else
     if (isDefined(pmt.assetId)) then throw("can use waves only") else
-    if (pmtAmount < 10 * WAVELET) then throw("min 10 waves expected") else
+    if (pmtAmount < minWavesAmountNsbtBuy * WAVELET) then throw("min "+ minWavesAmountNsbtBuy.toString() + " waves expected") else
     let ownerAddress = i.caller
     # ([], (currentPrice, neutrinoLockedBalance, wavesLockedBalance, reserve, reservesInUsdn, neutrinoSupply, surplus, surplusPercent, BR, nsbtSupply))
     strict neutrinoMetrics = addressFromStringValue(mathContract).invoke("calcNeutinoMetricsMATH", [], []).asAnyList()
