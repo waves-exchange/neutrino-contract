@@ -14,10 +14,14 @@ let SCALE16          = 16
 let SEP              = "__"
 let dora2NsbtSymbol  = "NSBT-USDT"
 let HALF8            = 5000_0000 # 0.5
+let EULERNUMBER      = 271828182      # 10ˆ8
+let scale6           = 1_000_000
+let scale6BigInt     = 1_000_000.toBigInt()
 
 #-------this keys---------
 func keyNeutrinoAddress()  = "%s%s__config__neutrinoAddress"
 func keyDoraAddress()      = "%s%s__config__doraAddress"
+func keySwapAmountAParam() = "%s%s__config__swapAParam"
 #-------neutrino keys------
 func keyNeutrinoAssetId() = "neutrino_asset_id"
 func keyLiquidationContractAddress() = "liquidation_contract"
@@ -43,6 +47,7 @@ func keyPrice() = "price"
 
 #------staking keys-------
 func keyHalfLife() = "%s__halfLife"
+func keyLockParamUserAmount(userAddress: String) = ["%s%s%s", "paramByUser", userAddress, "amount"].makeString(SEP)
 
 #-------------------Base functions----------------------
 func getStringOrFail(address: Address, key: String) = address.getString(key).valueOrErrorMessage(makeString(["mandatory ", address.toString(), ".", key, " is not defined"], ""))
@@ -90,23 +95,25 @@ let nsbtAssetIdStr = neutrinoContract.getStringValue(keyBondAssetId())
 let nsbtAssetId = nsbtAssetIdStr.fromBase58String()
 
 @Callable(i)
-func constructor(neutrinoAddress: String, doraAddress: String, nsbtLockAddress: String) = {
+func constructor(neutrinoAddress: String, doraAddress: String, nsbtLockAddress: String, swapAmountAParam: Int) = {
   if (i.caller != this) then throw("not authorized") else
   [
       StringEntry(keyNeutrinoAddress(), neutrinoAddress),
       StringEntry(keyDoraAddress(), doraAddress),
-      StringEntry(keyNsbtLockContract(), nsbtLockAddress)
+      StringEntry(keyNsbtLockContract(), nsbtLockAddress),
+      IntegerEntry(keySwapAmountAParam(), swapAmountAParam)
   ]
 }
 
+
 @Callable(i)
-func getDoraNsbtPriceInfoREADONLY() = {
-  let doraContract = this.getStringValue(keyDoraAddress()).addressFromStringValue()
-  let (nsbtPrice, nsbtPriceLastHeight) = (
-    doraContract.getInteger(keyDora2Price(dora2NsbtSymbol)).valueOrErrorMessage("DORA NSBT price is undefined"), # price
-    doraContract.getInteger(keyDora2LastHeight(dora2NsbtSymbol)).valueOrElse(0) # last height
-  )
-  ([], (nsbtPrice, nsbtPriceLastHeight))
+func calcSwapLimitMATH(gNsbtAmount: Int) = {
+  # limit = a * gNsbtAmount^e 
+  let usdnSwapDelayDuration  = this.getIntegerValue(keySwapAmountAParam()).valueOrErrorMessage("Swap parameter A missed.")
+  let gNsbtAmountBigInt = gNsbtAmount.toBigInt()
+  let limitPowPart = pow(gNsbtAmountBigInt, 0, EULERNUMBER.toBigInt(), 8, 0, DOWN)
+  let limit = fraction(usdnSwapDelayDuration.toBigInt(), limitPowPart, scale6BigInt)
+  ([],  (limit))
 }
 
 # AUCTION MOON FACTOR
@@ -152,7 +159,7 @@ func curveFunctionMATH(wRaw: Int, uRaw: Int, price: Int, mRaw: Int, sRaw: Int, w
 @Callable(i)
 func calcContractNsbtPriceMATH() = {
     let nsbtSupplyMAX =  assetInfo(nsbtAssetId).value().quantity
-    strict neutrinoMetrics = this.invoke("calcNeutinoMetrics", [], []).asAnyList()
+    strict neutrinoMetrics = this.invoke("calcNeutinoMetricsMATH", [], []).asAnyList()
     let nsbtSupply = neutrinoMetrics[10].asInt()
     let currentPrice = neutrinoMetrics[1].asInt()
     strict kCalcArray = this.invoke("calculateKMATH", [neutrinoMetrics[4].asInt(), neutrinoMetrics[6].asInt(), currentPrice, nsbtSupplyMAX, nsbtSupply], []).asAnyList()
@@ -170,19 +177,10 @@ func calcContractNsbtPriceMATH() = {
 }
 
 @Callable(i)
-func calcTotalQuickSwapLimitMATH(gNsbtAmount: Int) = {
-  let dora2nsbtInfo = this.invoke("getDoraNsbtPriceInfoREADONLY", [], []).asAnyList()
-  let nsbtPrice = dora2nsbtInfo[1].asInt() 
-  let nsbtPriceLastHeight = dora2nsbtInfo[2].asInt() 
-  strict check = if (height - nsbtPriceLastHeight > neutrinoContract.getIntegerValue(keyDora2LastHeightLimit())) then throw("NSBT price is outdated") else true
-  ([],  (fraction(gNsbtAmount, nsbtPrice, WAVELET)))
-}
-
-@Callable(i)
 func calcUserSwapLimitsMATH(userAddressStr: String) = {
-  strict userGNsbtAmount = nsbtStakingContract.invoke("nsbtStakingInfoWrapperREADONLY", [userAddressStr], []).asInt()
+  let userGNsbtAmount = nsbtStakingContract.getInteger(keyLockParamUserAmount(userAddressStr)).valueOrElse(0)
         
-  strict usdnLmtMax = this.invoke("calcTotalQuickSwapLimitMATH", [userGNsbtAmount], []).asInt()
+  strict usdnLmtMax = this.invoke("calcSwapLimitMATH", [userGNsbtAmount], []).asInt()
   let quickSwapResetBlocks = neutrinoContract.getIntegerValue(keyQuickSwapLimitDuration())
   let lastQuickSwapBlock = neutrinoContract.getInteger(keyUserLastQuickSwapHeight(userAddressStr)).valueOrElse(0)
   let isNewQuickSwapPeriod = height - lastQuickSwapBlock > quickSwapResetBlocks
