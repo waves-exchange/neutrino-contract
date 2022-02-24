@@ -12,11 +12,9 @@ let scale8           = 1_0000_0000
 let scale8BigInt     = 1_0000_0000.toBigInt()
 let scale18          = 1_000_000_000_000_000_000.toBigInt()
 let SEP              = "__"
-let dora2NsbtSymbol  = "NSBT-USDT"
 
 #-------this keys---------
 func keyNeutrinoAddress()  = "%s%s__config__neutrinoAddress"
-func keyDoraAddress()      = "%s%s__config__doraAddress"
 #-------neutrino keys------
 func keyNeutrinoAssetId() = "neutrino_asset_id"
 func keyLiquidationContractAddress() = "liquidation_contract"
@@ -27,7 +25,6 @@ func keyBondAssetId() = "bond_asset_id"
 func keyBalanceLocked() = "balance_lock_"
 func keyWavesLockedBalance() = keyBalanceLocked() + "waves"
 func keyNeutrinoLockedBalance() = keyBalanceLocked() + "neutrino"
-func keyDora2LastHeightLimit() = "%s__dora2LastHeightLimit"
 func keyMinWavesSwapAmount() = "min_waves_swap_amount"
 func keyMinNeutrinoSwapAmount() = "min_neutrino_swap_amount"
 func keyWavesOutFeePart() = "wavesOut_swap_feePart"
@@ -82,10 +79,6 @@ func toX18(origVal: Int, origScaleMult: Int)          = fraction(origVal.toBigIn
 func fromX18(val: BigInt, resultScaleMult: Int)       = fraction(val, resultScaleMult.toBigInt(), scale18).toInt()
 
 
-# DORA2 Price Oracle
-func keyDora2Price(symbol: String) = ["%s%s", "price", symbol].makeString(SEP)
-func keyDora2LastHeight(symbol: String) = ["%s%s", "lastHeight", symbol].makeString(SEP)
-
 #-------------------GLOBAL VARIABLES-------------------------
 let neutrinoContract = addressFromStringValue(this.getStringOrFail(keyNeutrinoAddress()))
 let controlContract  = addressFromStringValue(neutrinoContract.getStringOrFail(keyContolContract()))
@@ -104,11 +97,10 @@ let nsbtAssetId = nsbtAssetIdStr.fromBase58String()
 
 @Callable(i)
 # swapAmountAParam is scale8
-func constructor(neutrinoAddress: String, doraAddress: String, nsbtLockAddress: String, mathAddress: String) = {
+func constructor(neutrinoAddress: String, nsbtLockAddress: String, mathAddress: String) = {
   if (i.caller != this) then throw("not authorized") else
   [
       StringEntry(keyNeutrinoAddress(), neutrinoAddress),
-      StringEntry(keyDoraAddress(), doraAddress),
       StringEntry(keyNsbtLockContract(), nsbtLockAddress),
       StringEntry(keyMathContract(), mathAddress)
   ]
