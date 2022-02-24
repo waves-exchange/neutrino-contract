@@ -12,7 +12,6 @@ let BIGMULT16        = 1_0000_0000_0000_0000.toBigInt() #10^16
 let MULTSCALE        = 8
 let SCALE16          = 16
 let SEP              = "__"
-let dora2NsbtSymbol  = "NSBT-USDT"
 let HALF8            = 5000_0000 # 0.5
 let EULERNUMBER      = 271828182      # 10ˆ8
 let scale6           = 1_000_000
@@ -20,7 +19,6 @@ let scale6BigInt     = 1_000_000.toBigInt()
 
 #-------this keys---------
 func keyNeutrinoAddress()  = "%s%s__config__neutrinoAddress"
-func keyDoraAddress()      = "%s%s__config__doraAddress"
 func keySwapAmountAParam() = "%s%s__config__swapAParam"
 #-------neutrino keys------
 func keyNeutrinoAssetId() = "neutrino_asset_id"
@@ -32,7 +30,6 @@ func keyBondAssetId() = "bond_asset_id"
 func keyBalanceLocked() = "balance_lock_"
 func keyWavesLockedBalance() = keyBalanceLocked() + "waves"
 func keyNeutrinoLockedBalance() = keyBalanceLocked() + "neutrino"
-func keyDora2LastHeightLimit() = "%s__dora2LastHeightLimit"
 func keyMinWavesSwapAmount() = "min_waves_swap_amount"
 func keyMinNeutrinoSwapAmount() = "min_neutrino_swap_amount"
 func keyWavesOutFeePart() = "wavesOut_swap_feePart"
@@ -77,9 +74,6 @@ func asString(val: Any) = {
   }
 }
 
-# DORA2 Price Oracle
-func keyDora2Price(symbol: String) = ["%s%s", "price", symbol].makeString(SEP)
-func keyDora2LastHeight(symbol: String) = ["%s%s", "lastHeight", symbol].makeString(SEP)
 
 #-------------------GLOBAL VARIABLES-------------------------
 let neutrinoContract = addressFromStringValue(this.getStringOrFail(keyNeutrinoAddress()))
@@ -95,11 +89,10 @@ let nsbtAssetIdStr = neutrinoContract.getStringValue(keyBondAssetId())
 let nsbtAssetId = nsbtAssetIdStr.fromBase58String()
 
 @Callable(i)
-func constructor(neutrinoAddress: String, doraAddress: String, nsbtLockAddress: String, swapAmountAParam: Int) = {
+func constructor(neutrinoAddress: String, nsbtLockAddress: String, swapAmountAParam: Int) = {
   if (i.caller != this) then throw("not authorized") else
   [
       StringEntry(keyNeutrinoAddress(), neutrinoAddress),
-      StringEntry(keyDoraAddress(), doraAddress),
       StringEntry(keyNsbtLockContract(), nsbtLockAddress),
       IntegerEntry(keySwapAmountAParam(), swapAmountAParam)
   ]
