@@ -385,7 +385,6 @@ func commonWithdraw(account : String, index: Int, swapTxId: String, i: Invocatio
 #-------------------Callable----------------------
 
 # constructor
-# keyDora2LastHeightLimit() 
 # RestContractKey
 # keyQuickSwapLimitDuration()
 # let MathContractKey = "math_contract"
@@ -410,7 +409,7 @@ func commonSwap(swapType: String, pmtAmount: Int, userAddressStr: String, txId58
   if(height - lastSwapHeight < TWENTYFOURHOURS) then throw("You have exceeded swap limit for 24h! Next allowed swap height is " + (lastSwapHeight + TWENTYFOURHOURS).toString()) else
 
   strict userSwapLimitsInfo = mathContract.invoke("calcUserSwapLimitsMATH", [userAddressStr], []).asAnyList()
-  let quickSwapLimitTotal = userSwapLimitsInfo[1].asInt()
+  let quickSwapLimitTotal = userSwapLimitsInfo[0].asInt()
 
   let priceByIndex = priceIndex.getHeightPriceByIndex().getPriceHistory()
   let swapUsdnVolume = if (swapType == "neutrino") then pmtAmount else pmtAmount.convertWavesToNeutrino(priceByIndex)
@@ -476,10 +475,10 @@ func withdraw(account: String, index: Int, swapTxId: String) = {
 func transferToAuction() = {
 
     let neutrinoMetrics = mathContract.invoke("calcNeutinoMetricsMATH", [], []).asAnyList()
-    let reserve                = neutrinoMetrics[4].asInt()
-    let neutrinoSupply         = neutrinoMetrics[6].asInt()
-    let surplus                = neutrinoMetrics[7].asInt()
-    let nsbtSupply             = neutrinoMetrics[10].asInt()
+    let reserve                = neutrinoMetrics[3].asInt()
+    let neutrinoSupply         = neutrinoMetrics[5].asInt()
+    let surplus                = neutrinoMetrics[6].asInt()
+    let nsbtSupply             = neutrinoMetrics[9].asInt()
     
     let auctionNBAmount = neutrinoSupply - assetBalance(addressFromStringValue(auctionContract), bondAssetId)
     let surplusWithLiquidation = (surplus - assetBalance(addressFromStringValue(liquidationContract), neutrinoAssetId)) #in 6 decimals

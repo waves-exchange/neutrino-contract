@@ -109,22 +109,23 @@ func constructor(neutrinoAddress: String, nsbtLockAddress: String, mathAddress: 
 @Callable(i)
 func neutrinoStatsREADONLY() = {
   strict neutrinoMetrics = mathContract.invoke("calcNeutinoMetricsMATH",[],[]).asAnyList()
-  strict prices = mathContract.invoke("calcContractNsbtPriceMATH()",[],[]).asAnyList()
   
-  let currentPrice           = neutrinoMetrics[1].asInt()
-  let neutrinoLockedBalance  = neutrinoMetrics[2].asInt()
-  let wavesLockedBalance     = neutrinoMetrics[3].asInt()
-  let reservesInWaves        = neutrinoMetrics[4].asInt()
-  let reservesInUsdn         = neutrinoMetrics[5].asInt()
-  let neutrinoSupply         = neutrinoMetrics[6].asInt()
-  let surplus                = neutrinoMetrics[7].asInt()
-  let surplusPercent         = neutrinoMetrics[8].asInt()
-  let BR                     = neutrinoMetrics[9].asInt()
-  let nsbtSupply             = neutrinoMetrics[10].asInt()
-  let maxNsbtSupply          = neutrinoMetrics[11].asInt()
-  let nsbt2usdnPrice         = prices[1].asInt()
-  let nsbt2wavesPrice        = prices[2].asInt()
-  let minWaves4NsbtBuy       = auctionContract.getIntegerValue(keyMinWavesForNsbtBuy())
+  strict prices = mathContract.invoke("calcContractNsbtPriceMATH",[],[]).asAnyList()
+  
+  let currentPrice           = neutrinoMetrics[0].asInt()
+  let neutrinoLockedBalance  = neutrinoMetrics[1].asInt()
+  let wavesLockedBalance     = neutrinoMetrics[2].asInt()
+  let reservesInWaves        = neutrinoMetrics[3].asInt()
+  let reservesInUsdn         = neutrinoMetrics[4].asInt()
+  let neutrinoSupply         = neutrinoMetrics[5].asInt()
+  let surplus                = neutrinoMetrics[6].asInt()
+  let surplusPercent         = neutrinoMetrics[7].asInt()
+  let BR                     = neutrinoMetrics[8].asInt()
+  let nsbtSupply             = neutrinoMetrics[9].asInt()
+  let maxNsbtSupply          = neutrinoMetrics[10].asInt()
+  let nsbt2usdnPrice         = prices[0].asInt()
+  let nsbt2wavesPrice        = prices[1].asInt()
+  let minWaves4NsbtBuy       =  100000000 # TODO: fix auction and uncomment auctionContract.getIntegerValue(keyMinWavesForNsbtBuy())
   
   ([], makeString([
           "%d%d%d%d%d%d%d%d%d%d%d%d%d",     # 0
@@ -161,16 +162,11 @@ func swapInfoREADONLY(userAddressStr: String) = {
       maxWavesLimit) = if(userAddressStr == "") then (0,0,0,0) else
 
       strict userGNsbtAmount = nsbtStakingContract.getInteger(keyLockParamUserAmount(userAddressStr)).valueOrElse(0)
-        
-      strict usdnLmtMax = mathContract.invoke("calcSwapLimitMATH", [userGNsbtAmount], []).asInt()
-      
-      let quickSwapResetBlocks = neutrinoContract.getIntegerValue(keyQuickSwapLimitDuration())
-      let lastQuickSwapBlock = neutrinoContract.getInteger(keyUserLastQuickSwapHeight(userAddressStr)).valueOrElse(0)
-      let isNewQuickSwapPeriod = height - lastQuickSwapBlock > quickSwapResetBlocks
-      let quickSwapUserSpent = if (isNewQuickSwapPeriod) then 0 else neutrinoContract.getInteger(keyQuickSwapUserSpentInPeriod(userAddressStr)).valueOrElse(0)
-      
-      let blcks2LmtReset = if (isNewQuickSwapPeriod) then 0 else quickSwapResetBlocks - (height - lastQuickSwapBlock)
-      let wavesLmtMax = convertNeutrinoToWaves(usdnLmtMax, currentPrice)
+      strict swapEstimateList = mathContract.invoke("calcUserSwapLimitsMATH", [userGNsbtAmount], []).asAnyList()
+      let usdnLmtMax = swapEstimateList[0].asInt()
+      let quickSwapUserSpent = swapEstimateList[1].asInt()
+      let blcks2LmtReset = swapEstimateList[2].asInt()
+      let wavesLmtMax = swapEstimateList[3].asInt()
       (quickSwapUserSpent, blcks2LmtReset, usdnLmtMax, wavesLmtMax)
 
   ([], 
@@ -215,18 +211,18 @@ func gnsbtInfoREADONLY(userAddressStr: String) = {
 
 @Callable(i)
 func buyNsbtREADONLY(wavesPay: Int) = {
-  let minWavesAmountNsbtBuy = auctionContract.getInteger(keyMinWavesForNsbtBuy()).valueOrElse(10)
-  if (wavesPay < minWavesAmountNsbtBuy * scale8) then throw("min " + minWavesAmountNsbtBuy.toString() + " waves expected") else
+  let minWavesAmountNsbtBuy =  100000000 # TODO: fix auction and uncomment auctionContract.getIntegerValue(keyMinWavesForNsbtBuy()) 
+  if (wavesPay < minWavesAmountNsbtBuy) then throw("min " + minWavesAmountNsbtBuy.toString() + " waves expected") else
 
   strict neutrinoMetrics = mathContract.invoke("calcNeutinoMetricsMATH", [], []).asAnyList()
-  let currentPrice   = neutrinoMetrics[1].asInt()
-  let reserve        = neutrinoMetrics[4].asInt()
-  let neutrinoSupply = neutrinoMetrics[6].asInt()
-  let nsbtSupply     = neutrinoMetrics[10].asInt()
+  let currentPrice   = neutrinoMetrics[0].asInt()
+  let reserve        = neutrinoMetrics[3].asInt()
+  let neutrinoSupply = neutrinoMetrics[5].asInt()
+  let nsbtSupply     = neutrinoMetrics[9].asInt()
   let nsbtSupplyMAX  = assetInfo(nsbtAssetId).value().quantity
   strict curveResult = mathContract.invoke("curveFunctionMATH", [reserve, neutrinoSupply, currentPrice, nsbtSupplyMAX, nsbtSupply, wavesPay], []).asAnyList()
   
-  let nsbtAmount = curveResult[1].asInt()
+  let nsbtAmount = curveResult[0].asInt()
 
   if (nsbtAmount <= 0) then throw("nsbtAmount <= 0") else
   if (nsbtAmount * 9223372 < wavesPay) then throw("Nsbt2Waves price exceeds MAX_INT: " + toString(wavesPay) + "/" + toString(nsbtAmount)) else
