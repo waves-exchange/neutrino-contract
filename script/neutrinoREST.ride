@@ -160,9 +160,7 @@ func swapInfoREADONLY(userAddressStr: String) = {
       blocks2LimitReset, 
       maxUsdnLimit, 
       maxWavesLimit) = if(userAddressStr == "") then (0,0,0,0) else
-
-      strict userGNsbtAmount = nsbtStakingContract.getInteger(keyLockParamUserAmount(userAddressStr)).valueOrElse(0)
-      strict swapEstimateList = mathContract.invoke("calcUserSwapLimitsMATH", [userGNsbtAmount], []).asAnyList()
+      strict swapEstimateList = mathContract.invoke("calcUserSwapLimitsMATH", [userAddressStr], []).asAnyList()
       let usdnLmtMax = swapEstimateList[0].asInt()
       let quickSwapUserSpent = swapEstimateList[1].asInt()
       let blcks2LmtReset = swapEstimateList[2].asInt()
