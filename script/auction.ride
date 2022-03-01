@@ -163,7 +163,6 @@ func buyNsbt() = {
     let pmt = i.payments[0].value()
     let pmtAmount = pmt.amount
     let wavesPay = pmtAmount
-    #let ownerAddress = i.caller
 
     if (isBlocked) then throw("contract is blocked by EMERGENCY SHUTDOWN actions until reactivation by emergency oracles") else
     if (isDefined(pmt.assetId)) then throw("can use waves only") else
@@ -199,6 +198,25 @@ func buyNsbt() = {
         ],
         nsbtAmount)
     }
+}
+
+# sell NSBT for USDN by price 1
+@Callable(i)
+func sellNsbt() = {
+  if (isBlocked) then throw("contract is blocked by EMERGENCY SHUTDOWN actions until reactivation by emergency oracles") else
+  let pmt = i.payments[0].value()
+  let pmtAmount = pmt.amount
+
+  if (pmt.assetId != nsbtAssetId) then throw("can use NSBT only") else
+  strict neutrinoMetrics = addressFromStringValue(mathContract).invoke("calcNeutinoMetricsMATH", [], []).asAnyList()
+  let nsbtSupply = neutrinoMetrics[10].asInt()
+
+  strict newPrice = addressFromStringValue(mathContract).invoke("calcContractNsbtPriceBySupplyMATH", [nsbtSupply - pmtAmount], []).asAnyList()[0].asInt()
+  if (newPrice < PAULI) then throw("resulting nsbt price would be < 1 (" + newPrice.toString() + " usdn") else
+  (
+    [ScriptTransfer(i.caller, pmtAmount, neutrinoAssetId)],
+    newPrice
+  )
 }
 
 # cancel buy NSBT order or liquidation order

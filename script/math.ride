@@ -89,6 +89,25 @@ let neutrinoAssetId = fromBase58String(neutrinoAssetIdString)
 let nsbtAssetIdStr = neutrinoContract.getStringValue(keyBondAssetId())
 let nsbtAssetId = nsbtAssetIdStr.fromBase58String()
 
+func calcContractNsbtPriceInternal(nsbtSupplyOverride: Int|Unit) = {
+  let nsbtSupplyMAX =  assetInfo(nsbtAssetId).value().quantity
+  strict neutrinoMetrics = this.invoke("calcNeutinoMetricsMATH", [], []).asAnyList()
+  let nsbtSupply = if (nsbtSupplyOverride == unit) then neutrinoMetrics[9].asInt() else nsbtSupplyOverride.value()
+  let currentPrice = neutrinoMetrics[0].asInt()
+  strict kCalcArray = this.invoke("calculateKMATH", [neutrinoMetrics[4].asInt(), neutrinoMetrics[6].asInt(), currentPrice, nsbtSupplyMAX, nsbtSupply], []).asAnyList()
+  #let kCalcArray = calculateK(reserve, neutrinoSupply, currentPrice, nsbtSupplyMAX, nsbtSupply)
+  let multK = kCalcArray[6].asString().parseBigIntValue() # 16 decimals bigint
+  
+  let mK = fromX16(multK, MULT)
+  
+  let multStep1 = fraction(nsbtSupplyMAX, MULT, nsbtSupplyMAX - nsbtSupply)
+  let multStep2 = fraction(multStep1, multStep1, MULT)
+  let multNsbt2usdnPrice = fraction(mK, multStep2, MULT)
+  let nsbt2usdnPrice = fraction(multNsbt2usdnPrice, PAULI, MULT)
+  let nsbt2wavesPrice = fraction(nsbt2usdnPrice, PAULI, currentPrice)
+  ([], [nsbt2usdnPrice, nsbt2wavesPrice])
+}
+
 @Callable(i)
 func constructor(neutrinoAddress: String, nsbtLockAddress: String, swapAmountAParam: Int) = {
   if (i.caller != this) then throw("not authorized") else
@@ -151,24 +170,15 @@ func curveFunctionMATH(wRaw: Int, uRaw: Int, price: Int, mRaw: Int, sRaw: Int, w
     kCalcArray[3].asInt(), kCalcArray[4].asInt(), kCalcArray[5], kCalcArray[6], step1.toString(), step2.toString(), step3.toString()])
 }
 
+
 @Callable(i)
 func calcContractNsbtPriceMATH() = {
-    let nsbtSupplyMAX =  assetInfo(nsbtAssetId).value().quantity
-    strict neutrinoMetrics = this.invoke("calcNeutinoMetricsMATH", [], []).asAnyList()
-    let nsbtSupply = neutrinoMetrics[9].asInt()
-    let currentPrice = neutrinoMetrics[0].asInt()
-    strict kCalcArray = this.invoke("calculateKMATH", [neutrinoMetrics[4].asInt(), neutrinoMetrics[6].asInt(), currentPrice, nsbtSupplyMAX, nsbtSupply], []).asAnyList()
-    #let kCalcArray = calculateK(reserve, neutrinoSupply, currentPrice, nsbtSupplyMAX, nsbtSupply)
-    let multK = kCalcArray[6].asString().parseBigIntValue() # 16 decimals bigint
-    
-    let mK = fromX16(multK, MULT)
-    
-    let multStep1 = fraction(nsbtSupplyMAX, MULT, nsbtSupplyMAX - nsbtSupply)
-    let multStep2 = fraction(multStep1, multStep1, MULT)
-    let multNsbt2usdnPrice = fraction(mK, multStep2, MULT)
-    let nsbt2usdnPrice = fraction(multNsbt2usdnPrice, PAULI, MULT)
-    let nsbt2wavesPrice = fraction(nsbt2usdnPrice, PAULI, currentPrice)
-    ([], [nsbt2usdnPrice, nsbt2wavesPrice])
+  calcContractNsbtPriceInternal(unit)
+}
+
+@Callable(i)
+func calcContractNsbtPriceBySupplyMATH(nsbtSupply: Int) = {
+  calcContractNsbtPriceInternal(nsbtSupply)
 }
 
 @Callable(i)
