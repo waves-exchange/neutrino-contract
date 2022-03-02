@@ -209,8 +209,8 @@ func calcNeutinoMetricsMATH() = {
     - assetBalance(addressFromStringValue(liquidationContract), neutrinoAssetId) # supply outside main sc or liquidation contract
   let surplus = reservesInUsdn - neutrinoSupply
   let deficit = neutrinoSupply - reservesInUsdn
-  let surplusPercent = fraction(surplus, PAULI, neutrinoSupply) * 100
-  let BR = fraction(reservesInUsdn, PAULI, neutrinoSupply)
+  let surplusPercent = if (neutrinoSupply == 0) then 0 else fraction(surplus, PAULI, neutrinoSupply) * 100
+  let BR = if (neutrinoSupply == 0) then 0 else fraction(reservesInUsdn, PAULI, neutrinoSupply)
   let nsbtSupplyMAX =  assetInfo(nsbtAssetId).value().quantity
   let nsbtSupply = nsbtSupplyMAX - auctionContract.assetBalance(nsbtAssetId)
 
