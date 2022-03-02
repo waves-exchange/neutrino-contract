@@ -462,7 +462,7 @@ func commonSwap(swapType: String, pmtAmount: Int, userAddressStr: String, txId58
   if(height - lastSwapHeight < swapsTimeframeBlocks) then throw("You have exceeded swap limit for 24h! Next allowed swap height is " + (lastSwapHeight + swapsTimeframeBlocks).toString()) else
 
   let userGNsbtAmount = nsbtStakingContract.getInteger(keyLockParamUserAmount(userAddressStr)).valueOrElse(0)
-  strict quickSwapLimitTotal = this.invoke("calcSwapLimitMATH", [userGNsbtAmount], []).asInt()
+  strict quickSwapLimitTotal = mathContract.invoke("calcSwapLimitMATH", [userGNsbtAmount], []).asInt()
   
   let priceByIndex = priceIndex.getHeightPriceByIndex().getPriceHistory()
   let swapUsdnVolume = if (swapType == "neutrino") then pmtAmount else pmtAmount.convertWavesToNeutrino(priceByIndex)
