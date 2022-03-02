@@ -37,10 +37,10 @@ func asString(val: Any) = {
     case _ => throw("fail to cast into String")
   }
 }
-func asInt(val: Any) = {
+func asInt(val: Any, debug: String) = {
   match val {
     case valInt: Int => valInt
-    case _ => throw("fail to cast into Int")
+    case _ => throw("fail to cast into Int" + debug)
   }
 }
 
@@ -409,7 +409,7 @@ func commonSwap(swapType: String, pmtAmount: Int, userAddressStr: String, txId58
   if(height - lastSwapHeight < TWENTYFOURHOURS) then throw("You have exceeded swap limit for 24h! Next allowed swap height is " + (lastSwapHeight + TWENTYFOURHOURS).toString()) else
 
   strict userSwapLimitsInfo = mathContract.invoke("calcUserSwapLimitsMATH", [userAddressStr], []).asAnyList()
-  let quickSwapLimitTotal = userSwapLimitsInfo[0].asInt()
+  let quickSwapLimitTotal = userSwapLimitsInfo[0].asInt("_")
 
   let priceByIndex = priceIndex.getHeightPriceByIndex().getPriceHistory()
   let swapUsdnVolume = if (swapType == "neutrino") then pmtAmount else pmtAmount.convertWavesToNeutrino(priceByIndex)
@@ -475,10 +475,10 @@ func withdraw(account: String, index: Int, swapTxId: String) = {
 func transferToAuction() = {
 
     let neutrinoMetrics = mathContract.invoke("calcNeutinoMetricsMATH", [], []).asAnyList()
-    let reserve                = neutrinoMetrics[3].asInt()
-    let neutrinoSupply         = neutrinoMetrics[5].asInt()
-    let surplus                = neutrinoMetrics[6].asInt()
-    let nsbtSupply             = neutrinoMetrics[9].asInt()
+    let reserve                = neutrinoMetrics[3].asInt("+")
+    let neutrinoSupply         = neutrinoMetrics[5].asInt("-")
+    let surplus                = neutrinoMetrics[6].asInt("^")
+    let nsbtSupply             = neutrinoMetrics[9].asInt("$")
     
     let auctionNBAmount = neutrinoSupply - assetBalance(addressFromStringValue(auctionContract), bondAssetId)
     let surplusWithLiquidation = (surplus - assetBalance(addressFromStringValue(liquidationContract), neutrinoAssetId)) #in 6 decimals
