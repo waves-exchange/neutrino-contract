@@ -177,7 +177,7 @@ func buyNsbt() = {
     let nsbtSupplyMAX =  assetInfo(nsbtAssetId).value().quantity
     strict curveResult = mathContract.invoke("curveFunctionMATH", [reserve, neutrinoSupply, currentPrice, nsbtSupplyMAX, nsbtSupply, wavesPay], []).asAnyList()
     
-    let nsbtAmount = curveResult[1].asInt()
+    let nsbtAmount = curveResult[0].asInt()
 
     if (nsbtAmount <= 0) then throw("nsbtAmount <= 0") else
     if (nsbtAmount * 9223372 < wavesPay) then throw("Nsbt2Waves price exceeds MAX_INT: " + toString(wavesPay) + "/" + toString(nsbtAmount)) else {
