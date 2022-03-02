@@ -100,7 +100,7 @@ func fromX16(val: BigInt, resultScaleMult: Int)       = fraction(val, resultScal
 let neutrinoContract = Address(base58'3PC9BfRwJWWiw9AREE2B3eWzCks3CYtg4yo')
 let controlContract = Address(base58'3P5Bfd58PPfNvBM2Hy8QfbcDqMeNtzg7KfP') ## The value from neutrino.ride
 let liquidationContract = Address(base58'3P4PCxsJqMzQBALo8zANHtBDZRRquobHQp7')
-let mathContract = getStringByKey(MathContractKey)
+let mathContract = addressFromStringValue(getStringByKey(MathContractKey))
 let neutrinoAssetId = base58'DG2xFkPdDwKUoBkzGAhQtLpSGzfXLiCYPEzeKH2Ad24p' # Assets ids. The value from neutrino.ride
 let nsbtAssetId = base58'6nSpVyNH7yM69eg446wrQR94ipbbcmZMU1ENPwanC97g' # NSBT with 6 decimals as USDN does
 
@@ -169,13 +169,13 @@ func buyNsbt() = {
     if (pmtAmount < minWavesAmountNsbtBuy * WAVELET) then throw("min "+ minWavesAmountNsbtBuy.toString() + " waves expected") else
     let ownerAddress = i.caller
     # ([], (currentPrice, neutrinoLockedBalance, wavesLockedBalance, reserve, reservesInUsdn, neutrinoSupply, surplus, surplusPercent, BR, nsbtSupply))
-    strict neutrinoMetrics = addressFromStringValue(mathContract).invoke("calcNeutinoMetricsMATH", [], []).asAnyList()
+    strict neutrinoMetrics = mathContract.invoke("calcNeutinoMetricsMATH", [], []).asAnyList()
     let currentPrice           = neutrinoMetrics[0].asInt()
     let reserve                = neutrinoMetrics[3].asInt()
     let neutrinoSupply         = neutrinoMetrics[5].asInt()
     let nsbtSupply             = neutrinoMetrics[9].asInt()
     let nsbtSupplyMAX =  assetInfo(nsbtAssetId).value().quantity
-    strict curveResult = addressFromStringValue(mathContract).invoke("curveFunctionMATH", [reserve, neutrinoSupply, currentPrice, nsbtSupplyMAX, nsbtSupply, wavesPay], []).asAnyList()
+    strict curveResult = mathContract.invoke("curveFunctionMATH", [reserve, neutrinoSupply, currentPrice, nsbtSupplyMAX, nsbtSupply, wavesPay], []).asAnyList()
     
     let nsbtAmount = curveResult[1].asInt()
 
@@ -208,10 +208,10 @@ func sellNsbt() = {
   let pmtAmount = pmt.amount
 
   if (pmt.assetId != nsbtAssetId) then throw("can use NSBT only") else
-  strict neutrinoMetrics = addressFromStringValue(mathContract).invoke("calcNeutinoMetricsMATH", [], []).asAnyList()
+  strict neutrinoMetrics = mathContract.invoke("calcNeutinoMetricsMATH", [], []).asAnyList()
   let nsbtSupply = neutrinoMetrics[10].asInt()
 
-  strict newPrice = addressFromStringValue(mathContract).invoke("calcContractNsbtPriceBySupplyMATH", [nsbtSupply - pmtAmount], []).asAnyList()[0].asInt()
+  strict newPrice = mathContract.invoke("calcContractNsbtPriceBySupplyMATH", [nsbtSupply - pmtAmount], []).asAnyList()[0].asInt()
   if (newPrice < PAULI) then throw("resulting nsbt price would be < 1 (" + newPrice.toString() + " usdn") else
   (
     [ScriptTransfer(i.caller, pmtAmount, neutrinoAssetId)],
