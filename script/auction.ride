@@ -170,10 +170,10 @@ func buyNsbt() = {
     let ownerAddress = i.caller
     # ([], (currentPrice, neutrinoLockedBalance, wavesLockedBalance, reserve, reservesInUsdn, neutrinoSupply, surplus, surplusPercent, BR, nsbtSupply))
     strict neutrinoMetrics = addressFromStringValue(mathContract).invoke("calcNeutinoMetricsMATH", [], []).asAnyList()
-    let currentPrice           = neutrinoMetrics[1].asInt()
-    let reserve                = neutrinoMetrics[4].asInt()
-    let neutrinoSupply         = neutrinoMetrics[6].asInt()
-    let nsbtSupply             = neutrinoMetrics[10].asInt()
+    let currentPrice           = neutrinoMetrics[0].asInt()
+    let reserve                = neutrinoMetrics[3].asInt()
+    let neutrinoSupply         = neutrinoMetrics[5].asInt()
+    let nsbtSupply             = neutrinoMetrics[9].asInt()
     let nsbtSupplyMAX =  assetInfo(nsbtAssetId).value().quantity
     strict curveResult = addressFromStringValue(mathContract).invoke("curveFunctionMATH", [reserve, neutrinoSupply, currentPrice, nsbtSupplyMAX, nsbtSupply, wavesPay], []).asAnyList()
     
