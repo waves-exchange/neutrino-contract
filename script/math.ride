@@ -12,8 +12,8 @@ let BIGMULT16        = 1_0000_0000_0000_0000.toBigInt() #10^16
 let MULTSCALE        = 8
 let SCALE16          = 16
 let SEP              = "__"
-let HALF8            = 5000_0000 # 0.5
-let EULERNUMBER      = 271828182      # scale8
+let HALF8            = 5000_0000 # 0.5             
+let EULERNUMBER      = 27182818284590452.toBigInt()      # scale16
 let scale6           = 1_000_000
 let scale6BigInt     = 1_000_000.toBigInt()
 let scale8BigInt     = 100_000_000.toBigInt()
@@ -102,11 +102,10 @@ func constructor(neutrinoAddress: String, nsbtLockAddress: String, swapAmountAPa
 @Callable(i)
 func calcSwapLimitMATH(gNsbtAmount: Int) = {
   # limit = a * gNsbtAmount^e 
-  let usdnSwapDelayDuration  = 3 # A is scale8
+  let limitParamA  = 3.toBigInt() # A is scale8
   let gNsbtAmountScale16 = toX16(gNsbtAmount, scale6) # scale6
-  let eulerX16 = toX16(EULERNUMBER, MULT)
-  let limitPowPart = pow(gNsbtAmountScale16, 16, eulerX16, 16, 8, DOWN)
-  let limit = fraction(usdnSwapDelayDuration.toBigInt(), limitPowPart, scale8BigInt)
+  let limitPowPart = pow(gNsbtAmountScale16, 16, EULERNUMBER, 16, 8, CEILING)
+  let limit = fraction(limitParamA, limitPowPart, scale8BigInt)
   ([],  (limit.toInt()))
 }
 
@@ -169,23 +168,6 @@ func calcContractNsbtPriceMATH() = {
     let nsbt2usdnPrice = fraction(multNsbt2usdnPrice, PAULI, MULT)
     let nsbt2wavesPrice = fraction(nsbt2usdnPrice, PAULI, currentPrice)
     ([], [nsbt2usdnPrice, nsbt2wavesPrice])
-}
-
-@Callable(i)
-func calcUserSwapLimitsMATH(userAddressStr: String) = {
-  let currentPrice           = controlContract.getIntegerValue(keyPrice())
-  let userGNsbtAmount = nsbtStakingContract.getInteger(keyLockParamUserAmount(userAddressStr)).valueOrElse(0)
-        
-  strict usdnLmtMax = this.invoke("calcSwapLimitMATH", [userGNsbtAmount], []).asInt()
-  let quickSwapResetBlocks = neutrinoContract.getIntegerValue(keyQuickSwapLimitDuration())
-  let lastQuickSwapBlock = neutrinoContract.getInteger(keyUserLastQuickSwapHeight(userAddressStr)).valueOrElse(0)
-  let isNewQuickSwapPeriod = height - lastQuickSwapBlock > quickSwapResetBlocks
-
-  let quickSwapUserSpent = if (isNewQuickSwapPeriod) then 0 else neutrinoContract.getInteger(keyQuickSwapUserSpentInPeriod(userAddressStr)).valueOrElse(0)
-
-  let blcks2LmtReset = if (isNewQuickSwapPeriod) then 0 else quickSwapResetBlocks - (height - lastQuickSwapBlock)
-  let wavesLmtMax = convertNeutrinoToWaves(usdnLmtMax, currentPrice)
-  ([], [usdnLmtMax, quickSwapUserSpent, blcks2LmtReset, wavesLmtMax])
 }
 
 @Callable(i)
