@@ -109,7 +109,7 @@ func totalLockedByUserKEY(swapType: String, owner: String) = makeString(["balanc
 func balanceLockIntervalKEY(swapType: String)              = "balance_" + swapType + "_lock_interval" # number og blocks after user could withdraw funds
 func nodeBalanceLockIntervalKEY()                          = "balance_node_lock_interval"
 func outFeePartKEY(swapType: String)                       = swapType + "Out_swap_feePart"
-func swapsTimeframeKEY()                                      = "swaps_timeframe"
+func swapsTimeframeKEY()                                   = "swaps_timeframe"
 
 #-------------------State Reeding functions-------------------
 func minSwapAmountREAD(swapType: String) = this.getInteger(minSwapAmountKEY(swapType)).valueOrElse(0)

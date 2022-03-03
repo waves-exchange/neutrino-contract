@@ -162,7 +162,7 @@ func swapInfoREADONLY(userAddressStr: String) = {
       maxWavesLimit) = if(userAddressStr == "") then (0,0,0,0) else
       
       let userGNsbtAmount = nsbtStakingContract.getInteger(keyLockParamUserAmount(userAddressStr)).valueOrElse(0)
-      strict usdnLmtMax = this.invoke("calcSwapLimitMATH", [userGNsbtAmount], []).asInt()
+      strict usdnLmtMax = mathContract.invoke("calcSwapLimitMATH", [userGNsbtAmount], []).asInt()
       let quickSwapResetBlocks = neutrinoContract.getIntegerValue(keyQuickSwapLimitDuration())
       let lastQuickSwapBlock = neutrinoContract.getInteger(keyUserLastQuickSwapHeight(userAddressStr)).valueOrElse(0)
       let isNewQuickSwapPeriod = height - lastQuickSwapBlock > quickSwapResetBlocks
