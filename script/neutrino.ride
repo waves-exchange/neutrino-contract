@@ -492,6 +492,14 @@ func transferToAuction() = {
         throw("bond were generated or do not need it. Deficit:" + toString(auctionNBAmount) + "|" + toString(0) + ". Surplus:" + toString(surplusWithLiquidation) + "|" + toString(surplus))
 }
 
+# Callback for auction contract to transfer USDN to user
+@Callable(i)
+func transferUsdnToUser(amount: Int, addr: String) = {
+    if (i.caller != addressFromStringValue(auctionContract)) then throw("Only auction contract is authorized") else
+
+    [ScriptTransfer(addressFromStringValue(addr), amount, neutrinoAssetId)]
+}
+
 # Accept waves from auction.ride after buyNsbt() to lease them immediately
 @Callable(i)
 func acceptWaves() = {
