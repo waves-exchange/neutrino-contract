@@ -167,8 +167,8 @@ func curveFunctionMATH(wRaw: Int, uRaw: Int, price: Int, mRaw: Int, sRaw: Int, w
     let step3 = fraction(bigNsbtSupply, bigMaxNsbtSupply, step2 + bigMaxNsbtSupply).toInt()
     let nsbtAmountRaw = mRaw - sRaw - step3
 
-    ([], [nsbtAmountRaw, usdnPay, wRaw, uRaw, mRaw, sRaw, kCalcArray[0].asInt("4"), kCalcArray[1].asInt("5"), kCalcArray[2].asInt("6"), price.asInt("7"),
-    kCalcArray[3].asInt("8"), kCalcArray[4].asInt("9"), kCalcArray[5], kCalcArray[6], step1.toString(), step2.toString(), step3.toString()])
+    ([], [nsbtAmountRaw, usdnPay, wRaw, uRaw, mRaw, sRaw, kCalcArray[0].asInt("4"), kCalcArray[1].asInt("5"), kCalcArray[2].asInt("6"), price,
+    kCalcArray[3].asInt("8"), kCalcArray[4].asInt("9"), kCalcArray[5], kCalcArray[6], step1.toString(), step2.toString(), step3])
 }
 
 
