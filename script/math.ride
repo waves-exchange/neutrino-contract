@@ -13,7 +13,7 @@ let MULTSCALE        = 8
 let SCALE16          = 16
 let SEP              = "__"
 let HALF8            = 5000_0000 # 0.5
-let EULERNUMBER      = 271828182      # scale8
+let EULERNUMBER      = 27182818284590452.toBigInt()      # scale16
 let scale6           = 1_000_000
 let scale6BigInt     = 1_000_000.toBigInt()
 let scale8BigInt     = 100_000_000.toBigInt()
@@ -98,9 +98,9 @@ func calcContractNsbtPriceInternal(nsbtSupplyOverride: Int|Unit) = {
   strict kCalcArray = this.invoke("calculateKMATH", [neutrinoMetrics[4].asInt(), neutrinoMetrics[6].asInt(), currentPrice, nsbtSupplyMAX, nsbtSupply], []).asAnyList()
   #let kCalcArray = calculateK(reserve, neutrinoSupply, currentPrice, nsbtSupplyMAX, nsbtSupply)
   let multK = kCalcArray[6].asString().parseBigIntValue() # 16 decimals bigint
-  
+
   let mK = fromX16(multK, MULT)
-  
+
   let multStep1 = fraction(nsbtSupplyMAX, MULT, nsbtSupplyMAX - nsbtSupply)
   let multStep2 = fraction(multStep1, multStep1, MULT)
   let multNsbt2usdnPrice = fraction(mK, multStep2, MULT)
@@ -122,11 +122,10 @@ func constructor(neutrinoAddress: String, nsbtLockAddress: String, swapAmountAPa
 @Callable(i)
 func calcSwapLimitMATH(gNsbtAmount: Int) = {
   # limit = a * gNsbtAmount^e 
-  let usdnSwapDelayDuration  = 3 # A is scale8
+  let limitParamA  = 3.toBigInt() # A is scale8
   let gNsbtAmountScale16 = toX16(gNsbtAmount, scale6) # scale6
-  let eulerX16 = toX16(EULERNUMBER, MULT)
-  let limitPowPart = pow(gNsbtAmountScale16, 16, eulerX16, 16, 8, DOWN)
-  let limit = fraction(usdnSwapDelayDuration.toBigInt(), limitPowPart, scale8BigInt)
+  let limitPowPart = pow(gNsbtAmountScale16, 16, EULERNUMBER, 16, 8, CEILING)
+  let limit = fraction(limitParamA, limitPowPart, scale8BigInt)
   ([],  (limit.toInt()))
 }
 
@@ -170,7 +169,6 @@ func curveFunctionMATH(wRaw: Int, uRaw: Int, price: Int, mRaw: Int, sRaw: Int, w
     ([], [nsbtAmountRaw, usdnPay, wRaw, uRaw, mRaw, sRaw, kCalcArray[0].asInt(), kCalcArray[1].asInt(), kCalcArray[2].asInt(), price,
     kCalcArray[3].asInt(), kCalcArray[4].asInt(), kCalcArray[5], kCalcArray[6], step1.toString(), step2.toString(), step3])
 }
-
 
 @Callable(i)
 func calcContractNsbtPriceMATH() = {

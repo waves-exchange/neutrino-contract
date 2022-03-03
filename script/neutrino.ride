@@ -57,7 +57,6 @@ let WAVELET = 100000000
 let PAULI = 1000000
 let PRICELET = 1000000 # 10^6
 let DEFAULTSWAPFEE = 20000 # 0.02 * 1000000 or 2%
-let TWENTYFOURHOURS = 1440
 
 let IdxNetAmount = 0
 let IdxFeeAmount = 1
@@ -67,10 +66,10 @@ let IdxGrossAmount = 2
 let NeutrinoAssetIdKey = "neutrino_asset_id"
 let BondAssetIdKey = "bond_asset_id"
 let AuctionContractKey = "auction_contract"
+let NsbtStakingContractKey = "nsbtStakingContract"
 let LiquidationContractKey = "liquidation_contract"
 let RPDContractKey = "rpd_contract"
 let ContolContractKey = "control_contract"
-let RestContractKey = "rest_contract"
 let MathContractKey = "math_contract"
 let BalanceWavesLockIntervalKey = "balance_waves_lock_interval"
 let BalanceNeutrinoLockIntervalKey = "balance_neutrino_lock_interval"
@@ -107,17 +106,17 @@ func getLeaseAmountKey(nodeIndex: Int)                     = makeString(["%s%d%s
 func minSwapAmountKEY(swapType: String)                    = "min_" + swapType + "_swap_amount"
 func totalLockedKEY(swapType: String)                      = "balance_lock_" + swapType
 func totalLockedByUserKEY(swapType: String, owner: String) = makeString(["balance_lock", swapType, owner], "_")
-func balanceLockIntervalKEY(swapType: String)              = "balance_" + swapType + "_lock_interval"
-func minBalanceLockIntervalKEY(swapType: String)           = "balance_" + swapType + "_lock_interval_minimum"
+func balanceLockIntervalKEY(swapType: String)              = "balance_" + swapType + "_lock_interval" # number og blocks after user could withdraw funds
 func nodeBalanceLockIntervalKEY()                          = "balance_node_lock_interval"
 func outFeePartKEY(swapType: String)                       = swapType + "Out_swap_feePart"
+func swapsTimeframeKEY()                                      = "swaps_timeframe"
 
 #-------------------State Reeding functions-------------------
 func minSwapAmountREAD(swapType: String) = this.getInteger(minSwapAmountKEY(swapType)).valueOrElse(0)
+func swapsTimeframeREAD() = this.getInteger(swapsTimeframeKEY()).valueOrElse(1440)
 func totalLockedREAD(swapType: String) = this.getInteger(totalLockedKEY(swapType)).valueOrElse(0)
 func totalLockedByUserREAD(swapType: String, owner: String) = this.getInteger(totalLockedByUserKEY(swapType, owner)).valueOrElse(0)
-func balanceLockIntervalREAD(swapType: String) = this.getInteger(balanceLockIntervalKEY(swapType)).valueOrElse(1440)
-func minBalanceLockIntervalREAD(swapType: String) = this.getInteger(minBalanceLockIntervalKEY(swapType)).valueOrElse(60)
+func balanceLockIntervalREAD(swapType: String) = this.getInteger(balanceLockIntervalKEY(swapType)).valueOrElse(1440) # number og blocks after user could withdraw funds
 func nodeBalanceLockIntervalREAD() = this.getInteger(nodeBalanceLockIntervalKEY()).valueOrElse(1)
 func keyQuickSwapUserSpentInPeriod(userAddress: String) = ["%s%s", "quickSwapUserSpentInPeriod", userAddress].makeString(SEP)
 func keyUserLastQuickSwapHeight(userAddress: String) = ["%s%s", "userLastQuickSwapHeight", userAddress].makeString(SEP)
@@ -149,11 +148,11 @@ func priceIndexFAIL(index: Int, priceIndex: Int, indexHeight: Int, unlockHeight:
 #-------------------Global vars-------------------------
 
 let liquidationContract = getStringByKey(LiquidationContractKey)
+let nsbtStakingContractStr = getStringByKey(NsbtStakingContractKey)
 let neutrinoAssetId = getStringByKey(NeutrinoAssetIdKey).fromBase58String()
 let auctionContract = getStringByKey(AuctionContractKey)
 let rpdContract = getStringByKey(RPDContractKey)
 let controlContract = getStringByKey(ContolContractKey)
-let restContract = getStringByKey(RestContractKey)
 let mathContractAddress = getStringByKey(MathContractKey)
 let priceIndex = getNumberByAddressAndKey(controlContract, PriceIndexKey) # Last price history iterator from control.ride
 let isBlocked = getBoolByAddressAndKey(controlContract,IsBlockedKey) # Checks for contract locks that might happen after attacks.  The var is read from control contract
@@ -163,6 +162,7 @@ let deprecatedBondAssetId = fromBase58String("975akZBfnMj513U7MZaHKzQrmsEx5aE3wd
 
 let neutrinoContract = this
 let mathContract = addressFromStringValue(mathContractAddress)
+let nsbtStakingContract = addressFromStringValue(nsbtStakingContractStr)
 #-------------------Global vars deficit, locked & supply -------------------------
 let currentPrice = getNumberByAddressAndKey(controlContract, PriceKey) # The value from control.ride
 
@@ -184,6 +184,10 @@ func checkIsValidMinSponsoredFee(tx: SponsorFeeTransaction) = {
 func getPriceHistory(block: Int) = getNumberByAddressAndKey(controlContract, getPriceHistoryKey(block))
 # The func is reading from control.ride price history heights
 func getHeightPriceByIndex(index: Int) = getNumberByAddressAndKey(controlContract, getHeightPriceByIndexKey(index))
+
+#------NSBT Staking contract------
+func keyLockParamUserAmount(userAddress: String) = ["%s%s%s", "paramByUser", userAddress, "amount"].makeString(SEP)
+
 
 #------This contract---------
 let sIdxSwapType                 = 1
@@ -305,6 +309,12 @@ func selectNode(unleaseAmount: Int) = {
     } else (-1, 0)
 }
 
+func thisOnly(i: Invocation) = {
+  if (i.caller != this) then {
+    throw("Permission denied: this contract only allowed")
+  } else true
+}
+
 # prepare list of actions to lease available waves or cancel lease in case of usdn2waves swap
 func prepareUnleaseAndLease(unleaseAmount: Int) = {
     let nodeTuple       = selectNode(unleaseAmount) # balancing waves by 2 nodes
@@ -341,8 +351,8 @@ func commonWithdraw(account : String, index: Int, swapTxId: String, i: Invocatio
     let outFeePart        = this.getInteger(outFeePartKEY(swapType)).valueOrElse(DEFAULTSWAPFEE)
     let totalLocked       = totalLockedREAD(swapType)
     let totalLockedByUser = totalLockedByUserREAD(swapType, account)
-
-    let unlockHeight = startHeight + if (swapType == "waves") then this.getIntegerValue(BalanceWavesLockIntervalKey) else this.getIntegerValue(BalanceNeutrinoLockIntervalKey)
+    
+    let unlockHeight = startHeight + this.getIntegerValue(balanceLockIntervalKEY(swapType))
     
     let indexHeight = getHeightPriceByIndex(index)
     let prevIndexHeight = getHeightPriceByIndex(index-1)
@@ -390,6 +400,49 @@ func commonWithdraw(account : String, index: Int, swapTxId: String, i: Invocatio
 # let MathContractKey = "math_contract"
 
 @Callable(i)
+func constructor(
+  neutrinoAssetIdPrm: String,
+  bondAssetIdPrm: String,
+  auctionContractPrm: String,
+  liquidationContractPrm: String,
+  rpdContractPrm: String,
+  nodeOracleProviderPubKeyPrm: String,
+  balanceWavesLockIntervalPrm: Int,
+  balanceNeutrinoLockIntervalPrm: Int,
+  minWavesSwapAmountPrm: Int,
+  minNeutrinoSwapAmountPrm: Int,
+  neutrinoOutFeePartPrm: Int,
+  wavesOutFeePartPrm: Int) = {
+
+  strict checkCaller = i.thisOnly()
+
+  [
+    StringEntry(NeutrinoAssetIdKey, neutrinoAssetIdPrm),
+    StringEntry(BondAssetIdKey, bondAssetIdPrm),
+    StringEntry(AuctionContractKey, auctionContractPrm),
+    StringEntry(LiquidationContractKey, liquidationContractPrm),
+    StringEntry(RPDContractKey, rpdContractPrm),
+    StringEntry(NodeOracleProviderPubKeyKey, nodeOracleProviderPubKeyPrm),
+    IntegerEntry(BalanceWavesLockIntervalKey, balanceWavesLockIntervalPrm),
+    IntegerEntry(BalanceNeutrinoLockIntervalKey, balanceNeutrinoLockIntervalPrm),
+    IntegerEntry(MinWavesSwapAmountKey, minWavesSwapAmountPrm),
+    IntegerEntry(MinNeutrinoSwapAmountKey, minNeutrinoSwapAmountPrm),
+    IntegerEntry(NeutrinoOutFeePartKey, neutrinoOutFeePartPrm),
+    IntegerEntry(WavesOutFeePartKey, wavesOutFeePartPrm)
+  ]
+}
+
+@Callable(i)
+func constructorV2(mathContract: String, nsbtStakingContract: String, swapsTimeframeBlocks: Int) = {
+  strict checkCaller = i.thisOnly()
+  [
+    StringEntry(MathContractKey, mathContract),
+    StringEntry(NsbtStakingContractKey, nsbtStakingContract),
+    IntegerEntry(swapsTimeframeKEY(), swapsTimeframeBlocks)
+  ]
+}
+
+@Callable(i)
 func commonSwap(swapType: String, pmtAmount: Int, userAddressStr: String, txId58: String) = {
   
   strict checkThisOriginCaller = if(i.caller != this) then throw("Permission denied. Wrong caller.") else true
@@ -399,18 +452,18 @@ func commonSwap(swapType: String, pmtAmount: Int, userAddressStr: String, txId58
   let totalLocked = totalLockedREAD(swapType)
   let totalLockedByUser = totalLockedByUserREAD(swapType, userAddressStr)
   let nodeAddress = getStakingNodeByIndex(0)
-  let balanceLockMaxInterval = if (nodeAddress == userAddressStr) then nodeBalanceLockIntervalREAD() 
-        else if (swapType == "waves") then this.getIntegerValue(BalanceWavesLockIntervalKey) else this.getIntegerValue(BalanceNeutrinoLockIntervalKey)
+  let balanceLockMaxInterval = if (nodeAddress == userAddressStr) then nodeBalanceLockIntervalREAD() else balanceLockIntervalREAD(swapType) 
   let selfUnlockHeight = height + balanceLockMaxInterval
 
   strict amountCheck = if (pmtAmount < minSwapAmount) then minSwapAmountFAIL(swapType, minSwapAmount) else true
 
   let lastSwapHeight = getNumberByKey(keyUserLastQuickSwapHeight(userAddressStr))
-  if(height - lastSwapHeight < TWENTYFOURHOURS) then throw("You have exceeded swap limit for 24h! Next allowed swap height is " + (lastSwapHeight + TWENTYFOURHOURS).toString()) else
+  let swapsTimeframeBlocks = swapsTimeframeREAD()
+  if(height - lastSwapHeight < swapsTimeframeBlocks) then throw("You have exceeded swap limit for 24h! Next allowed swap height is " + (lastSwapHeight + swapsTimeframeBlocks).toString()) else
 
-  strict userSwapLimitsInfo = mathContract.invoke("calcUserSwapLimitsMATH", [userAddressStr], []).asAnyList()
-  let quickSwapLimitTotal = userSwapLimitsInfo[0].asInt()
-
+  let userGNsbtAmount = nsbtStakingContract.getInteger(keyLockParamUserAmount(userAddressStr)).valueOrElse(0)
+  strict quickSwapLimitTotal = this.invoke("calcSwapLimitMATH", [userGNsbtAmount], []).asInt()
+  
   let priceByIndex = priceIndex.getHeightPriceByIndex().getPriceHistory()
   let swapUsdnVolume = if (swapType == "neutrino") then pmtAmount else pmtAmount.convertWavesToNeutrino(priceByIndex)
   if (swapUsdnVolume > quickSwapLimitTotal) then throw("You have exceeded your swap limit! Requested: "+ toString(swapUsdnVolume) + ", available: " + toString(quickSwapLimitTotal)) else 
