@@ -213,7 +213,7 @@ func sellNsbt() = {
 
   strict newPrice = mathContract.invoke("calcContractNsbtPriceBySupplyMATH", [nsbtSupply - pmtAmount], []).asAnyList()[0].asInt()
   if (newPrice < PAULI) then throw("resulting nsbt price would be < 1 (" + newPrice.toString() + " usdn") else
-  strict transf = neutrinoContract.invoke("transferUsdnToUser", [pmtAmount, i.caller], [])
+  strict transf = neutrinoContract.invoke("transferUsdnToUser", [pmtAmount, i.caller.toString()], [])
   (
     [],
     newPrice
