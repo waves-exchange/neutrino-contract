@@ -36,6 +36,7 @@ func keyUserLastQuickSwapHeight(userAddress: String) = ["%s%s", "userLastQuickSw
 func keyQuickSwapUserSpentInPeriod(userAddress: String) = ["%s%s", "quickSwapUserSpentInPeriod", userAddress].makeString(SEP)
 func keyBalanceWavesLockInterval() = "balance_waves_lock_interval"
 func keyBalanceNeutrinoLockInterval() = "balance_neutrino_lock_interval"
+func  keySwapsTimeframe() = "swaps_timeframe"
 
 #------control keys-------
 func keyPrice() = "price"
@@ -163,7 +164,7 @@ func swapInfoREADONLY(userAddressStr: String) = {
       
       let userGNsbtAmount = nsbtStakingContract.getInteger(keyLockParamUserAmount(userAddressStr)).valueOrElse(0)
       strict usdnLmtMax = mathContract.invoke("calcSwapLimitMATH", [userGNsbtAmount], []).asInt()
-      let quickSwapResetBlocks = neutrinoContract.getIntegerValue(keyQuickSwapLimitDuration())
+      let quickSwapResetBlocks = neutrinoContract.getInteger(keySwapsTimeframe()).valueOrElse(1440)
       let lastQuickSwapBlock = neutrinoContract.getInteger(keyUserLastQuickSwapHeight(userAddressStr)).valueOrElse(0)
       let isNewQuickSwapPeriod = height - lastQuickSwapBlock > quickSwapResetBlocks
       let quickSwapUserSpent = if (isNewQuickSwapPeriod) then 0 else neutrinoContract.getInteger(keyQuickSwapUserSpentInPeriod(userAddressStr)).valueOrElse(0)
