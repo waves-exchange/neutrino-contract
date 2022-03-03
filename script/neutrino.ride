@@ -109,7 +109,7 @@ func totalLockedByUserKEY(swapType: String, owner: String) = makeString(["balanc
 func balanceLockIntervalKEY(swapType: String)              = "balance_" + swapType + "_lock_interval" # number og blocks after user could withdraw funds
 func nodeBalanceLockIntervalKEY()                          = "balance_node_lock_interval"
 func outFeePartKEY(swapType: String)                       = swapType + "Out_swap_feePart"
-func swapsTimeframeKEY()                                      = "swaps_timeframe"
+func swapsTimeframeKEY()                                   = "swaps_timeframe"
 
 #-------------------State Reeding functions-------------------
 func minSwapAmountREAD(swapType: String) = this.getInteger(minSwapAmountKEY(swapType)).valueOrElse(0)
@@ -462,7 +462,7 @@ func commonSwap(swapType: String, pmtAmount: Int, userAddressStr: String, txId58
   if(height - lastSwapHeight < swapsTimeframeBlocks) then throw("You have exceeded swap limit for 24h! Next allowed swap height is " + (lastSwapHeight + swapsTimeframeBlocks).toString()) else
 
   let userGNsbtAmount = nsbtStakingContract.getInteger(keyLockParamUserAmount(userAddressStr)).valueOrElse(0)
-  strict quickSwapLimitTotal = this.invoke("calcSwapLimitMATH", [userGNsbtAmount], []).asInt()
+  strict quickSwapLimitTotal = mathContract.invoke("calcSwapLimitMATH", [userGNsbtAmount], []).asInt()
   
   let priceByIndex = priceIndex.getHeightPriceByIndex().getPriceHistory()
   let swapUsdnVolume = if (swapType == "neutrino") then pmtAmount else pmtAmount.convertWavesToNeutrino(priceByIndex)
