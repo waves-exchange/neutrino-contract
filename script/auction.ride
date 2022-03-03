@@ -38,10 +38,10 @@ func asString(val: Any) = {
     case _ => throw("fail to cast into String")
   }
 }
-func asInt(val: Any, debug: String) = {
+func asInt(val: Any) = {
   match val {
     case valInt: Int => valInt
-    case _ => throw("fail to cast into Int" + debug)
+    case _ => throw("fail to cast into Int")
   }
 }
 
@@ -136,23 +136,23 @@ func orderData(orderId: String, totalWavelets: Int, filledWavelets: Int, owner: 
 }
 
 func toStr(name: String, curveResult: List[Any]) = {
-    name + "[nsbtAmountRaw="    + curveResult[0].asInt("a").toString()
-        + " usdnPayment="       + curveResult[1].asInt("b").toString()
-        + " wRaw="              + curveResult[2].asInt("c").toString()
-        + " uRaw="              + curveResult[3].asInt("d").toString()
-        + " mRaw="              + curveResult[4].asInt("e").toString()
-        + " sRaw="              + curveResult[5].asInt("f").toString()
-        + " nsbtCurveParam_a="  + curveResult[6].asInt("g").toString()
-        + " nsbtCurveParam_b="  + curveResult[7].asInt("h").toString()
-        + " wReservesInUsdn="   + curveResult[8].asInt("i").toString()
-        + " price="             + curveResult[9].asInt("j").toString()
-        + " multBR="            + curveResult[10].asInt("k").toString()
-        + " multPower="         + curveResult[11].asInt("l").toString()
+    name + "[nsbtAmountRaw="    + curveResult[0].asInt().toString()
+        + " usdnPayment="       + curveResult[1].asInt().toString()
+        + " wRaw="              + curveResult[2].asInt().toString()
+        + " uRaw="              + curveResult[3].asInt().toString()
+        + " mRaw="              + curveResult[4].asInt().toString()
+        + " sRaw="              + curveResult[5].asInt().toString()
+        + " nsbtCurveParam_a="  + curveResult[6].asInt().toString()
+        + " nsbtCurveParam_b="  + curveResult[7].asInt().toString()
+        + " wReservesInUsdn="   + curveResult[8].asInt().toString()
+        + " price="             + curveResult[9].asInt().toString()
+        + " multBR="            + curveResult[10].asInt().toString()
+        + " multPower="         + curveResult[11].asInt().toString()
         + " multExpInPower="    + curveResult[12].asString()
         + " multK="             + curveResult[13].asString()
         + " step1="             + curveResult[14].asString()
         + " step2="             + curveResult[15].asString()
-        + " step3="             + curveResult[16].asInt("z").toString()
+        + " step3="             + curveResult[16].asInt().toString()
         + "]"
 }
 
@@ -170,14 +170,14 @@ func buyNsbt() = {
     let ownerAddress = i.caller
     # ([], (currentPrice, neutrinoLockedBalance, wavesLockedBalance, reserve, reservesInUsdn, neutrinoSupply, surplus, surplusPercent, BR, nsbtSupply))
     strict neutrinoMetrics = mathContract.invoke("calcNeutinoMetricsMATH", [], []).asAnyList()
-    let currentPrice           = neutrinoMetrics[0].asInt("o")
-    let reserve                = neutrinoMetrics[3].asInt("p")
-    let neutrinoSupply         = neutrinoMetrics[5].asInt("q")
-    let nsbtSupply             = neutrinoMetrics[9].asInt("r")
+    let currentPrice           = neutrinoMetrics[0].asInt()
+    let reserve                = neutrinoMetrics[3].asInt()
+    let neutrinoSupply         = neutrinoMetrics[5].asInt()
+    let nsbtSupply             = neutrinoMetrics[9].asInt()
     let nsbtSupplyMAX =  assetInfo(nsbtAssetId).value().quantity
     strict curveResult = mathContract.invoke("curveFunctionMATH", [reserve, neutrinoSupply, currentPrice, nsbtSupplyMAX, nsbtSupply, wavesPay], []).asAnyList()
     
-    let nsbtAmount = curveResult[0].asInt("s")
+    let nsbtAmount = curveResult[0].asInt()
 
     if (nsbtAmount <= 0) then throw("nsbtAmount <= 0") else
     if (nsbtAmount * 9223372 < wavesPay) then throw("Nsbt2Waves price exceeds MAX_INT: " + toString(wavesPay) + "/" + toString(nsbtAmount)) else {
@@ -209,9 +209,9 @@ func sellNsbt() = {
 
   if (pmt.assetId != nsbtAssetId) then throw("can use NSBT only") else
   strict neutrinoMetrics = mathContract.invoke("calcNeutinoMetricsMATH", [], []).asAnyList()
-  let nsbtSupply = neutrinoMetrics[10].asInt("t")
+  let nsbtSupply = neutrinoMetrics[10].asInt()
 
-  strict newPrice = mathContract.invoke("calcContractNsbtPriceBySupplyMATH", [nsbtSupply - pmtAmount], []).asAnyList()[0].asInt("u")
+  strict newPrice = mathContract.invoke("calcContractNsbtPriceBySupplyMATH", [nsbtSupply - pmtAmount], []).asAnyList()[0].asInt()
   if (newPrice < PAULI) then throw("resulting nsbt price would be < 1 (" + newPrice.toString() + " usdn") else
   (
     [ScriptTransfer(i.caller, pmtAmount, neutrinoAssetId)],

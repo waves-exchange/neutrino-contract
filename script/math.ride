@@ -62,10 +62,10 @@ func asAnyList(val: Any) = {
     case _ => throw("fail to cast into List[Any]")
   }
 }
-func asInt(val: Any, debug: String) = {
+func asInt(val: Any) = {
   match val {
     case valInt: Int => valInt
-    case _ => throw("fail to cast into Int" + debug)
+    case _ => throw("fail to cast into Int")
   }
 }
 
@@ -93,9 +93,9 @@ let nsbtAssetId = nsbtAssetIdStr.fromBase58String()
 func calcContractNsbtPriceInternal(nsbtSupplyOverride: Int|Unit) = {
   let nsbtSupplyMAX =  assetInfo(nsbtAssetId).value().quantity
   strict neutrinoMetrics = this.invoke("calcNeutinoMetricsMATH", [], []).asAnyList()
-  let nsbtSupply = if (nsbtSupplyOverride == unit) then neutrinoMetrics[9].asInt("0") else nsbtSupplyOverride.value()
-  let currentPrice = neutrinoMetrics[0].asInt("1")
-  strict kCalcArray = this.invoke("calculateKMATH", [neutrinoMetrics[4].asInt("2"), neutrinoMetrics[6].asInt("3"), currentPrice, nsbtSupplyMAX, nsbtSupply], []).asAnyList()
+  let nsbtSupply = if (nsbtSupplyOverride == unit) then neutrinoMetrics[9].asInt() else nsbtSupplyOverride.value()
+  let currentPrice = neutrinoMetrics[0].asInt()
+  strict kCalcArray = this.invoke("calculateKMATH", [neutrinoMetrics[4].asInt(), neutrinoMetrics[6].asInt(), currentPrice, nsbtSupplyMAX, nsbtSupply], []).asAnyList()
   #let kCalcArray = calculateK(reserve, neutrinoSupply, currentPrice, nsbtSupplyMAX, nsbtSupply)
   let multK = kCalcArray[6].asString().parseBigIntValue() # 16 decimals bigint
   
@@ -167,8 +167,8 @@ func curveFunctionMATH(wRaw: Int, uRaw: Int, price: Int, mRaw: Int, sRaw: Int, w
     let step3 = fraction(bigNsbtSupply, bigMaxNsbtSupply, step2 + bigMaxNsbtSupply).toInt()
     let nsbtAmountRaw = mRaw - sRaw - step3
 
-    ([], [nsbtAmountRaw, usdnPay, wRaw, uRaw, mRaw, sRaw, kCalcArray[0].asInt("4"), kCalcArray[1].asInt("5"), kCalcArray[2].asInt("6"), price,
-    kCalcArray[3].asInt("8"), kCalcArray[4].asInt("9"), kCalcArray[5], kCalcArray[6], step1.toString(), step2.toString(), step3])
+    ([], [nsbtAmountRaw, usdnPay, wRaw, uRaw, mRaw, sRaw, kCalcArray[0].asInt(), kCalcArray[1].asInt(), kCalcArray[2].asInt(), price,
+    kCalcArray[3].asInt(), kCalcArray[4].asInt(), kCalcArray[5], kCalcArray[6], step1.toString(), step2.toString(), step3])
 }
 
 
@@ -187,7 +187,7 @@ func calcUserSwapLimitsMATH(userAddressStr: String) = {
   let currentPrice           = controlContract.getIntegerValue(keyPrice())
   let userGNsbtAmount = nsbtStakingContract.getInteger(keyLockParamUserAmount(userAddressStr)).valueOrElse(0)
         
-  strict usdnLmtMax = this.invoke("calcSwapLimitMATH", [userGNsbtAmount], []).asInt("10")
+  strict usdnLmtMax = this.invoke("calcSwapLimitMATH", [userGNsbtAmount], []).asInt()
   let quickSwapResetBlocks = neutrinoContract.getNumberByKey(keyQuickSwapLimitDuration())
   let lastQuickSwapBlock = neutrinoContract.getInteger(keyUserLastQuickSwapHeight(userAddressStr)).valueOrElse(0)
   let isNewQuickSwapPeriod = height - lastQuickSwapBlock > quickSwapResetBlocks
