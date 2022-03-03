@@ -36,7 +36,7 @@ func keyUserLastQuickSwapHeight(userAddress: String) = ["%s%s", "userLastQuickSw
 func keyQuickSwapUserSpentInPeriod(userAddress: String) = ["%s%s", "quickSwapUserSpentInPeriod", userAddress].makeString(SEP)
 func keyBalanceWavesLockInterval() = "balance_waves_lock_interval"
 func keyBalanceNeutrinoLockInterval() = "balance_neutrino_lock_interval"
-func  keySwapsTimeframe() = "swaps_timeframe"
+func keySwapsTimeframe() = "swaps_timeframe"
 
 #------control keys-------
 func keyPrice() = "price"
