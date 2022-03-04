@@ -48,6 +48,7 @@ func keyMinLockAmount() = "%s__minLockAmount"
 
 #------- auction keys------
 func keyMinWavesForNsbtBuy() = "min_waves_nsbt_buy"
+func keyMinNsbtSell() = "min_nsbt_sell"
 
 #-------------------Base functions----------------------
 func getStringOrFail(address: Address, key: String) = address.getString(key).valueOrErrorMessage(makeString(["mandatory ", address.toString(), ".", key, " is not defined"], ""))
@@ -127,6 +128,7 @@ func neutrinoStatsREADONLY() = {
   let nsbt2usdnPrice         = prices[0].asInt()
   let nsbt2wavesPrice        = prices[1].asInt()
   let minWaves4NsbtBuy       = auctionContract.getIntegerValue(keyMinWavesForNsbtBuy())
+  let minNsbtsell            = auctionContract.getIntegerValue(keyMinNsbtSell())
   
   ([], makeString([
           "%d%d%d%d%d%d%d%d%d%d%d%d%d",     # 0
@@ -143,7 +145,8 @@ func neutrinoStatsREADONLY() = {
           maxNsbtSupply.toString(),         # 11
           nsbt2usdnPrice.toString(),        # 12
           nsbt2wavesPrice.toString(),       # 13
-          minWaves4NsbtBuy.toString()       # 14        
+          minWaves4NsbtBuy.toString()       # 14    
+          minNsbtsell.toString()            # 15    
           ], SEP))
 }
 

@@ -74,6 +74,7 @@ let NeutrinoLockedBalanceKey = BalanceLockedkKey + "neutrino"
 let FirstOrderKey = "order_first"
 let MathContractKey = "math_contract"
 let MinWavesForNsbtBuyKey = "min_waves_nsbt_buy"
+let MinNsbtSellKey = "min_nsbt_sell"
 
 func getRoiByOrderIdKey(orderId: String) = "debug_order_roi_" + orderId
 
@@ -105,7 +106,8 @@ let neutrinoAssetId = base58'DG2xFkPdDwKUoBkzGAhQtLpSGzfXLiCYPEzeKH2Ad24p' # Ass
 let nsbtAssetId = base58'6nSpVyNH7yM69eg446wrQR94ipbbcmZMU1ENPwanC97g' # NSBT with 6 decimals as USDN does
 
 let isBlocked = getBoolByAddressAndKey(controlContract, "is_blocked")
-let minWavesAmountNsbtBuy = this.getInteger(MinWavesForNsbtBuyKey).valueOrElse(10)
+let minWavesAmountNsbtBuy = this.getInteger(MinWavesForNsbtBuyKey).valueOrElse(1000000000)
+let minNsbtSell = this.getInteger(MinNsbtSellKey).valueOrElse(1000000)
 
 #-------------------Global vars deficit, locked & supply -------------------------
 let firstOrder = getStringByKey(FirstOrderKey)
@@ -166,7 +168,7 @@ func buyNsbt() = {
 
     if (isBlocked) then throw("contract is blocked by EMERGENCY SHUTDOWN actions until reactivation by emergency oracles") else
     if (isDefined(pmt.assetId)) then throw("can use waves only") else
-    if (pmtAmount < minWavesAmountNsbtBuy * WAVELET) then throw("min "+ minWavesAmountNsbtBuy.toString() + " waves expected") else
+    if (pmtAmount < minWavesAmountNsbtBuy) then throw("min "+ minWavesAmountNsbtBuy.toString() + " waves expected") else
     let ownerAddress = i.caller
     # ([], (currentPrice, neutrinoLockedBalance, wavesLockedBalance, reserve, reservesInUsdn, neutrinoSupply, surplus, surplusPercent, BR, nsbtSupply))
     strict neutrinoMetrics = mathContract.invoke("calcNeutinoMetricsMATH", [], []).asAnyList()
@@ -208,6 +210,7 @@ func sellNsbt() = {
   let pmtAmount = pmt.amount
 
   if (pmt.assetId != nsbtAssetId) then throw("can use NSBT only") else
+  if (pmtAmount < minNsbtSell) then throw("min "+ minNsbtSell.toString() + " nsbt expected") else
   strict neutrinoMetrics = mathContract.invoke("calcNeutinoMetricsMATH", [], []).asAnyList()
   let nsbtSupply = neutrinoMetrics[10].asInt()
 
