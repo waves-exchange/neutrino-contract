@@ -168,7 +168,7 @@ func buyNsbt() = {
 
     if (isBlocked) then throw("contract is blocked by EMERGENCY SHUTDOWN actions until reactivation by emergency oracles") else
     if (isDefined(pmt.assetId)) then throw("can use waves only") else
-    if (pmtAmount < minWavesAmountNsbtBuy) then throw("min "+ minWavesAmountNsbtBuy.toString() + " waves expected") else
+    if (pmtAmount < minWavesAmountNsbtBuy) then throw("min "+ (minWavesAmountNsbtBuy / WAVELET).toString() + " waves expected") else
     let ownerAddress = i.caller
     # ([], (currentPrice, neutrinoLockedBalance, wavesLockedBalance, reserve, reservesInUsdn, neutrinoSupply, surplus, surplusPercent, BR, nsbtSupply))
     strict neutrinoMetrics = mathContract.invoke("calcNeutinoMetricsMATH", [], []).asAnyList()
@@ -210,7 +210,7 @@ func sellNsbt() = {
   let pmtAmount = pmt.amount
 
   if (pmt.assetId != nsbtAssetId) then throw("can use NSBT only") else
-  if (pmtAmount < minNsbtSell) then throw("min "+ minNsbtSell.toString() + " nsbt expected") else
+  if (pmtAmount < minNsbtSell) then throw("min "+ (minNsbtSell / PAULI).toString() + " nsbt expected") else
   strict neutrinoMetrics = mathContract.invoke("calcNeutinoMetricsMATH", [], []).asAnyList()
   let nsbtSupply = neutrinoMetrics[10].asInt()
 
