@@ -145,7 +145,7 @@ func neutrinoStatsREADONLY() = {
           maxNsbtSupply.toString(),         # 11
           nsbt2usdnPrice.toString(),        # 12
           nsbt2wavesPrice.toString(),       # 13
-          minWaves4NsbtBuy.toString()       # 14    
+          minWaves4NsbtBuy.toString(),       # 14    
           minNsbtsell.toString()            # 15    
           ], SEP))
 }
