@@ -126,7 +126,7 @@ func neutrinoStatsREADONLY() = {
   let maxNsbtSupply          = neutrinoMetrics[10].asInt()
   let nsbt2usdnPrice         = prices[0].asInt()
   let nsbt2wavesPrice        = prices[1].asInt()
-  let minWaves4NsbtBuy       =  100000000 # TODO: fix auction and uncomment auctionContract.getIntegerValue(keyMinWavesForNsbtBuy())
+  let minWaves4NsbtBuy       = auctionContract.getIntegerValue(keyMinWavesForNsbtBuy())
   
   ([], makeString([
           "%d%d%d%d%d%d%d%d%d%d%d%d%d",     # 0
@@ -214,7 +214,7 @@ func gnsbtInfoREADONLY(userAddressStr: String) = {
 
 @Callable(i)
 func buyNsbtREADONLY(wavesPay: Int) = {
-  let minWavesAmountNsbtBuy =  100000000 # TODO: fix auction and uncomment auctionContract.getIntegerValue(keyMinWavesForNsbtBuy()) 
+  let minWavesAmountNsbtBuy = auctionContract.getIntegerValue(keyMinWavesForNsbtBuy()) 
   if (wavesPay < minWavesAmountNsbtBuy) then throw("min " + minWavesAmountNsbtBuy.toString() + " waves expected") else
 
   strict neutrinoMetrics = mathContract.invoke("calcNeutinoMetricsMATH", [], []).asAnyList()
