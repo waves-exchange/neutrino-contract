@@ -129,8 +129,9 @@ func neutrinoStatsREADONLY() = {
   let maxNsbtSupply          = neutrinoMetrics[10].asInt()
   let nsbt2usdnPrice         = prices[0].asInt()
   let nsbt2wavesPrice        = prices[1].asInt()
-  let minWaves4NsbtBuy       = auctionContract.getIntegerValue(keyMinWavesForNsbtBuy())
-  let minNsbtsell            = auctionContract.getIntegerValue(keyMinNsbtSell())
+  let minWaves4NsbtBuy       = auctionContract.getIntOrFail(keyMinWavesForNsbtBuy())
+  let minNsbtsell            = auctionContract.getIntOrFail(keyMinNsbtSell())
+  let minNsbtLockAmt             = nsbtStakingContract.getIntOrFail(keyMinLockAmount())
   
   ([], makeString([
           "%d%d%d%d%d%d%d%d%d%d%d%d%d",     # 0
@@ -147,8 +148,9 @@ func neutrinoStatsREADONLY() = {
           maxNsbtSupply.toString(),         # 11
           nsbt2usdnPrice.toString(),        # 12
           nsbt2wavesPrice.toString(),       # 13
-          minWaves4NsbtBuy.toString(),       # 14    
-          minNsbtsell.toString()            # 15    
+          minWaves4NsbtBuy.toString(),      # 14    
+          minNsbtsell.toString(),           # 15    
+          minNsbtLockAmt.toString()             # 16
           ], SEP))
 }
 
@@ -239,15 +241,6 @@ func buyNsbtREADONLY(wavesPay: Int) = {
   if (nsbtAmount * 9223372 < wavesPay) then throw("Nsbt2Waves price exceeds MAX_INT: " + toString(wavesPay) + "/" + toString(nsbtAmount)) else
 
   ([], makeString(["%d", nsbtAmount.toString()], SEP))
-}
-
-# (Min staked amount for NSBT staking)
-@Callable(i)
-func minStakedAmountREADONLY() = {
-  ([], makeString([
-    "%d", 
-    nsbtStakingContract.getIntOrFail(keyMinLockAmount()).toString()
-    ], SEP))
 }
 
 # for evaluating merged stake height and amount
