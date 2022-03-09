@@ -10,6 +10,7 @@ let scale6           = 1_000_000
 let scale6BigInt     = 1_000_000.toBigInt()
 let scale8           = 1_0000_0000
 let scale8BigInt     = 1_0000_0000.toBigInt()
+let scale12          = 1_000_000_000_000
 let scale18          = 1_000_000_000_000_000_000.toBigInt()
 let SEP              = "__"
 
@@ -44,6 +45,7 @@ func keyPrice() = "price"
 #-------- nsbt staking keys-----------
 func keyLockParamUserAmount(userAddress: String) = ["%s%s%s", "paramByUser", userAddress, "amount"].makeString(SEP)
 func keyLockParamStartBlock(userAddress: String) = ["%s%s%s", "paramByUser", userAddress, "start"].makeString(SEP)
+func keyLockParamTotalAmount() = ["%s%s", "stats", "activeTotalLocked"].makeString(SEP)
 func keyMinLockAmount() = "%s__minLockAmount"
 
 #------- auction keys------
@@ -194,7 +196,9 @@ func swapInfoREADONLY(userAddressStr: String) = {
 
 @Callable(i)
 func gnsbtInfoREADONLY(userAddressStr: String) = {
-  let gnsbtShare = 10000
+  let gnsbtAmount = nsbtStakingContract.getInteger(keyLockParamUserAmount(userAddressStr)).valueOrElse(0)
+  let gnsbtTotal = nsbtStakingContract.getInteger(keyLockParamTotalAmount()).valueOrElse(0)
+  let gnsbtShare = fraction(gnsbtAmount * 100, scale12, gnsbtTotal)   
   let claimedTotalInUsdn = 10000;
   let claimedUsdn = 10000
   let claimedWaves = 10000
@@ -204,7 +208,8 @@ func gnsbtInfoREADONLY(userAddressStr: String) = {
 
   ([], 
     makeString([
-          "%d%d%d%d%d%d%d",  
+          "%d%d%d%d%d%d%d%d",  
+          gnsbtAmount.toString(),
           gnsbtShare.toString(),
           claimedTotalInUsdn.toString(),
           claimedUsdn.toString(),
