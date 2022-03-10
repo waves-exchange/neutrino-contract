@@ -45,6 +45,7 @@ func keyPrice() = "price"
 #-------- nsbt staking keys-----------
 func keyLockParamUserAmount(userAddress: String) = ["%s%s%s", "paramByUser", userAddress, "amount"].makeString(SEP)
 func keyLockParamStartBlock(userAddress: String) = ["%s%s%s", "paramByUser", userAddress, "start"].makeString(SEP)
+
 func keyLockParamTotalAmount() = ["%s%s", "stats", "activeTotalLocked"].makeString(SEP)
 func keyMinLockAmount() = "%s__minLockAmount"
 
@@ -255,7 +256,14 @@ func mergedStakeREADONLY(amount1: Int, height1: Int, amount2: Int, height2: Int)
 }
 
 @Callable(i)
-func unstakeComissionAmountREADONLY(amount: Int, startHeight: Int) = {
+func unstakeComissionAmountByHeightREADONLY(amount: Int, startHeight: Int) = {
+  strict a = mathContract.invoke("getUnstakeComissionAmountMATH", [amount, startHeight], []).asInt()
+  ([], makeString(["%d", a.toString()], SEP))
+}
+
+@Callable(i)
+func unstakeComissionAmountByUserREADONLY(amount: Int, userAddress: String) = {
+  let startHeight = nsbtStakingContract.getInteger(keyLockParamStartBlock(userAddress)).valueOrElse(height)
   strict a = mathContract.invoke("getUnstakeComissionAmountMATH", [amount, startHeight], []).asInt()
   ([], makeString(["%d", a.toString()], SEP))
 }
