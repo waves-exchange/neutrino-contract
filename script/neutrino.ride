@@ -336,6 +336,43 @@ func prepareUnleaseAndLease(unleaseAmount: Int) = {
 
 #-------------------MAIN LOGIC----------------------
 
+func commonSwap(swapType: String, pmtAmount: Int, userAddressStr: String, txId58: String, swapLimit: Int) = {
+  let minSwapAmount = minSwapAmountREAD(swapType)
+  let totalLocked = totalLockedREAD(swapType)
+  let totalLockedByUser = totalLockedByUserREAD(swapType, userAddressStr)
+  let nodeAddress = getStakingNodeByIndex(0)
+  let priceByIndex = priceIndex.getHeightPriceByIndex().getPriceHistory()
+  let isSwapByNode = nodeAddress == userAddressStr
+  let minBlocksBetweenSwaps = swapsTimeframeREAD()
+
+  strict amountCheck = if (pmtAmount < minSwapAmount) then minSwapAmountFAIL(swapType, minSwapAmount) else true
+  let balanceLockMaxInterval = if (isSwapByNode) then nodeBalanceLockIntervalREAD() else balanceLockIntervalREAD(swapType) 
+  let selfUnlockHeight = height + balanceLockMaxInterval
+  let swapUsdnVolume = if (swapType == "neutrino") then pmtAmount else pmtAmount.convertWavesToNeutrino(priceByIndex)
+  
+  strict validateNodeIsCaller = if(isSwapByNode) then true else {
+    let lastSwapHeight = getNumberByKey(keyUserLastSwapHeight(userAddressStr))
+    
+    if (height - lastSwapHeight < minBlocksBetweenSwaps) then throw("You have exceeded swap limit! Next allowed swap height is " + (lastSwapHeight + minBlocksBetweenSwaps).toString()) else
+    if (swapUsdnVolume > swapLimit) then throw("You have exceeded your swap limit! Requested: "+ toString(swapUsdnVolume) + ", available: " + toString(swapLimit)) else 
+    true 
+  }
+  if (isBlocked) then emergencyShutdownFAIL() else  # see control.ride
+  let leasePart = if (swapType == "waves") then prepareUnleaseAndLease(0) else []
+
+  ([
+      IntegerEntry(keySwapUserSpentInPeriod(userAddressStr), swapUsdnVolume),
+      IntegerEntry(keyUserLastSwapHeight(userAddressStr), height),
+      IntegerEntry(totalLockedByUserKEY(swapType, userAddressStr), totalLockedByUser + pmtAmount),
+      IntegerEntry(getBalanceUnlockBlockKey(userAddressStr), selfUnlockHeight),
+      IntegerEntry(totalLockedKEY(swapType), totalLocked + pmtAmount),
+      StringEntry(
+        swapKEY(userAddressStr, txId58),
+        pendingSwapDATA(swapType, pmtAmount, selfUnlockHeight))
+    ] ++ leasePart, unit)
+   
+}
+
 func commonWithdraw(account : String, index: Int, swapTxId: String, i: Invocation) = {
     let userAddress = addressFromStringValue(account)
     let feeManagerAddress = feeManagerAddressREAD()
@@ -436,50 +473,6 @@ func constructorV2(mathContract: String, nsbtStakingContract: String, swapsTimef
   ]
 }
 
-@Callable(i)
-func commonSwap(swapType: String, pmtAmount: Int, userAddressStr: String, txId58: String) = {
-  
-  strict checkThisOriginCaller = if(i.caller != this) then throw("Permission denied. Wrong caller.") else true
-  strict checkCaller = if (i.originCaller != addressFromStringValue(userAddressStr)) then throw("Permission denied. Wrong origin caller.") else true
-
-  let minSwapAmount = minSwapAmountREAD(swapType)
-  let totalLocked = totalLockedREAD(swapType)
-  let totalLockedByUser = totalLockedByUserREAD(swapType, userAddressStr)
-  let nodeAddress = getStakingNodeByIndex(0)
-  let priceByIndex = priceIndex.getHeightPriceByIndex().getPriceHistory()
-  let isSwapByNode = nodeAddress == userAddressStr
-  let minBlocksBetweenSwaps = swapsTimeframeREAD()
-
-  strict amountCheck = if (pmtAmount < minSwapAmount) then minSwapAmountFAIL(swapType, minSwapAmount) else true
-  let balanceLockMaxInterval = if (isSwapByNode) then nodeBalanceLockIntervalREAD() else balanceLockIntervalREAD(swapType) 
-  let selfUnlockHeight = height + balanceLockMaxInterval
-  let swapUsdnVolume = if (swapType == "neutrino") then pmtAmount else pmtAmount.convertWavesToNeutrino(priceByIndex)
-  
-  strict validateNodeIsCaller = if(isSwapByNode) then true else {
-    let lastSwapHeight = getNumberByKey(keyUserLastSwapHeight(userAddressStr))
-    let userGNsbtAmount = nsbtStakingContract.getInteger(keyLockParamUserAmount(userAddressStr)).valueOrElse(0)
-    strict quickSwapLimitTotal = mathContract.invoke("calcSwapLimitMATH", [userGNsbtAmount], []).asInt()
-
-    if (height - lastSwapHeight < minBlocksBetweenSwaps) then throw("You have exceeded swap limit! Next allowed swap height is " + (lastSwapHeight + minBlocksBetweenSwaps).toString()) else
-    if (swapUsdnVolume > quickSwapLimitTotal) then throw("You have exceeded your swap limit! Requested: "+ toString(swapUsdnVolume) + ", available: " + toString(quickSwapLimitTotal)) else 
-    true 
-  }
-  if (isBlocked) then emergencyShutdownFAIL() else  # see control.ride
-  let leasePart = if (swapType == "waves") then prepareUnleaseAndLease(0) else []
-
-  ([
-      IntegerEntry(keySwapUserSpentInPeriod(userAddressStr), swapUsdnVolume),
-      IntegerEntry(keyUserLastSwapHeight(userAddressStr), height),
-      IntegerEntry(totalLockedByUserKEY(swapType, userAddressStr), totalLockedByUser + pmtAmount),
-      IntegerEntry(getBalanceUnlockBlockKey(userAddressStr), selfUnlockHeight),
-      IntegerEntry(totalLockedKEY(swapType), totalLocked + pmtAmount),
-      StringEntry(
-        swapKEY(userAddressStr, txId58),
-        pendingSwapDATA(swapType, pmtAmount, selfUnlockHeight))
-    ] ++ leasePart, unit)
-    
-}
-
 # Instant swap of WAVES to Neutrino token at the current price on the smart contract
 # [called by user]
 @Callable(i)
@@ -490,8 +483,12 @@ func swapWavesToNeutrino() = {
 
     let userAddress = i.caller.toString()
     let txId58 = i.transactionId.toBase58String()
-    strict commonSwapInv =  this.invoke("commonSwap", ["waves", pmt.amount, userAddress, txId58], []) 
-    []
+
+    let userGNsbtAmount = nsbtStakingContract.getInteger(keyLockParamUserAmount(userAddress)).valueOrElse(0)
+    let swapLimit = mathContract.invoke("calcSwapLimitMATH", [userGNsbtAmount], []).asInt()
+    
+    let commonSwapResult =  commonSwap("waves", pmt.amount, userAddress, txId58, swapLimit)
+    commonSwapResult
 }
 
 # Swap request of Neutrino to WAVES. After {balanceLockInterval} blocks, WAVES tokens will be available for withdrawal
@@ -505,8 +502,11 @@ func swapNeutrinoToWaves() = {
     
     let userAddress = i.caller.toString()
     let txId58 = i.transactionId.toBase58String()
-    strict commonSwapInv =  this.invoke("commonSwap", ["neutrino", pmt.amount, userAddress, txId58], []) 
-    []
+    let userGNsbtAmount = nsbtStakingContract.getInteger(keyLockParamUserAmount(userAddress)).valueOrElse(0)
+    let swapLimitTotal = mathContract.invoke("calcSwapLimitMATH", [userGNsbtAmount], []).asInt()
+
+    let commonSwapResult = commonSwap("neutrino", pmt.amount, userAddress, txId58, swapLimitTotal) 
+    commonSwapResult
 }
 
 # Withdraw WAVES from smart contract after {swapNeutrinoToWaves()} request has reached {balanceLockInterval} height
