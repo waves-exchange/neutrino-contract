@@ -36,7 +36,7 @@ func keyMinNeutrinoSwapAmount() = "min_neutrino_swap_amount"
 func keyWavesOutFeePart() = "wavesOut_swap_feePart"
 func keyNeutrinoOutFeePart() = "neutrinoOut_swap_feePart"
 func keyNsbtLockContract() = "%s__nsbtLockContract"
-func keyQuickSwapLimitDuration() = "%s__quickSwapLimitDuration"
+func swapsTimeframeKEY()      = "swaps_timeframe"
 func keyUserLastQuickSwapHeight(userAddress: String) = ["%s%s", "userLastQuickSwapHeight", userAddress].makeString(SEP)
 func keyQuickSwapUserSpentInPeriod(userAddress: String) = ["%s%s", "quickSwapUserSpentInPeriod", userAddress].makeString(SEP)
 
@@ -186,7 +186,7 @@ func calcUserSwapLimitsMATH(userAddressStr: String) = {
   let userGNsbtAmount = nsbtStakingContract.getInteger(keyLockParamUserAmount(userAddressStr)).valueOrElse(0)
         
   strict usdnLmtMax = this.invoke("calcSwapLimitMATH", [userGNsbtAmount], []).asInt()
-  let quickSwapResetBlocks = neutrinoContract.getNumberByKey(keyQuickSwapLimitDuration())
+  let quickSwapResetBlocks = neutrinoContract.getNumberByKey(swapsTimeframeKEY()())
   let lastQuickSwapBlock = neutrinoContract.getInteger(keyUserLastQuickSwapHeight(userAddressStr)).valueOrElse(0)
   let isNewQuickSwapPeriod = height - lastQuickSwapBlock > quickSwapResetBlocks
 
