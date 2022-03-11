@@ -150,9 +150,16 @@ func calculateKMATH(wRaw: Int, uRaw: Int, price: Int, mRaw: Int, sRaw: Int) = {
 }
 
 # AUCTION MOON FACTOR
+
 @Callable(i)
-func curveFunctionMATH(wRaw: Int, uRaw: Int, price: Int, mRaw: Int, sRaw: Int, wavesPayRaw: Int) = {
-    
+func curveFunctionMATH(wavesPayRaw: Int) = {
+    strict neutrinoMetrics = this.invoke("calcNeutinoMetricsMATH", [], []).asAnyList()
+    let price  = neutrinoMetrics[0].asInt()
+    let wRaw   = neutrinoMetrics[3].asInt()
+    let uRaw   = neutrinoMetrics[5].asInt()
+    let sRaw   = neutrinoMetrics[9].asInt()
+    let mRaw   = assetInfo(nsbtAssetId).value().quantity
+
     strict kCalcArray = this.invoke("calculateKMATH", [wRaw, uRaw, price, mRaw, sRaw], []).asAnyList()
 
     let multK = kCalcArray[6].asString().parseBigIntValue()

@@ -227,14 +227,8 @@ func gnsbtInfoREADONLY(userAddressStr: String) = {
 func buyNsbtREADONLY(wavesPay: Int) = {
   let minWavesAmountNsbtBuy = auctionContract.getIntegerValue(keyMinWavesForNsbtBuy()) 
   if (wavesPay < minWavesAmountNsbtBuy) then throw("min " + minWavesAmountNsbtBuy.toString() + " waves expected") else
-
-  strict neutrinoMetrics = mathContract.invoke("calcNeutinoMetricsMATH", [], []).asAnyList()
-  let currentPrice   = neutrinoMetrics[0].asInt()
-  let reserve        = neutrinoMetrics[3].asInt()
-  let neutrinoSupply = neutrinoMetrics[5].asInt()
-  let nsbtSupply     = neutrinoMetrics[9].asInt()
-  let nsbtSupplyMAX  = assetInfo(nsbtAssetId).value().quantity
-  strict curveResult = mathContract.invoke("curveFunctionMATH", [reserve, neutrinoSupply, currentPrice, nsbtSupplyMAX, nsbtSupply, wavesPay], []).asAnyList()
+  
+  strict curveResult = mathContract.invoke("curveFunctionMATH", [wavesPay], []).asAnyList()
   
   let nsbtAmount = curveResult[0].asInt()
 
