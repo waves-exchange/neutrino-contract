@@ -79,7 +79,6 @@ let NodeOracleProviderPubKeyKey = "node_oracle_provider"
 let NeutrinoOutFeePartKey = "neutrinoOut_swap_feePart"
 let WavesOutFeePartKey = "wavesOut_swap_feePart"
 let FeesManagerAddressKey = "fees_manager_address"
-func keyQuickSwapLimitDuration() = "%s__quickSwapLimitDuration"
 
 #------Common----------------
 
@@ -106,7 +105,7 @@ func getLeaseAmountKey(nodeIndex: Int)                     = makeString(["%s%d%s
 func minSwapAmountKEY(swapType: String)                    = "min_" + swapType + "_swap_amount"
 func totalLockedKEY(swapType: String)                      = "balance_lock_" + swapType
 func totalLockedByUserKEY(swapType: String, owner: String) = makeString(["balance_lock", swapType, owner], "_")
-func balanceLockIntervalKEY(swapType: String)              = "balance_" + swapType + "_lock_interval" # number og blocks after user could withdraw funds
+func balanceLockIntervalKEY(swapType: String)              = "balance_" + swapType + "_lock_interval" # number of blocks after user could withdraw funds
 func nodeBalanceLockIntervalKEY()                          = "balance_node_lock_interval"
 func outFeePartKEY(swapType: String)                       = swapType + "Out_swap_feePart"
 func swapsTimeframeKEY()                                   = "swaps_timeframe"
@@ -118,8 +117,8 @@ func totalLockedREAD(swapType: String) = this.getInteger(totalLockedKEY(swapType
 func totalLockedByUserREAD(swapType: String, owner: String) = this.getInteger(totalLockedByUserKEY(swapType, owner)).valueOrElse(0)
 func balanceLockIntervalREAD(swapType: String) = this.getInteger(balanceLockIntervalKEY(swapType)).valueOrElse(1440) # number og blocks after user could withdraw funds
 func nodeBalanceLockIntervalREAD() = this.getInteger(nodeBalanceLockIntervalKEY()).valueOrElse(1)
-func keyQuickSwapUserSpentInPeriod(userAddress: String) = ["%s%s", "quickSwapUserSpentInPeriod", userAddress].makeString(SEP)
-func keyUserLastQuickSwapHeight(userAddress: String) = ["%s%s", "userLastQuickSwapHeight", userAddress].makeString(SEP)
+func keySwapUserSpentInPeriod(userAddress: String) = ["%s%s", "quickSwapUserSpentInPeriod", userAddress].makeString(SEP)
+func keyUserLastSwapHeight(userAddress: String) = ["%s%s", "userLastQuickSwapHeight", userAddress].makeString(SEP)
 
 func feeManagerAddressREAD() = this.getString(FeesManagerAddressKey)
           .valueOrErrorMessage(FeesManagerAddressKey + " is not specified")
@@ -394,11 +393,6 @@ func commonWithdraw(account : String, index: Int, swapTxId: String, i: Invocatio
 
 #-------------------Callable----------------------
 
-# constructor
-# RestContractKey
-# keyQuickSwapLimitDuration()
-# let MathContractKey = "math_contract"
-
 @Callable(i)
 func constructor(
   neutrinoAssetIdPrm: String,
@@ -452,36 +446,38 @@ func commonSwap(swapType: String, pmtAmount: Int, userAddressStr: String, txId58
   let totalLocked = totalLockedREAD(swapType)
   let totalLockedByUser = totalLockedByUserREAD(swapType, userAddressStr)
   let nodeAddress = getStakingNodeByIndex(0)
-  let balanceLockMaxInterval = if (nodeAddress == userAddressStr) then nodeBalanceLockIntervalREAD() else balanceLockIntervalREAD(swapType) 
-  let selfUnlockHeight = height + balanceLockMaxInterval
+  let priceByIndex = priceIndex.getHeightPriceByIndex().getPriceHistory()
+  let isSwapByNode = nodeAddress == userAddressStr
+  let minBlocksBetweenSwaps = swapsTimeframeREAD()
 
   strict amountCheck = if (pmtAmount < minSwapAmount) then minSwapAmountFAIL(swapType, minSwapAmount) else true
-
-  let lastSwapHeight = getNumberByKey(keyUserLastQuickSwapHeight(userAddressStr))
-  let swapsTimeframeBlocks = swapsTimeframeREAD()
-  if(height - lastSwapHeight < swapsTimeframeBlocks) then throw("You have exceeded swap limit for 24h! Next allowed swap height is " + (lastSwapHeight + swapsTimeframeBlocks).toString()) else
-
-  let userGNsbtAmount = nsbtStakingContract.getInteger(keyLockParamUserAmount(userAddressStr)).valueOrElse(0)
-  strict quickSwapLimitTotal = mathContract.invoke("calcSwapLimitMATH", [userGNsbtAmount], []).asInt()
-  
-  let priceByIndex = priceIndex.getHeightPriceByIndex().getPriceHistory()
+  let balanceLockMaxInterval = if (isSwapByNode) then nodeBalanceLockIntervalREAD() else balanceLockIntervalREAD(swapType) 
+  let selfUnlockHeight = height + balanceLockMaxInterval
   let swapUsdnVolume = if (swapType == "neutrino") then pmtAmount else pmtAmount.convertWavesToNeutrino(priceByIndex)
-  if (swapUsdnVolume > quickSwapLimitTotal) then throw("You have exceeded your swap limit! Requested: "+ toString(swapUsdnVolume) + ", available: " + toString(quickSwapLimitTotal)) else 
+  
+  strict validateNodeIsCaller = if(isSwapByNode) then true else {
+    let lastSwapHeight = getNumberByKey(keyUserLastSwapHeight(userAddressStr))
+    let userGNsbtAmount = nsbtStakingContract.getInteger(keyLockParamUserAmount(userAddressStr)).valueOrElse(0)
+    strict quickSwapLimitTotal = mathContract.invoke("calcSwapLimitMATH", [userGNsbtAmount], []).asInt()
 
-  if (isBlocked) then emergencyShutdownFAIL() else { # see control.ride
-    let leasePart = if (swapType == "waves") then prepareUnleaseAndLease(0) else []
+    if (height - lastSwapHeight < minBlocksBetweenSwaps) then throw("You have exceeded swap limit! Next allowed swap height is " + (lastSwapHeight + minBlocksBetweenSwaps).toString()) else
+    if (swapUsdnVolume > quickSwapLimitTotal) then throw("You have exceeded your swap limit! Requested: "+ toString(swapUsdnVolume) + ", available: " + toString(quickSwapLimitTotal)) else 
+    true 
+  }
+  if (isBlocked) then emergencyShutdownFAIL() else  # see control.ride
+  let leasePart = if (swapType == "waves") then prepareUnleaseAndLease(0) else []
 
-    ([
-        IntegerEntry(keyQuickSwapUserSpentInPeriod(userAddressStr), swapUsdnVolume),
-        IntegerEntry(keyUserLastQuickSwapHeight(userAddressStr), height),
-        IntegerEntry(totalLockedByUserKEY(swapType, userAddressStr), totalLockedByUser + pmtAmount),
-        IntegerEntry(getBalanceUnlockBlockKey(userAddressStr), selfUnlockHeight),
-        IntegerEntry(totalLockedKEY(swapType), totalLocked + pmtAmount),
-        StringEntry(
-          swapKEY(userAddressStr, txId58),
-          pendingSwapDATA(swapType, pmtAmount, selfUnlockHeight))
-      ] ++ leasePart, unit)
-    }
+  ([
+      IntegerEntry(keySwapUserSpentInPeriod(userAddressStr), swapUsdnVolume),
+      IntegerEntry(keyUserLastSwapHeight(userAddressStr), height),
+      IntegerEntry(totalLockedByUserKEY(swapType, userAddressStr), totalLockedByUser + pmtAmount),
+      IntegerEntry(getBalanceUnlockBlockKey(userAddressStr), selfUnlockHeight),
+      IntegerEntry(totalLockedKEY(swapType), totalLocked + pmtAmount),
+      StringEntry(
+        swapKEY(userAddressStr, txId58),
+        pendingSwapDATA(swapType, pmtAmount, selfUnlockHeight))
+    ] ++ leasePart, unit)
+    
 }
 
 # Instant swap of WAVES to Neutrino token at the current price on the smart contract
