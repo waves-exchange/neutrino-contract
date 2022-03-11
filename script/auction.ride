@@ -170,14 +170,11 @@ func buyNsbt() = {
     if (isDefined(pmt.assetId)) then throw("can use waves only") else
     if (pmtAmount < minWavesAmountNsbtBuy) then throw("min "+ (minWavesAmountNsbtBuy / WAVELET).toString() + " waves expected") else
     let ownerAddress = i.caller
-    # ([], (currentPrice, neutrinoLockedBalance, wavesLockedBalance, reserve, reservesInUsdn, neutrinoSupply, surplus, surplusPercent, BR, nsbtSupply))
+
     strict neutrinoMetrics = mathContract.invoke("calcNeutinoMetricsMATH", [], []).asAnyList()
     let currentPrice           = neutrinoMetrics[0].asInt()
-    let reserve                = neutrinoMetrics[3].asInt()
-    let neutrinoSupply         = neutrinoMetrics[5].asInt()
-    let nsbtSupply             = neutrinoMetrics[9].asInt()
-    let nsbtSupplyMAX =  assetInfo(nsbtAssetId).value().quantity
-    strict curveResult = mathContract.invoke("curveFunctionMATH", [reserve, neutrinoSupply, currentPrice, nsbtSupplyMAX, nsbtSupply, wavesPay], []).asAnyList()
+    
+    strict curveResult = mathContract.invoke("curveFunctionMATH", [wavesPay], []).asAnyList()
     
     let nsbtAmount = curveResult[0].asInt()
 
