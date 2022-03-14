@@ -198,28 +198,32 @@ func swapInfoREADONLY(userAddressStr: String) = {
 }
 
 @Callable(i)
-func gnsbtInfoREADONLY(userAddressStr: String) = {
-  let gnsbtAmount = nsbtStakingContract.getInteger(keyLockParamUserAmount(userAddressStr)).valueOrElse(0)
+func gnsbtInfoREADONLY(userAddressStrOrEmpty: String, additionalNsbtAmountOrZero: Int) = {
+  let gnsbtAmount = nsbtStakingContract.getInteger(keyLockParamUserAmount(userAddressStrOrEmpty)).valueOrElse(0)
   let gnsbtTotal = nsbtStakingContract.getInteger(keyLockParamTotalAmount()).valueOrElse(0)
-  let gnsbtShare = fraction(gnsbtAmount * 100, scale12, gnsbtTotal)   
-  let claimedTotalInUsdn = 10000;
-  let claimedUsdn = 10000
-  let claimedWaves = 10000
-  let unclaimedTotalInUsdn = 10000
-  let unclaimedUsdn = 10000
-  let unclaimedWaves = 10000
 
-  ([], 
+  let gnsbtAmountNew = gnsbtAmount + additionalNsbtAmountOrZero
+  let gnsbtTotalNew = gnsbtTotal + additionalNsbtAmountOrZero
+
+  let gnsbtShare = if (gnsbtTotal != 0) then fraction(gnsbtAmount * 100, scale12, gnsbtTotal) else 0
+  let gnsbtShareNew = if (gnsbtTotalNew != 0) then fraction(gnsbtAmountNew * 100, scale12, gnsbtTotalNew) else 0
+
+  let maxUsdnLimit = 1000_000_000
+  let maxWavesLimit = 100_0000_0000
+  let maxUsdnLimitNew = 1100_000_000
+  let maxWavesLimitNew = 110_0000_0000
+
+  ([],
     makeString([
-          "%d%d%d%d%d%d%d%d",  
+          "%d%d%d%d%d%d%d%d",
           gnsbtAmount.toString(),
+          gnsbtAmountNew.toString(),
           gnsbtShare.toString(),
-          claimedTotalInUsdn.toString(),
-          claimedUsdn.toString(),
-          claimedWaves.toString(),
-          unclaimedTotalInUsdn.toString(),
-          unclaimedUsdn.toString(),
-          unclaimedWaves.toString()        
+          gnsbtShareNew.toString(),
+          maxUsdnLimit.toString(),
+          maxWavesLimit.toString(),
+          maxUsdnLimitNew.toString(),
+          maxWavesLimitNew.toString()
           ], SEP))
 }
 
