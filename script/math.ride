@@ -77,10 +77,10 @@ let nsbtAssetId           = fromBase58String(neutrinoContract.getStringValue(key
 
 func calcContractNsbtPriceInternal(nsbtSupplyOverride: Int|Unit) = {
   let nsbtSupplyMAX =  assetInfo(nsbtAssetId).value().quantity
-  strict neutrinoMetrics = this.invoke("calcNeutinoMetricsMATH", [], []).asAnyList()
+  strict neutrinoMetrics = this.invoke("calcNeutinoMetricsREADONLY", [], []).asAnyList()
   let nsbtSupply = if (nsbtSupplyOverride == unit) then neutrinoMetrics[9].asInt() else nsbtSupplyOverride.value()
   let currentPrice = neutrinoMetrics[0].asInt()
-  strict kCalcArray = this.invoke("calculateKMATH", [neutrinoMetrics[4].asInt(), neutrinoMetrics[6].asInt(), currentPrice, nsbtSupplyMAX, nsbtSupply], []).asAnyList()
+  strict kCalcArray = this.invoke("calculateKREADONLY", [neutrinoMetrics[4].asInt(), neutrinoMetrics[6].asInt(), currentPrice, nsbtSupplyMAX, nsbtSupply], []).asAnyList()
   #let kCalcArray = calculateK(reserve, neutrinoSupply, currentPrice, nsbtSupplyMAX, nsbtSupply)
   let multK = kCalcArray[6].asString().parseBigIntValue() # 16 decimals bigint
 
@@ -104,7 +104,7 @@ func constructor(neutrinoAddress: String, nsbtLockAddress: String, swapAmountAPa
 }
 
 @Callable(i)
-func calcSwapLimitMATH(gNsbtAmount: Int) = {
+func calcSwapLimitREADONLY(gNsbtAmount: Int) = {
   # limit = a * gNsbtAmount^e 
   let limitParamA  = this.getIntOrFail(keySwapAmountAParam()).toBigInt() # A is scale8
   let gNsbtAmountScale16 = toX16(gNsbtAmount, scale6) # scale6
@@ -115,7 +115,7 @@ func calcSwapLimitMATH(gNsbtAmount: Int) = {
 
 # AUCTION MOON FACTOR
 @Callable(i)
-func calculateKMATH(wRaw: Int, uRaw: Int, price: Int, mRaw: Int, sRaw: Int) = {
+func calculateKREADONLY(wRaw: Int, uRaw: Int, price: Int, mRaw: Int, sRaw: Int) = {
   let EXP = 2718281.toBigInt()
   let EXPSCALE = 6
 
@@ -136,15 +136,15 @@ func calculateKMATH(wRaw: Int, uRaw: Int, price: Int, mRaw: Int, sRaw: Int) = {
 # AUCTION MOON FACTOR
 
 @Callable(i)
-func curveFunctionMATH(wavesPayRaw: Int) = {
-    strict neutrinoMetrics = this.invoke("calcNeutinoMetricsMATH", [], []).asAnyList()
+func curveFunctionREADONLY(wavesPayRaw: Int) = {
+    strict neutrinoMetrics = this.invoke("calcNeutinoMetricsREADONLY", [], []).asAnyList()
     let price  = neutrinoMetrics[0].asInt()
     let wRaw   = neutrinoMetrics[3].asInt()
     let uRaw   = neutrinoMetrics[5].asInt()
     let sRaw   = neutrinoMetrics[9].asInt()
     let mRaw   = assetInfo(nsbtAssetId).value().quantity
 
-    strict kCalcArray = this.invoke("calculateKMATH", [wRaw, uRaw, price, mRaw, sRaw], []).asAnyList()
+    strict kCalcArray = this.invoke("calculateKREADONLY", [wRaw, uRaw, price, mRaw, sRaw], []).asAnyList()
 
     let multK = kCalcArray[6].asString().parseBigIntValue()
 
@@ -162,17 +162,17 @@ func curveFunctionMATH(wavesPayRaw: Int) = {
 }
 
 @Callable(i)
-func calcContractNsbtPriceMATH() = {
+func calcContractNsbtPriceREADONLY() = {
   calcContractNsbtPriceInternal(unit)
 }
 
 @Callable(i)
-func calcContractNsbtPriceBySupplyMATH(nsbtSupply: Int) = {
+func calcContractNsbtPriceBySupplyREADONLY(nsbtSupply: Int) = {
   calcContractNsbtPriceInternal(nsbtSupply)
 }
 
 @Callable(i)
-func calcNeutinoMetricsMATH() = {
+func calcNeutinoMetricsREADONLY() = {
   let currentPrice = controlContract.getIntegerValue(keyPrice()) # The value from control.ride
   let neutrinoLockedBalance = neutrinoContract.getInteger(keyNeutrinoLockedBalance()).valueOrElse(0) #locked balance from USDN -> WAVES swap
   let wavesLockedBalance = neutrinoContract.getInteger(keyWavesLockedBalance()).valueOrElse(0)   #locked balance from WAVES -> USDN swap
@@ -191,13 +191,13 @@ func calcNeutinoMetricsMATH() = {
 }
 
 @Callable(i)
-func getUnstakeComissionAmountMATH(amount: Int, startHeight: Int, halfLife: Int) = {
+func getUnstakeComissionAmountREADONLY(amount: Int, startHeight: Int, halfLife: Int) = {
   ([], fraction(amount, pow(2, 0, fraction(-(height - startHeight), MULT, halfLife), 8, 8, HALFUP), MULT))
 }
 
 # find out merged stake effective height
 @Callable(i)
-func mergeStakesMATH(amount1: Int, height1: Int, amount2: Int, height2: Int, halfLife: Int) = {
+func mergeStakesREADONLY(amount1: Int, height1: Int, amount2: Int, height2: Int, halfLife: Int) = {
   let w = fraction(amount2, pow(2, 0, fraction(height2 - height1, MULT, halfLife), 8, 8, HALFUP), MULT)
   let v = fraction(amount1 + amount2, MULT, amount1 + w)
   ([], height1 + (HALF8 - halfLife * log(v, 8, 2, 0, 8, HALFUP)) / MULT)
