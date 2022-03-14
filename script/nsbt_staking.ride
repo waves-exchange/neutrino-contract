@@ -150,7 +150,8 @@ func stake() = {
 
   let mergedStartHeight = if (isNewUser) then height else {
     let mathContract = addressFromStringValue(getStringOrFail(keyMathContractAddress()))
-    mathContract.invoke("mergeStakesMATH", [amount, height, lockAmount, lockStartHeight], []).asInt()
+    let hl = keyHalfLife().getIntOrFail()
+    mathContract.invoke("mergeStakesREADONLY", [amount, height, lockAmount, lockStartHeight, hl], []).asInt()
   }
   if (mergedAmount < minLockAmount) then throw("Min lock amount is " + minLockAmount.toString()) else
 
@@ -171,7 +172,8 @@ func unstake(amount: Int) = {
   if (amount > lockAmount) then throw("Requested " + amount.toString() + ", but staked only " + lockAmount.toString()) else
 
   let mathContract = addressFromStringValue(getStringOrFail(keyMathContractAddress()))
-  let comissionAmount = mathContract.invoke("getUnstakeComissionAmountMATH", [amount, lockStart], []).asInt()
+  let hl = keyHalfLife().getIntOrFail()
+  let comissionAmount = mathContract.invoke("getUnstakeComissionAmountREADONLY", [amount, lockStart, hl], []).asInt()
   [
     ScriptTransfer(userAddress, amount - comissionAmount, bondAssetId),
     ScriptTransfer(auctionAddress.Address(), comissionAmount, bondAssetId),
@@ -179,29 +181,4 @@ func unstake(amount: Int) = {
   ]
   ++ LockParamsEntry(userAddress, lockAmount - amount, lockStart)
   ++ StatsEntry(-amount, if (amount == lockAmount) then -1 else 0, if (amount == lockAmount) then -1 else 0)
-}
-
-# User's gNSBT amount
-@Callable(i)
-func gNsbtAmountREADONLY(userAddressStr: String) = {
-  let userAddress = userAddressStr.addressFromStringValue()
-  (
-    [],
-    if (userAddress.isUserExists()) then userAddress.getUserParamsOrFail()._1 else 0
-  )
-}
-
-# Staking params
-# (gNsbtAmount, stakingStartHeight)
-@Callable(i)
-func nsbtStakingInfoWrapperREADONLY(userAddressStr: String) = {
-  let (nsbtAmt, stakingStart) = if(userAddressStr == "") then (0,0) else
-
-      let userAddress = userAddressStr.addressFromStringValue()
-      if (userAddress.isUserExists()) then {
-        let (amount, start) = userAddress.getUserParamsOrFail()
-        ([], (amount, start))
-      } else ([], (0, 0))
-
-  ([], (nsbtAmt, stakingStart))
 }

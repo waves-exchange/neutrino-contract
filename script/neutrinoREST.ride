@@ -45,7 +45,7 @@ func keyPrice() = "price"
 #-------- nsbt staking keys-----------
 func keyLockParamUserAmount(userAddress: String) = ["%s%s%s", "paramByUser", userAddress, "amount"].makeString(SEP)
 func keyLockParamStartBlock(userAddress: String) = ["%s%s%s", "paramByUser", userAddress, "start"].makeString(SEP)
-
+func keyHalfLife() = "%s__halfLife"
 func keyLockParamTotalAmount() = ["%s%s", "stats", "activeTotalLocked"].makeString(SEP)
 func keyMinLockAmount() = "%s__minLockAmount"
 
@@ -113,9 +113,9 @@ func constructor(neutrinoAddress: String, nsbtLockAddress: String, mathAddress: 
 
 @Callable(i)
 func neutrinoStatsREADONLY() = {
-  strict neutrinoMetrics = mathContract.invoke("calcNeutinoMetricsMATH",[],[]).asAnyList()
+  strict neutrinoMetrics = mathContract.invoke("calcNeutinoMetricsREADONLY",[],[]).asAnyList()
   
-  strict prices = mathContract.invoke("calcContractNsbtPriceMATH",[],[]).asAnyList()
+  strict prices = mathContract.invoke("calcContractNsbtPriceREADONLY",[],[]).asAnyList()
   
   let currentPrice           = neutrinoMetrics[0].asInt()
   let neutrinoLockedBalance  = neutrinoMetrics[1].asInt()
@@ -171,7 +171,7 @@ func swapInfoREADONLY(userAddressStr: String) = {
       maxWavesLimit) = if(userAddressStr == "") then (0,0,0,0) else
       
       let userGNsbtAmount = nsbtStakingContract.getInteger(keyLockParamUserAmount(userAddressStr)).valueOrElse(0)
-      strict usdnLmtMax = mathContract.invoke("calcSwapLimitMATH", [userGNsbtAmount], []).asInt()
+      strict usdnLmtMax = mathContract.invoke("calcSwapLimitREADONLY", [userGNsbtAmount], []).asInt()
       let quickSwapResetBlocks = neutrinoContract.getInteger(keySwapsTimeframe()).valueOrElse(1440)
       let lastQuickSwapBlock = neutrinoContract.getInteger(keyUserLastQuickSwapHeight(userAddressStr)).valueOrElse(0)
       let isNewQuickSwapPeriod = height - lastQuickSwapBlock > quickSwapResetBlocks
@@ -232,7 +232,7 @@ func buyNsbtREADONLY(wavesPay: Int) = {
   let minWavesAmountNsbtBuy = auctionContract.getIntegerValue(keyMinWavesForNsbtBuy()) 
   if (wavesPay < minWavesAmountNsbtBuy) then throw("min " + minWavesAmountNsbtBuy.toString() + " waves expected") else
   
-  strict curveResult = mathContract.invoke("curveFunctionMATH", [wavesPay], []).asAnyList()
+  strict curveResult = mathContract.invoke("curveFunctionREADONLY", [wavesPay], []).asAnyList()
   
   let nsbtAmount = curveResult[0].asInt()
 
@@ -245,7 +245,8 @@ func buyNsbtREADONLY(wavesPay: Int) = {
 # for evaluating merged stake height and amount
 @Callable(i)
 func mergedStakeREADONLY(amount1: Int, height1: Int, amount2: Int, height2: Int) = {
-  strict h = mathContract.invoke("mergeStakesMATH", [amount1, height1, amount2, height2], []).asInt()
+  let halfLife = nsbtStakingContract.getIntOrFail(keyHalfLife());
+  strict h = mathContract.invoke("mergeStakesREADONLY", [amount1, height1, amount2, height2], []).asInt()
   ([], makeString([
     "%d%d", 
     (amount1 + amount2).toString(), 
@@ -255,13 +256,15 @@ func mergedStakeREADONLY(amount1: Int, height1: Int, amount2: Int, height2: Int)
 
 @Callable(i)
 func unstakeComissionAmountByHeightREADONLY(amount: Int, startHeight: Int) = {
-  strict a = mathContract.invoke("getUnstakeComissionAmountMATH", [amount, startHeight], []).asInt()
+  let halfLife = nsbtStakingContract.getIntOrFail(keyHalfLife());
+  strict a = mathContract.invoke("getUnstakeComissionAmountREADONLY", [amount, startHeight, halfLife], []).asInt()
   ([], makeString(["%d", a.toString()], SEP))
 }
 
 @Callable(i)
 func unstakeComissionAmountByUserREADONLY(amount: Int, userAddress: String) = {
+  let halfLife = nsbtStakingContract.getIntOrFail(keyHalfLife());
   let startHeight = nsbtStakingContract.getInteger(keyLockParamStartBlock(userAddress)).valueOrElse(height)
-  strict a = mathContract.invoke("getUnstakeComissionAmountMATH", [amount, startHeight], []).asInt()
+  strict a = mathContract.invoke("getUnstakeComissionAmountREADONLY", [amount, startHeight, halfLife], []).asInt()
   ([], makeString(["%d", a.toString()], SEP))
 }

@@ -17,45 +17,36 @@ let EULERNUMBER      = 27182818284590452.toBigInt()      # scale16
 let scale6           = 1_000_000
 let scale6BigInt     = 1_000_000.toBigInt()
 let scale8BigInt     = 100_000_000.toBigInt()
+let scale10BigInt     = 10_000_000_000.toBigInt()
 
 #-------this keys---------
-func keyNeutrinoAddress()  = "%s%s__config__neutrinoAddress"
-func keySwapAmountAParam() = "%s%s__config__swapAParam"
+func keyNeutrinoAddress()     = "%s%s__config__neutrinoAddress"
+func keySwapAmountAParam()    = "%s%s__config__swapAParam"
 #-------neutrino keys------
-func keyNeutrinoAssetId() = "neutrino_asset_id"
+func keyNeutrinoAssetId()            = "neutrino_asset_id"
 func keyLiquidationContractAddress() = "liquidation_contract"
-func keyRPDContract() = "rpd_contract"
-func keyAuctionContract() = "auction_contract"
-func keyContolContract() = "control_contract"
-func keyBondAssetId() = "bond_asset_id"
-func keyBalanceLocked() = "balance_lock_"
-func keyWavesLockedBalance() = keyBalanceLocked() + "waves"
-func keyNeutrinoLockedBalance() = keyBalanceLocked() + "neutrino"
-func keyMinWavesSwapAmount() = "min_waves_swap_amount"
-func keyMinNeutrinoSwapAmount() = "min_neutrino_swap_amount"
-func keyWavesOutFeePart() = "wavesOut_swap_feePart"
-func keyNeutrinoOutFeePart() = "neutrinoOut_swap_feePart"
-func keyNsbtLockContract() = "%s__nsbtLockContract"
-func swapsTimeframeKEY()      = "swaps_timeframe"
+func keyAuctionContract()            = "auction_contract"
+func keyContolContract()             = "control_contract"
+func keyBondAssetId()                = "bond_asset_id"
+func keyBalanceLocked()              = "balance_lock_"
+func keyWavesLockedBalance()         = keyBalanceLocked() + "waves"
+func keyNeutrinoLockedBalance()      = keyBalanceLocked() + "neutrino"
+func swapsTimeframeKEY()             = "swaps_timeframe"
 func keyUserLastQuickSwapHeight(userAddress: String) = ["%s%s", "userLastQuickSwapHeight", userAddress].makeString(SEP)
 func keyQuickSwapUserSpentInPeriod(userAddress: String) = ["%s%s", "quickSwapUserSpentInPeriod", userAddress].makeString(SEP)
 
 #------control keys-------
 func keyPrice() = "price"
 
-#------staking keys-------
-func keyHalfLife() = "%s__halfLife"
-func keyLockParamUserAmount(userAddress: String) = ["%s%s%s", "paramByUser", userAddress, "amount"].makeString(SEP)
-
 #-------------------Base functions----------------------
-func getStringOrFail(address: Address, key: String) = address.getString(key).valueOrErrorMessage(makeString(["mandatory ", address.toString(), ".", key, " is not defined"], ""))
-func getIntOrFail(address: Address, key: String) = address.getInteger(key).valueOrErrorMessage(makeString(["mandatory ", address.toString(), ".", key, " is not defined"], ""))
-func getNumberByKey(address: Address, key: String) = address.getInteger(key).valueOrElse(0)
-func getBoolOrFail(address: Address, key: String) = address.getBoolean(key).valueOrErrorMessage(makeString(["mandatory ", address.toString(), ".", key, " is not defined"], ""))
+func getStringOrFail(address: Address, key: String)  = address.getString(key).valueOrErrorMessage(makeString(["mandatory ", address.toString(), ".", key, " is not defined"], ""))
+func getIntOrFail(address: Address, key: String)     = address.getInteger(key).valueOrErrorMessage(makeString(["mandatory ", address.toString(), ".", key, " is not defined"], ""))
+func getNumberByKey(address: Address, key: String)   = address.getInteger(key).valueOrElse(0)
+func getBoolOrFail(address: Address, key: String)    = address.getBoolean(key).valueOrErrorMessage(makeString(["mandatory ", address.toString(), ".", key, " is not defined"], ""))
 func convertNeutrinoToWaves(amount: Int, price: Int) = fraction(fraction(amount, PRICELET, price),WAVELET, PAULI)
 func convertWavesToNeutrino(amount: Int, price: Int) = fraction(fraction(amount, price, PRICELET), PAULI, WAVELET)
-func toX16(origVal: Int, origScaleMult: Int)          = fraction(origVal.toBigInt(), BIGMULT16, origScaleMult.toBigInt())
-func fromX16(val: BigInt, resultScaleMult: Int)       = fraction(val, resultScaleMult.toBigInt(), BIGMULT16).toInt()
+func toX16(origVal: Int, origScaleMult: Int)         = fraction(origVal.toBigInt(), BIGMULT16, origScaleMult.toBigInt())
+func fromX16(val: BigInt, resultScaleMult: Int)      = fraction(val, resultScaleMult.toBigInt(), BIGMULT16).toInt()
 func asAnyList(val: Any) = {
   match val {
     case valAnyLyst: List[Any] => valAnyLyst
@@ -68,7 +59,6 @@ func asInt(val: Any) = {
     case _ => throw("fail to cast into Int")
   }
 }
-
 func asString(val: Any) = {
   match val {
     case valStr: String => valStr
@@ -76,19 +66,14 @@ func asString(val: Any) = {
   }
 }
 
-
 #-------------------GLOBAL VARIABLES-------------------------
-let neutrinoContract = addressFromStringValue(this.getStringOrFail(keyNeutrinoAddress()))
-let controlContract  = addressFromStringValue(neutrinoContract.getStringOrFail(keyContolContract()))
-let auctionContract = addressFromStringValue(neutrinoContract.getStringOrFail(keyAuctionContract()))
-let liquidationContract = neutrinoContract.getStringOrFail(keyLiquidationContractAddress())
-let rpdContract = neutrinoContract.getStringOrFail(keyRPDContract())
-let nsbtStakingContract = addressFromStringValue(this.getStringOrFail(keyNsbtLockContract()))
+let neutrinoContract     = addressFromStringValue(this.getStringOrFail(keyNeutrinoAddress()))
+let controlContract      = addressFromStringValue(neutrinoContract.getStringOrFail(keyContolContract()))
+let auctionContract      = addressFromStringValue(neutrinoContract.getStringOrFail(keyAuctionContract()))
+let liquidationContract  = addressFromStringValue(neutrinoContract.getStringOrFail(keyLiquidationContractAddress()))
 
-let neutrinoAssetIdString = neutrinoContract.getStringOrFail(keyNeutrinoAssetId())
-let neutrinoAssetId = fromBase58String(neutrinoAssetIdString)
-let nsbtAssetIdStr = neutrinoContract.getStringValue(keyBondAssetId())
-let nsbtAssetId = nsbtAssetIdStr.fromBase58String()
+let neutrinoAssetId       = fromBase58String(neutrinoContract.getStringOrFail(keyNeutrinoAssetId()))
+let nsbtAssetId           = fromBase58String(neutrinoContract.getStringValue(keyBondAssetId()))
 
 func calcContractNsbtPriceInternal(nsbtSupplyOverride: Int|Unit) = {
   let nsbtSupplyMAX =  assetInfo(nsbtAssetId).value().quantity
@@ -114,18 +99,17 @@ func constructor(neutrinoAddress: String, nsbtLockAddress: String, swapAmountAPa
   if (i.caller != this) then throw("not authorized") else
   [
       StringEntry(keyNeutrinoAddress(), neutrinoAddress),
-      StringEntry(keyNsbtLockContract(), nsbtLockAddress),
-      IntegerEntry(keySwapAmountAParam(), swapAmountAParam)
+      IntegerEntry(keySwapAmountAParam(), swapAmountAParam) 
   ]
 }
 
 @Callable(i)
 func calcSwapLimitMATH(gNsbtAmount: Int) = {
   # limit = a * gNsbtAmount^e 
-  let limitParamA  = 3.toBigInt() # A is scale8
+  let limitParamA  = this.getIntOrFail(keySwapAmountAParam()).toBigInt() # A is scale8
   let gNsbtAmountScale16 = toX16(gNsbtAmount, scale6) # scale6
   let limitPowPart = pow(gNsbtAmountScale16, 16, EULERNUMBER, 16, 8, CEILING)
-  let limit = fraction(limitParamA, limitPowPart, scale8BigInt)
+  let limit = fraction(limitParamA, limitPowPart, scale10BigInt)
   ([],  (limit.toInt()))
 }
 
@@ -188,23 +172,6 @@ func calcContractNsbtPriceBySupplyMATH(nsbtSupply: Int) = {
 }
 
 @Callable(i)
-func calcUserSwapLimitsMATH(userAddressStr: String) = {
-  let currentPrice           = controlContract.getIntegerValue(keyPrice())
-  let userGNsbtAmount = nsbtStakingContract.getInteger(keyLockParamUserAmount(userAddressStr)).valueOrElse(0)
-        
-  strict usdnLmtMax = this.invoke("calcSwapLimitMATH", [userGNsbtAmount], []).asInt()
-  let quickSwapResetBlocks = neutrinoContract.getNumberByKey(swapsTimeframeKEY())
-  let lastQuickSwapBlock = neutrinoContract.getInteger(keyUserLastQuickSwapHeight(userAddressStr)).valueOrElse(0)
-  let isNewQuickSwapPeriod = height - lastQuickSwapBlock > quickSwapResetBlocks
-
-  let quickSwapUserSpent = if (isNewQuickSwapPeriod) then 0 else neutrinoContract.getInteger(keyQuickSwapUserSpentInPeriod(userAddressStr)).valueOrElse(0)
-
-  let blcks2LmtReset = if (isNewQuickSwapPeriod) then 0 else quickSwapResetBlocks - (height - lastQuickSwapBlock)
-  let wavesLmtMax = convertNeutrinoToWaves(usdnLmtMax, currentPrice)
-  ([], [usdnLmtMax, quickSwapUserSpent, blcks2LmtReset, wavesLmtMax])
-}
-
-@Callable(i)
 func calcNeutinoMetricsMATH() = {
   let currentPrice = controlContract.getIntegerValue(keyPrice()) # The value from control.ride
   let neutrinoLockedBalance = neutrinoContract.getInteger(keyNeutrinoLockedBalance()).valueOrElse(0) #locked balance from USDN -> WAVES swap
@@ -212,7 +179,7 @@ func calcNeutinoMetricsMATH() = {
   let reserve = wavesBalance(neutrinoContract).regular - wavesLockedBalance #waves reserves to cover USDN supply
   let reservesInUsdn = convertWavesToNeutrino(reserve, currentPrice)
   let neutrinoSupply = neutrinoLockedBalance + assetInfo(neutrinoAssetId).value().quantity - assetBalance(neutrinoContract, neutrinoAssetId)
-    - assetBalance(addressFromStringValue(liquidationContract), neutrinoAssetId) # supply outside main sc or liquidation contract
+    - assetBalance(liquidationContract, neutrinoAssetId) # supply outside main sc or liquidation contract
   let surplus = reservesInUsdn - neutrinoSupply
   let deficit = neutrinoSupply - reservesInUsdn
   let surplusPercent = if (neutrinoSupply == 0) then 0 else fraction(surplus, PAULI, neutrinoSupply) * 100
@@ -224,15 +191,13 @@ func calcNeutinoMetricsMATH() = {
 }
 
 @Callable(i)
-func getUnstakeComissionAmountMATH(amount: Int, startHeight: Int) = {
-  let halfLife = nsbtStakingContract.getIntOrFail(keyHalfLife());
+func getUnstakeComissionAmountMATH(amount: Int, startHeight: Int, halfLife: Int) = {
   ([], fraction(amount, pow(2, 0, fraction(-(height - startHeight), MULT, halfLife), 8, 8, HALFUP), MULT))
 }
 
 # find out merged stake effective height
 @Callable(i)
-func mergeStakesMATH(amount1: Int, height1: Int, amount2: Int, height2: Int) = {
-  let halfLife = nsbtStakingContract.getIntOrFail(keyHalfLife());
+func mergeStakesMATH(amount1: Int, height1: Int, amount2: Int, height2: Int, halfLife: Int) = {
   let w = fraction(amount2, pow(2, 0, fraction(height2 - height1, MULT, halfLife), 8, 8, HALFUP), MULT)
   let v = fraction(amount1 + amount2, MULT, amount1 + w)
   ([], height1 + (HALF8 - halfLife * log(v, 8, 2, 0, 8, HALFUP)) / MULT)
