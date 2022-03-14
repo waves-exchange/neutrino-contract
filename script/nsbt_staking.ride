@@ -150,8 +150,8 @@ func stake() = {
 
   let mergedStartHeight = if (isNewUser) then height else {
     let mathContract = addressFromStringValue(getStringOrFail(keyMathContractAddress()))
-    let hl = keyHalfLife().getIntOrFail()
-    mathContract.invoke("mergeStakesREADONLY", [amount, height, lockAmount, lockStartHeight, hl], []).asInt()
+    
+    mathContract.invoke("mergeStakesREADONLY", [amount, height, lockAmount, lockStartHeight, halfLife], []).asInt()
   }
   if (mergedAmount < minLockAmount) then throw("Min lock amount is " + minLockAmount.toString()) else
 
@@ -172,8 +172,8 @@ func unstake(amount: Int) = {
   if (amount > lockAmount) then throw("Requested " + amount.toString() + ", but staked only " + lockAmount.toString()) else
 
   let mathContract = addressFromStringValue(getStringOrFail(keyMathContractAddress()))
-  let hl = keyHalfLife().getIntOrFail()
-  let comissionAmount = mathContract.invoke("getUnstakeComissionAmountREADONLY", [amount, lockStart, hl], []).asInt()
+  
+  let comissionAmount = mathContract.invoke("getUnstakeComissionAmountREADONLY", [amount, lockStart, halfLife], []).asInt()
   [
     ScriptTransfer(userAddress, amount - comissionAmount, bondAssetId),
     ScriptTransfer(auctionAddress.Address(), comissionAmount, bondAssetId),
