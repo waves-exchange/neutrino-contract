@@ -293,7 +293,7 @@ func unstake(amount: Int) = {
   if (amount > lockAmount) then throw("Requested " + amount.toString() + ", but staked only " + lockAmount.toString()) else
 
   let mathContract = addressFromStringValue(getStringOrFail(keyMathContractAddress()))
-  let comissionAmount = mathContract.invoke("getUnstakeComissionAmountREADONLY", [amount, lockStart], []).asInt()
+  let comissionAmount = mathContract.invoke("getUnstakeComissionAmountREADONLY", [amount, lockStart, halfLife], []).asInt()
   let (statsEntries, totalStaked, totalStakedNew) = StatsResult(-amount, if (amount == lockAmount) then -1 else 0, if (amount == lockAmount) then -1 else 0)
 
   [
