@@ -130,7 +130,7 @@ func convertNeutrinoToWaves(amount: Int, price: Int) = fraction(fraction(amount,
 func convertWavesToNeutrino(amount: Int, price: Int) = fraction(fraction(amount, price, PRICELET), PAULI, WAVELET)
 func convertWavesToBond(amount: Int, price: Int) = convertWavesToNeutrino(amount, price) # it's here to be more explicit with convertation
 func convertJsonArrayToList(jsonArray: String) = {
-   jsonArray.split(",") 
+   jsonArray.split(",")
 }
 
 #-------------------Failures-------------------
@@ -346,16 +346,16 @@ func commonSwap(swapType: String, pmtAmount: Int, userAddressStr: String, txId58
   let minBlocksBetweenSwaps = swapsTimeframeREAD()
 
   strict amountCheck         = if (pmtAmount < minSwapAmount) then minSwapAmountFAIL(swapType, minSwapAmount) else true
-  let balanceLockMaxInterval = if (isSwapByNode) then nodeBalanceLockIntervalREAD() else balanceLockIntervalREAD(swapType) 
+  let balanceLockMaxInterval = if (isSwapByNode) then nodeBalanceLockIntervalREAD() else balanceLockIntervalREAD(swapType)
   let selfUnlockHeight       = height + balanceLockMaxInterval
   let swapUsdnVolume         = if (swapType == "neutrino") then pmtAmount else pmtAmount.convertWavesToNeutrino(priceByIndex)
-  
+
   strict validateNodeIsCaller = if(isSwapByNode) then true else {
     let lastSwapHeight = getNumberByKey(keyUserLastSwapHeight(userAddressStr))
-    
+
     if (height - lastSwapHeight < minBlocksBetweenSwaps) then throw("You have exceeded swap limit! Next allowed swap height is " + (lastSwapHeight + minBlocksBetweenSwaps).toString()) else
-    if (swapUsdnVolume > swapLimit) then throw("You have exceeded your swap limit! Requested: "+ toString(swapUsdnVolume) + ", available: " + toString(swapLimit)) else 
-    true 
+    if (swapUsdnVolume > swapLimit) then throw("You have exceeded your swap limit! Requested: "+ toString(swapUsdnVolume) + ", available: " + toString(swapLimit)) else
+    true
   }
   if (isBlocked) then emergencyShutdownFAIL() else  # see control.ride
   let leasePart = if (swapType == "waves") then prepareUnleaseAndLease(0) else []
@@ -370,10 +370,13 @@ func commonSwap(swapType: String, pmtAmount: Int, userAddressStr: String, txId58
         swapKEY(userAddressStr, txId58),
         pendingSwapDATA(swapType, pmtAmount, selfUnlockHeight))
     ] ++ leasePart, unit)
-   
+
 }
 
-func commonWithdraw(account : String, index: Int, swapTxId: String, i: Invocation) = {
+@Callable(i)
+func commonWithdraw(account : String, index: Int, swapTxId: String, withdrawTxId: String) = {
+    strict checkCaller = i.thisOnly()
+
     let userAddress = addressFromStringValue(account)
     let feeManagerAddress = feeManagerAddressREAD()
 
@@ -387,9 +390,9 @@ func commonWithdraw(account : String, index: Int, swapTxId: String, i: Invocatio
     let outFeePart        = this.getInteger(outFeePartKEY(swapType)).valueOrElse(DEFAULTSWAPFEE)
     let totalLocked       = totalLockedREAD(swapType)
     let totalLockedByUser = totalLockedByUserREAD(swapType, account)
-    
+
     let unlockHeight = startHeight + this.getIntegerValue(balanceLockIntervalKEY(swapType))
-    
+
     let indexHeight = getHeightPriceByIndex(index)
     let prevIndexHeight = getHeightPriceByIndex(index-1)
     let priceByIndex = getPriceHistory(indexHeight)
@@ -416,11 +419,12 @@ func commonWithdraw(account : String, index: Int, swapTxId: String, i: Invocatio
         then prepareUnleaseAndLease(outAmountGrossTuple._1)
         else []
 
+    strict nsbtStakingDeposit = nsbtStakingContract.invoke("deposit", [], [AttachedPayment(outAmountGrossTuple._2, outFeeAmount)])
+
     (leasePart ++ [IntegerEntry(totalLockedByUserKEY(swapType, account), totalLockedByUser - inAmount),
     IntegerEntry(totalLockedKEY(swapType), totalLocked - inAmount),
 
     ScriptTransfer(userAddress,       outNetAmount, outAmountGrossTuple._2),
-    ScriptTransfer(feeManagerAddress, outFeeAmount, outAmountGrossTuple._2),
 
     StringEntry(
       swapKEY(account, swapTxId),
@@ -486,7 +490,7 @@ func swapWavesToNeutrino() = {
 
     let userGNsbtAmount = nsbtStakingContract.getInteger(keyLockParamUserAmount(userAddress)).valueOrElse(0)
     let swapLimit = mathContract.invoke("calcSwapLimitREADONLY", [userGNsbtAmount], []).asInt()
-    
+
     let commonSwapResult =  commonSwap("waves", pmt.amount, userAddress, txId58, swapLimit)
     commonSwapResult
 }
@@ -496,16 +500,16 @@ func swapWavesToNeutrino() = {
 # [called by user]
 @Callable(i)
 func swapNeutrinoToWaves() = {
-    let pmt = i.payments[0].value() 
+    let pmt = i.payments[0].value()
 
     if (pmt.assetId != neutrinoAssetId) then throw("Only appropriate Neutrino tokens are allowed for swapping.") else
-    
+
     let userAddress = i.caller.toString()
     let txId58 = i.transactionId.toBase58String()
     let userGNsbtAmount = nsbtStakingContract.getInteger(keyLockParamUserAmount(userAddress)).valueOrElse(0)
     let swapLimitTotal = mathContract.invoke("calcSwapLimitREADONLY", [userGNsbtAmount], []).asInt()
 
-    let commonSwapResult = commonSwap("neutrino", pmt.amount, userAddress, txId58, swapLimitTotal) 
+    let commonSwapResult = commonSwap("neutrino", pmt.amount, userAddress, txId58, swapLimitTotal)
     commonSwapResult
 }
 
@@ -514,7 +518,8 @@ func swapNeutrinoToWaves() = {
 # [called by user]
 @Callable(i)
 func withdraw(account: String, index: Int, swapTxId: String) = {
-    commonWithdraw(account, index, swapTxId, i)
+    strict commonWithdrawInv = this.invoke("commonWithdraw", [account, index, swapTxId, i.transactionId.toBase58String()], [])
+    []
 }
 
 # Transfers bonds from neutrino.ride to auction.ride to fulfill 'buy bonds' orders
@@ -528,7 +533,7 @@ func transferToAuction() = {
     let neutrinoSupply         = neutrinoMetrics[5].asInt()
     let surplus                = neutrinoMetrics[6].asInt()
     let nsbtSupply             = neutrinoMetrics[9].asInt()
-    
+
     let auctionNBAmount = neutrinoSupply - assetBalance(addressFromStringValue(auctionContract), bondAssetId)
     let surplusWithLiquidation = (surplus - assetBalance(addressFromStringValue(liquidationContract), neutrinoAssetId)) #in 6 decimals
     if(isBlocked)
