@@ -32,9 +32,10 @@ func keyWavesOutFeePart() = "wavesOut_swap_feePart"
 func keyNeutrinoOutFeePart() = "neutrinoOut_swap_feePart"
 func keyNsbtLockContract() = "%s__nsbtLockContract"
 func keyMathContract() = "%s__mathContract"
-func keyQuickSwapLimitDuration() = "%s__quickSwapLimitDuration"
-func keyUserLastQuickSwapHeight(userAddress: String) = ["%s%s", "userLastQuickSwapHeight", userAddress].makeString(SEP)
-func keyQuickSwapUserSpentInPeriod(userAddress: String) = ["%s%s", "quickSwapUserSpentInPeriod", userAddress].makeString(SEP)
+
+func keySwapUserSpentInPeriod(userAddress: String) = ["%s%s", "swapUserSpentInPeriod", userAddress].makeString(SEP)
+func keyUserLastSwapHeight(userAddress: String) = ["%s%s", "userLastSwapHeight", userAddress].makeString(SEP)
+
 func keyBalanceWavesLockInterval() = "balance_waves_lock_interval"
 func keyBalanceNeutrinoLockInterval() = "balance_neutrino_lock_interval"
 func keySwapsTimeframe() = "swaps_timeframe"
@@ -165,20 +166,20 @@ func swapInfoREADONLY(userAddressStr: String) = {
   let usdnSwapDelayDuration  = neutrinoContract.getIntegerValue(keyBalanceNeutrinoLockInterval())
   let wavesSwapDelayDuration = neutrinoContract.getIntegerValue(keyBalanceWavesLockInterval())
 
-  let (quickSwapUserSpent, 
+  let (swapUserSpent, 
       blocks2LimitReset, 
       maxUsdnLimit, 
       maxWavesLimit) = if(userAddressStr == "") then (0,0,0,0) else
       
       let userGNsbtAmount = nsbtStakingContract.getInteger(keyLockParamUserAmount(userAddressStr)).valueOrElse(0)
       strict usdnLmtMax = mathContract.invoke("calcSwapLimitREADONLY", [userGNsbtAmount], []).asInt()
-      let quickSwapResetBlocks = neutrinoContract.getInteger(keySwapsTimeframe()).valueOrElse(1440)
-      let lastQuickSwapBlock = neutrinoContract.getInteger(keyUserLastQuickSwapHeight(userAddressStr)).valueOrElse(0)
-      let isNewQuickSwapPeriod = height - lastQuickSwapBlock > quickSwapResetBlocks
-      let quickSwapUserSpent = if (isNewQuickSwapPeriod) then 0 else neutrinoContract.getInteger(keyQuickSwapUserSpentInPeriod(userAddressStr)).valueOrElse(0)
-      let blcks2LmtReset = if (isNewQuickSwapPeriod) then 0 else quickSwapResetBlocks - (height - lastQuickSwapBlock)
+      let swapResetBlocks = neutrinoContract.getInteger(keySwapsTimeframe()).valueOrElse(1440)
+      let lastSwapBlock = neutrinoContract.getInteger(keyUserLastSwapHeight(userAddressStr)).valueOrElse(0)
+      let isNewSwapPeriod = height - lastSwapBlock > swapResetBlocks
+      let swapUserSpent = if (isNewSwapPeriod) then 0 else neutrinoContract.getInteger(keySwapUserSpentInPeriod(userAddressStr)).valueOrElse(0)
+      let blcks2LmtReset = if (isNewSwapPeriod) then 0 else swapResetBlocks - (height - lastSwapBlock)
       let wavesLmtMax = convertNeutrinoToWaves(usdnLmtMax, currentPrice)
-      (quickSwapUserSpent, blcks2LmtReset, usdnLmtMax, wavesLmtMax)
+      (swapUserSpent, blcks2LmtReset, usdnLmtMax, wavesLmtMax)
 
   ([], 
     makeString([
@@ -193,7 +194,7 @@ func swapInfoREADONLY(userAddressStr: String) = {
           blocks2LimitReset.toString(),
           maxWavesLimit.toString(), # max allowed swap limit based on gnsbt balance
           maxUsdnLimit.toString(),  # max allowed swap limit based on gnsbt balance
-          quickSwapUserSpent.toString()
+          swapUserSpent.toString()
           ], SEP))
 }
 
