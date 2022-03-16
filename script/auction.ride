@@ -243,6 +243,11 @@ func cancelOrder(orderId : String) = {
     }
 }
 
+@Callable(i)
+func minWavesAmountNsbtBuySYSREADONLY() = {
+  ([], minWavesAmountNsbtBuy)
+}
+
 @Verifier(tx)
 func verify() = {
     let pubKeyAdminsList = [

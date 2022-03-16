@@ -84,7 +84,6 @@ func asString(val: Any) = {
 func toX18(origVal: Int, origScaleMult: Int)          = fraction(origVal.toBigInt(), scale18, origScaleMult.toBigInt())
 func fromX18(val: BigInt, resultScaleMult: Int)       = fraction(val, resultScaleMult.toBigInt(), scale18).toInt()
 
-
 #-------------------GLOBAL VARIABLES-------------------------
 let neutrinoContract = addressFromStringValue(this.getStringOrFail(keyNeutrinoAddress()))
 let controlContract  = addressFromStringValue(neutrinoContract.getStringOrFail(keyContolContract()))
@@ -99,7 +98,9 @@ let neutrinoAssetId = fromBase58String(neutrinoAssetIdString)
 let nsbtAssetIdStr = neutrinoContract.getStringValue(keyBondAssetId())
 let nsbtAssetId = nsbtAssetIdStr.fromBase58String()
 
-#-------------------Global vars deficit, locked & supply -------------------------
+func minWavesForNsbtBuy() = {
+  auctionContract.invoke("minWavesAmountNsbtBuySYSREADONLY", [], []).asInt()
+}
 
 @Callable(i)
 # swapAmountAParam is scale8
@@ -131,9 +132,9 @@ func neutrinoStatsREADONLY() = {
   let maxNsbtSupply          = neutrinoMetrics[10].asInt()
   let nsbt2usdnPrice         = prices[0].asInt()
   let nsbt2wavesPrice        = prices[1].asInt()
-  let minWaves4NsbtBuy       = auctionContract.getIntOrFail(keyMinWavesForNsbtBuy())
+  let minWaves4NsbtBuy       = minWavesForNsbtBuy()
   let minNsbtsell            = auctionContract.getIntOrFail(keyMinNsbtSell())
-  let minNsbtLockAmt             = nsbtStakingContract.getIntOrFail(keyMinLockAmount())
+  let minNsbtLockAmt         = nsbtStakingContract.getIntOrFail(keyMinLockAmount())
   
   ([], makeString([
           "%d%d%d%d%d%d%d%d%d%d%d%d%d",     # 0
@@ -232,7 +233,7 @@ func gnsbtInfoREADONLY(userAddressStrOrEmpty: String, additionalNsbtAmountOrZero
 
 @Callable(i)
 func buyNsbtREADONLY(wavesPay: Int) = {
-  let minWavesAmountNsbtBuy = auctionContract.getIntegerValue(keyMinWavesForNsbtBuy()) 
+  let minWavesAmountNsbtBuy = minWavesForNsbtBuy()
   if (wavesPay < minWavesAmountNsbtBuy) then throw("min " + minWavesAmountNsbtBuy.toString() + " waves expected") else
   
   strict curveResult = mathContract.invoke("curveFunctionREADONLY", [wavesPay], []).asAnyList()
