@@ -73,6 +73,10 @@ func toAddressOrFail(addressStr: String) = {
   addressStr.addressFromString().valueOrErrorMessage("couldn't parse passed addressStr=" + addressStr)
 }
 
+func toAssetVect(assetStr: String) = {
+  if (assetStr == WAVESIDSTR) then unit else assetStr.fromBase58String()
+}
+
 func asInt(val: Any) = {
   match val {
     case valInt: Int => valInt
@@ -150,33 +154,26 @@ func getUserParamsOrFail(userAddress: Address) = {
 let supportedAssetsStr = keySupportedRewardAssets().getStrOrElse("")
 let supportedAssetsList = supportedAssetsStr.split("_")
 
-# TODO consider to remove
-#func calcReward(userAddress: String, assetId: String, lockAmountX: BigInt, depositNumUser: Int, depositNumLast: Int) = {
-#  let rewardPerNsbtSumLastKEY = keyRewardPerNsbtSumAt(depositNumLast, assetId)
-#  let sumLastX18 = keyRewardPerNsbtSumAt(depositNumLast, assetId).getStrOrElse("0").parseBigIntValue()
-#  let sumUserX18 = keyRewardPerNsbtSumAt(depositNumUser, assetId).getStrOrElse("0").parseBigIntValue()
-#  let rewardDynamicPart = fraction((sumLastX18 - sumUserX18), lockAmountX, MULTX18).toInt()
-#  let rewardCachedPartKEY = keyReward(userAddress, assetId)
-#  let rewardCachedPart = rewardCachedPartKEY.getIntOrElse(0)
-#  (rewardCachedPart + rewardDynamicPart, rewardCachedPart, rewardDynamicPart, rewardCachedPartKEY)
-#}
+func calcReward(userAddress: String, assetId: String, stakedAmountX: BigInt, depositNumUser: Int, depositNumLast: Int) = {
+  let rewardPerNsbtSumLastKEY = keyRewardPerNsbtSumAt(depositNumLast, assetId)
+  let sumLastX18 = keyRewardPerNsbtSumAt(depositNumLast, assetId).getStrOrElse("0").parseBigIntValue()
+  let sumUserX18 = keyRewardPerNsbtSumAt(depositNumUser, assetId).getStrOrElse("0").parseBigIntValue()
+  let rewardDynamicPart = fraction((sumLastX18 - sumUserX18), stakedAmountX, MULTX18).toInt()
+  let rewardCachedPartKEY = keyReward(userAddress, assetId)
+  let rewardCachedPart = rewardCachedPartKEY.getIntOrElse(0)
 
-func RewardEntries(isNewUser: Boolean, userAddress: String, lockAmount: Int) = {
-  let lockAmountX = lockAmount.toBigInt()
+  (rewardCachedPart + rewardDynamicPart, rewardCachedPart, rewardDynamicPart, rewardCachedPartKEY)
+}
+
+func RewardEntries(isNewUser: Boolean, userAddress: String, stakedAmount: Int) = {
+  let stakedAmountX = stakedAmount.toBigInt()
   let userRewardFromDepositNumKEY = keyUserRewardFromDepositNum(userAddress)
   let depositNumUser = userRewardFromDepositNumKEY.getIntOrElse(-1)
   let depositNumLast = keyDepositNumLast().getIntOrElse(-1)
 
-  func forEarchAssetCacheUserReward(accum: List[IntegerEntry], asset: String) = {
-    let rewardPerNsbtSumLastKEY = keyRewardPerNsbtSumAt(depositNumLast, asset)
-    let sumLastX18 = keyRewardPerNsbtSumAt(depositNumLast, asset).getStrOrElse("0").parseBigIntValue()
-    let sumUserX18 = keyRewardPerNsbtSumAt(depositNumUser, asset).getStrOrElse("0").parseBigIntValue()
-    let rewardDynamicPart = fraction((sumLastX18 - sumUserX18), lockAmountX, MULTX18).toInt()
-    let rewardCachedPartKEY = keyReward(userAddress, asset)
-    let rewardCachedPart = rewardCachedPartKEY.getIntOrElse(0)
-    # TODO remove
-    #let (rewardTotal, cached, dynamic, rewardCachedPartKEY) = calcReward(userAddress, asset, lockAmountX, depositNumUser, depositNumLast)
-    accum :+ IntegerEntry(rewardCachedPartKEY, rewardCachedPart + rewardDynamicPart)
+  func forEachAssetCacheUserReward(accum: List[IntegerEntry], asset: String) = {
+    let (rewardTotal, cached, dynamic, rewardCachedPartKEY) = calcReward(userAddress, asset, stakedAmountX, depositNumUser, depositNumLast)
+    accum :+ IntegerEntry(rewardCachedPartKEY, rewardTotal)
   }
 
 # имеем ветки
@@ -220,7 +217,7 @@ func RewardEntries(isNewUser: Boolean, userAddress: String, lockAmount: Int) = {
   if (depositNumLast  > -1 && depositNumUser  > -1) then {
     if (isNewUser) then throw("invalid management for isNewUser=" + isNewUser.toString() + " and depositNumUser=" + depositNumUser.toString() + " during full unstake") else
 
-    FOLD<10>(supportedAssetsList, [], forEarchAssetCacheUserReward)
+    FOLD<10>(supportedAssetsList, [], forEachAssetCacheUserReward)
           :+ IntegerEntry(userRewardFromDepositNumKEY, depositNumLast)
   } else throw("uncovered condition: depositNumLast=" + depositNumLast.toString() + " depositNumUser=" + depositNumUser.toString())
 }
@@ -265,7 +262,6 @@ func stake() = {
 
   let mergedStartHeight = if (isNewUser) then height else {
     let mathContract = addressFromStringValue(getStringOrFail(keyMathContractAddress()))
-
     mathContract.invoke("mergeStakesREADONLY", [amount, height, lockAmount, lockStartHeight, halfLife], []).asInt()
   }
   if (mergedAmount < minLockAmount) then throw("Min lock amount is " + minLockAmount.toString()) else
@@ -345,6 +341,58 @@ func deposit() = {
 
   FOLD<10>(supportedAssetsList, [], refreshRewardPerNsbtSUM)
     :+ IntegerEntry(depositNumLastKEY, depositNumNew)
+}
+
+@Callable(i)
+func claimRewards() = {
+  let userAddress = i.caller
+  let userAddressStr = userAddress.toString()
+
+  let (isNewUser, stakedAmount, stakingStart) = userAddress.getUserParamsOrUnit().valueOrElse((true, 0, 0))
+
+  let stakedAmountX = stakedAmount.toBigInt()
+  let userRewardFromDepositNumKEY = keyUserRewardFromDepositNum(userAddressStr)
+  let depositNumUser = userRewardFromDepositNumKEY.getIntOrElse(-1)
+  let depositNumLast = keyDepositNumLast().getIntOrElse(-1)
+
+  func forEachAssetCalcUnclaimedReward(accum: List[ScriptTransfer|IntegerEntry], asset: String) = {
+    let (rewardTotal, cached, dynamic, rewardCachedPartKEY) = calcReward(userAddressStr, asset, stakedAmountX, depositNumUser, depositNumLast)
+    if (rewardTotal <= 0) then accum else
+    accum
+      :+ ScriptTransfer(userAddress, rewardTotal, toAssetVect(asset))
+      :+ IntegerEntry(rewardCachedPartKEY, 0)
+  }
+
+  let transfers = FOLD<10>(supportedAssetsList, [], forEachAssetCalcUnclaimedReward)
+  if (transfers.size() <= 0) then throw("nothing to claim") else
+  transfers
+}
+
+@Callable(i)
+func unclaimedRewardsREADONLY(userAddressStr: String) = {
+  # function to create zero rewards result
+  func forEachAssetZeroReward(accum: String, asset: String) = {
+    accum + makeString([asset, "0", "0"], ":") + "_"
+  }
+
+  let unclaimedRewardStr = if (userAddressStr == "") then FOLD<10>(supportedAssetsList, "", forEachAssetZeroReward) else {
+    let userAddress = userAddressStr.addressFromStringValue()
+    let (isNewUser, stakedAmount, stakingStart) = userAddress.getUserParamsOrUnit().valueOrElse((true, 0, 0))
+
+    let stakedAmountX = stakedAmount.toBigInt()
+    let userRewardFromDepositNumKEY = keyUserRewardFromDepositNum(userAddressStr)
+    let depositNumUser = userRewardFromDepositNumKEY.getIntOrElse(-1)
+    let depositNumLast = keyDepositNumLast().getIntOrElse(-1)
+
+    func forEachAssetCalcUnclaimedReward(accum: String, asset: String) = {
+      let (rewardTotal, cached, dynamic, rewardCachedPartKEY) = calcReward(userAddressStr, asset, stakedAmountX, depositNumUser, depositNumLast)
+      accum + makeString([asset, rewardTotal.toString(), "0"], ":") + "_"
+    }
+
+    FOLD<10>(supportedAssetsList, "", forEachAssetCalcUnclaimedReward)
+  }
+
+  ([], unclaimedRewardStr.dropRight(1))
 }
 
 # User's gNSBT amount

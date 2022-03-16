@@ -213,9 +213,10 @@ func gnsbtInfoREADONLY(userAddressStrOrEmpty: String, additionalNsbtAmountOrZero
   let maxUsdnLimitNew = 1100_000_000
   let maxWavesLimitNew = 110_0000_0000
 
+  let rewardInfo = nsbtStakingContract.invoke("unclaimedRewardsREADONLY", [userAddressStrOrEmpty], []).asString()
   ([],
     makeString([
-          "%d%d%d%d%d%d%d%d",
+          "%d%d%d%d%d%d%d%d%s",
           gnsbtAmount.toString(),
           gnsbtAmountNew.toString(),
           gnsbtShare.toString(),
@@ -223,7 +224,8 @@ func gnsbtInfoREADONLY(userAddressStrOrEmpty: String, additionalNsbtAmountOrZero
           maxUsdnLimit.toString(),
           maxWavesLimit.toString(),
           maxUsdnLimitNew.toString(),
-          maxWavesLimitNew.toString()
+          maxWavesLimitNew.toString(),
+          rewardInfo
           ], SEP))
 }
 
