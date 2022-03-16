@@ -81,6 +81,13 @@ func asString(val: Any) = {
   }
 }
 
+func asTuple2Ints(val: Any) = {
+  match val {
+    case v: (Int, Int) => v
+    case _ => throw("fail to cast into Tuple2 ints")
+  }
+}
+
 func toX18(origVal: Int, origScaleMult: Int)          = fraction(origVal.toBigInt(), scale18, origScaleMult.toBigInt())
 func fromX18(val: BigInt, resultScaleMult: Int)       = fraction(val, resultScaleMult.toBigInt(), scale18).toInt()
 
@@ -100,6 +107,10 @@ let nsbtAssetId = nsbtAssetIdStr.fromBase58String()
 
 func minWavesForNsbtBuy() = {
   auctionContract.invoke("minWavesAmountNsbtBuySYSREADONLY", [], []).asInt()
+}
+
+func minNsbtForSell() = {
+  auctionContract.invoke("minNsbtAmountForSellSYSREADONLY", [], []).asInt()
 }
 
 @Callable(i)
@@ -133,7 +144,7 @@ func neutrinoStatsREADONLY() = {
   let nsbt2usdnPrice         = prices[0].asInt()
   let nsbt2wavesPrice        = prices[1].asInt()
   let minWaves4NsbtBuy       = minWavesForNsbtBuy()
-  let minNsbtsell            = auctionContract.getIntOrFail(keyMinNsbtSell())
+  let minNsbtsell            = minNsbtForSell()
   let minNsbtLockAmt         = nsbtStakingContract.getIntOrFail(keyMinLockAmount())
   
   ([], makeString([

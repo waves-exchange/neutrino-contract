@@ -248,6 +248,11 @@ func minWavesAmountNsbtBuySYSREADONLY() = {
   ([], minWavesAmountNsbtBuy)
 }
 
+@Callable(i)
+func minNsbtAmountForSellSYSREADONLY() = {
+  ([], minNsbtSell)
+}
+
 @Verifier(tx)
 func verify() = {
     let pubKeyAdminsList = [
