@@ -80,7 +80,7 @@ func calcContractNsbtPriceInternal(nsbtSupplyOverride: Int|Unit) = {
   strict neutrinoMetrics = this.invoke("calcNeutinoMetricsREADONLY", [], []).asAnyList()
   let nsbtSupply = if (nsbtSupplyOverride == unit) then neutrinoMetrics[9].asInt() else nsbtSupplyOverride.value()
   let currentPrice = neutrinoMetrics[0].asInt()
-  strict kCalcArray = this.invoke("calculateKREADONLY", [neutrinoMetrics[4].asInt(), neutrinoMetrics[6].asInt(), currentPrice, nsbtSupplyMAX, nsbtSupply], []).asAnyList()
+  strict kCalcArray = this.invoke("calculateKREADONLY", [neutrinoMetrics[3].asInt(), neutrinoMetrics[5].asInt(), currentPrice, nsbtSupplyMAX, nsbtSupply], []).asAnyList()
   #let kCalcArray = calculateK(reserve, neutrinoSupply, currentPrice, nsbtSupplyMAX, nsbtSupply)
   let multK = kCalcArray[6].asString().parseBigIntValue() # 16 decimals bigint
 
