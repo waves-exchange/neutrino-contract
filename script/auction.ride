@@ -173,11 +173,11 @@ func buyNsbt() = {
     if (pmtAmount < minWavesAmountNsbtBuy) then throw("min "+ (minWavesAmountNsbtBuy / WAVELET).toString() + " waves expected") else
     let ownerAddress = i.caller
 
-    strict neutrinoMetrics = mathContract.invoke("calcNeutinoMetricsREADONLY", [], []).asAnyList()
+    let neutrinoMetrics = mathContract.invoke("calcNeutinoMetricsREADONLY", [], []).asAnyList()
     let currentPrice = neutrinoMetrics[0].asInt()
-    
-    strict curveResult = mathContract.invoke("curveFunctionREADONLY", [wavesPay], []).asAnyList()
-    
+
+    let curveResult = mathContract.invoke("curveFunctionREADONLY", [wavesPay], []).asAnyList()
+
     let nsbtAmount = curveResult[0].asInt()
 
     if (nsbtAmount <= 0) then throw("nsbtAmount <= 0") else
@@ -208,16 +208,11 @@ func sellNsbt() = {
 
   if (pmt.assetId != nsbtAssetId) then throw("can use NSBT only") else
   if (pmtAmount < minNsbtSell) then throw("min "+ (minNsbtSell / PAULI).toString() + " nsbt expected") else
-  strict neutrinoMetrics = mathContract.invoke("calcNeutinoMetricsREADONLY", [], []).asAnyList()
-  let nsbtSupply = neutrinoMetrics[10].asInt()
 
-  strict newPrice = mathContract.invoke("calcContractNsbtPriceBySupplyREADONLY", [nsbtSupply - pmtAmount], []).asAnyList()[0].asInt()
+  let newPrice = mathContract.invoke("calcContractNsbtPriceSYSREADONLY", [-pmtAmount], []).asAnyList()[0].asInt()
   if (newPrice < PAULI) then throw("resulting nsbt price would be < 1 (" + newPrice.toString() + " usdn") else
   strict transf = neutrinoContract.invoke("transferUsdnToUser", [pmtAmount, i.caller.toString()], [])
-  (
-    [],
-    newPrice
-  )
+  ([], newPrice)
 }
 
 # cancel buy NSBT order or liquidation order

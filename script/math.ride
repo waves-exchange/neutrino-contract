@@ -75,22 +75,23 @@ let liquidationContract  = addressFromStringValue(neutrinoContract.getStringOrFa
 let neutrinoAssetId       = fromBase58String(neutrinoContract.getStringOrFail(keyNeutrinoAssetId()))
 let nsbtAssetId           = fromBase58String(neutrinoContract.getStringValue(keyBondAssetId()))
 
-func calcContractNsbtPriceInternal(nsbtSupplyOverride: Int|Unit) = {
-  let nsbtSupplyMAX =  assetInfo(nsbtAssetId).value().quantity
-  strict neutrinoMetrics = this.invoke("calcNeutinoMetricsREADONLY", [], []).asAnyList()
-  let nsbtSupply = if (nsbtSupplyOverride == unit) then neutrinoMetrics[9].asInt() else nsbtSupplyOverride.value()
-  let currentPrice = neutrinoMetrics[0].asInt()
-  strict kCalcArray = this.invoke("calculateKREADONLY", [neutrinoMetrics[3].asInt(), neutrinoMetrics[5].asInt(), currentPrice, nsbtSupplyMAX, nsbtSupply], []).asAnyList()
-  #let kCalcArray = calculateK(reserve, neutrinoSupply, currentPrice, nsbtSupplyMAX, nsbtSupply)
-  let multK = kCalcArray[6].asString().parseBigIntValue() # 16 decimals bigint
+func calcContractNsbtPriceInternal(nsbtSupplyDELTA: Int) = {
+  let neutrinoMetrics = this.invoke("calcNeutinoMetricsREADONLY", [], []).asAnyList()
+  let price  = neutrinoMetrics[0].asInt()
+  let wRaw   = neutrinoMetrics[3].asInt()
+  let uRaw   = neutrinoMetrics[5].asInt()
+  let sRaw   = neutrinoMetrics[9].asInt() + nsbtSupplyDELTA
+  let mRaw   = neutrinoMetrics[10].asInt()
 
-  let mK = fromX16(multK, MULT)
+  let kCalcArray = this.invoke("calculateKREADONLY", [wRaw, uRaw, price, mRaw, sRaw], []).asAnyList()
+  let multKX16 = kCalcArray[6].asString().parseBigIntValue() # 16 decimals bigint
 
-  let multStep1 = fraction(nsbtSupplyMAX, MULT, nsbtSupplyMAX - nsbtSupply)
-  let multStep2 = fraction(multStep1, multStep1, MULT)
-  let multNsbt2usdnPrice = fraction(mK, multStep2, MULT)
-  let nsbt2usdnPrice = fraction(multNsbt2usdnPrice, PAULI, MULT)
-  let nsbt2wavesPrice = fraction(nsbt2usdnPrice, PAULI, currentPrice)
+  let multStep1X16 = fraction(mRaw.toBigInt(), BIGMULT16, (mRaw - sRaw).toBigInt())
+  let multStep2X16 = fraction(multStep1X16, multStep1X16, BIGMULT16)
+  let multNsbt2usdnPriceX16 = fraction(multKX16, multStep2X16, BIGMULT16)
+
+  let nsbt2usdnPrice = fraction(multNsbt2usdnPriceX16, PAULI.toBigInt(), BIGMULT16).toInt()
+  let nsbt2wavesPrice = fraction(nsbt2usdnPrice, PAULI, price)
   ([], [nsbt2usdnPrice, nsbt2wavesPrice])
 }
 
@@ -99,13 +100,13 @@ func constructor(neutrinoAddress: String, nsbtLockAddress: String, swapAmountAPa
   if (i.caller != this) then throw("not authorized") else
   [
       StringEntry(keyNeutrinoAddress(), neutrinoAddress),
-      IntegerEntry(keySwapAmountAParam(), swapAmountAParam) 
+      IntegerEntry(keySwapAmountAParam(), swapAmountAParam)
   ]
 }
 
 @Callable(i)
 func calcSwapLimitREADONLY(gNsbtAmount: Int) = {
-  # limit = a * gNsbtAmount^e 
+  # limit = a * gNsbtAmount^e
   let limitParamA  = this.getIntOrFail(keySwapAmountAParam()).toBigInt() # A is scale8
   let gNsbtAmountScale16 = toX16(gNsbtAmount, scale6) # scale6
   let limitPowPart = pow(gNsbtAmountScale16, 16, EULERNUMBER, 16, 8, CEILING)
@@ -137,14 +138,14 @@ func calculateKREADONLY(wRaw: Int, uRaw: Int, price: Int, mRaw: Int, sRaw: Int) 
 
 @Callable(i)
 func curveFunctionREADONLY(wavesPayRaw: Int) = {
-    strict neutrinoMetrics = this.invoke("calcNeutinoMetricsREADONLY", [], []).asAnyList()
+    let neutrinoMetrics = this.invoke("calcNeutinoMetricsREADONLY", [], []).asAnyList()
     let price  = neutrinoMetrics[0].asInt()
     let wRaw   = neutrinoMetrics[3].asInt()
     let uRaw   = neutrinoMetrics[5].asInt()
     let sRaw   = neutrinoMetrics[9].asInt()
-    let mRaw   = assetInfo(nsbtAssetId).value().quantity
+    let mRaw   = neutrinoMetrics[10].asInt()
 
-    strict kCalcArray = this.invoke("calculateKREADONLY", [wRaw, uRaw, price, mRaw, sRaw], []).asAnyList()
+    let kCalcArray = this.invoke("calculateKREADONLY", [wRaw, uRaw, price, mRaw, sRaw], []).asAnyList()
 
     let multK = kCalcArray[6].asString().parseBigIntValue()
 
@@ -163,12 +164,12 @@ func curveFunctionREADONLY(wavesPayRaw: Int) = {
 
 @Callable(i)
 func calcContractNsbtPriceREADONLY() = {
-  calcContractNsbtPriceInternal(unit)
+  calcContractNsbtPriceInternal(0)
 }
 
 @Callable(i)
-func calcContractNsbtPriceBySupplyREADONLY(nsbtSupply: Int) = {
-  calcContractNsbtPriceInternal(nsbtSupply)
+func calcContractNsbtPriceSYSREADONLY(nsbtSupplyDELTA: Int) = {
+  calcContractNsbtPriceInternal(nsbtSupplyDELTA)
 }
 
 @Callable(i)
