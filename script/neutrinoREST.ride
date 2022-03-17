@@ -149,7 +149,7 @@ func neutrinoStatsREADONLY() = {
   let minNsbtLockAmt         = nsbtStakingContract.getIntOrFail(keyMinLockAmount())
   
   ([], makeString([
-          "%d%d%d%d%d%d%d%d%d%d%d%d%d",     # 0
+          "%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d",
           currentPrice.toString(),          # 1
           neutrinoLockedBalance.toString(), # 2
           wavesLockedBalance.toString(),    # 3
@@ -165,7 +165,7 @@ func neutrinoStatsREADONLY() = {
           nsbt2wavesPrice.toString(),       # 13
           minWaves4NsbtBuy.toString(),      # 14    
           minNsbtsell.toString(),           # 15    
-          minNsbtLockAmt.toString()             # 16
+          minNsbtLockAmt.toString()         # 16
           ], SEP))
 }
 
