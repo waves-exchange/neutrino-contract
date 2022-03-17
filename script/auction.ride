@@ -122,11 +122,13 @@ func getPrevOrder(id: String) = getStringByKey(getPrevOrderKey(id))
 func getNextOrder(id: String) = getStringByKey(getNextOrderKey(id))
 func getReversePrice(price: Int) = {PRICELET * PRICELET / price}
 
-func calcNsbt2WavesPriceRaw(spentWavesRaw: Int, receivedNsbtRaw: Int) = {fraction(spentWavesRaw, PAULI * PRICELET, receivedNsbtRaw)}
+func calcNsbt2WavesPriceRaw(spentWavesRaw: Int, receivedNsbtRaw: Int) = {
+  fraction(spentWavesRaw.toBigInt(), (PAULI * PRICELET).toBigInt(), receivedNsbtRaw.toBigInt())
+}
 
 #-------------------Any functions----------------------
-func orderData(orderId: String, totalWavelets: Int, filledWavelets: Int, owner: String, status: String, roi: Int, price: Int, currentPrice: Int) = {
-    [IntegerEntry(getOrderPriceKey(orderId), price), # currently it is kept for backwards compatibility with cache-updater: see https://github.com/waves-exchange/cache-updater/blob/master/src/entities/bondsorder.go#L143
+func orderData(orderId: String, totalWavelets: Int, filledWavelets: Int, owner: String, status: String, roi: Int, price: BigInt, currentPrice: Int) = {
+    [StringEntry(getOrderPriceKey(orderId), price.toString()), # currently it is kept for backwards compatibility with cache-updater: see https://github.com/waves-exchange/cache-updater/blob/master/src/entities/bondsorder.go#L143
      IntegerEntry(getOrderTotalKey(orderId), totalWavelets),
      IntegerEntry(getOrderFilledTotalKey(orderId), filledWavelets),
      StringEntry(getOrderOwnerKey(orderId), owner),
@@ -172,31 +174,29 @@ func buyNsbt() = {
     let ownerAddress = i.caller
 
     strict neutrinoMetrics = mathContract.invoke("calcNeutinoMetricsREADONLY", [], []).asAnyList()
-    let currentPrice           = neutrinoMetrics[0].asInt()
+    let currentPrice = neutrinoMetrics[0].asInt()
     
     strict curveResult = mathContract.invoke("curveFunctionREADONLY", [wavesPay], []).asAnyList()
     
     let nsbtAmount = curveResult[0].asInt()
 
     if (nsbtAmount <= 0) then throw("nsbtAmount <= 0") else
-    if (nsbtAmount * 9223372 < wavesPay) then throw("Nsbt2Waves price exceeds MAX_INT: " + toString(wavesPay) + "/" + toString(nsbtAmount)) else {
-        let nsbt2WavesPriceRaw = calcNsbt2WavesPriceRaw(wavesPay, nsbtAmount)
-        let roi = 0
+    let nsbt2WavesPriceRaw = calcNsbt2WavesPriceRaw(wavesPay, nsbtAmount)
+    let roi = 0
 
-        # replacement of ScriptTransfer(neutrinoContract, wavesPay, unit)
-        # now Neutrino callable acceptWaves() receives waves and puts them to leasing immediately
-        strict amountLeased = invoke(neutrinoContract, "acceptWaves", nil, i.payments)
+    # replacement of ScriptTransfer(neutrinoContract, wavesPay, unit)
+    # now Neutrino callable acceptWaves() receives waves and puts them to leasing immediately
+    strict amountLeased = invoke(neutrinoContract, "acceptWaves", nil, i.payments)
 
-        (orderData(i.transactionId.toBase58String(), pmtAmount, pmtAmount, ownerAddress.toString(), FILLED,
-            roi,                # to keep backward compatability with prev. format
-            nsbt2WavesPriceRaw, 
-            currentPrice) # to keep backward compatability with prev. format
-        ++ [
-          ScriptTransfer(ownerAddress, nsbtAmount, nsbtAssetId),
-          StringEntry("debug_curveResult", toStr("curveResult", curveResult))
-        ],
-        nsbtAmount)
-    }
+    (orderData(i.transactionId.toBase58String(), pmtAmount, pmtAmount, ownerAddress.toString(), FILLED,
+        roi,                # to keep backward compatability with prev. format
+        nsbt2WavesPriceRaw, 
+        currentPrice) # to keep backward compatability with prev. format
+    ++ [
+      ScriptTransfer(ownerAddress, nsbtAmount, nsbtAssetId),
+      StringEntry("debug_curveResult", toStr("curveResult", curveResult))
+    ],
+    nsbtAmount)
 }
 
 # sell NSBT for USDN by price 1
