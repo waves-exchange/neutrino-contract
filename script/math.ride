@@ -163,11 +163,6 @@ func curveFunctionREADONLY(wavesPayRaw: Int) = {
 }
 
 @Callable(i)
-func calcContractNsbtPriceSYSREADONLY() = {
-  calcContractNsbtPriceInternal(0)
-}
-
-@Callable(i)
 func calcContractNsbtPriceSYSREADONLY(nsbtSupplyDELTA: Int) = {
   calcContractNsbtPriceInternal(nsbtSupplyDELTA)
 }
