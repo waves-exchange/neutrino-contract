@@ -44,6 +44,13 @@ func asInt(val: Any) = {
   }
 }
 
+func asSwapParamsSTRUCT(val: Any) = {
+  match val {
+    case struct: (Int, Int, Int, Int, Int) => struct
+    case _ => throw("fail to cast into Int")
+  }
+}
+
 let pubKeyAdminsList = [
     "GJdLSaLiv5K7xuejac8mcRcHoyo3dPrESrvktG3a6MAR",
     "FWVffYr2ALmHMejZm3WqeLz6Sdym3gLFGtJn4KTwyU5x",
@@ -336,28 +343,25 @@ func prepareUnleaseAndLease(unleaseAmount: Int) = {
 
 #-------------------MAIN LOGIC----------------------
 
-func commonSwap(swapType: String, pmtAmount: Int, userAddressStr: String, txId58: String, swapLimit: Int) = {
+func commonSwap(swapType: String, pmtAmount: Int, userAddressStr: String, txId58: String, swapParamsByUserSYSREADONLY: (Int,Int,Int,Int,Int)) = {
+  let (swapLimitMax, swapLimitSpent, blcks2LmtReset) = swapParamsByUserSYSREADONLY
+
   let minSwapAmount         = minSwapAmountREAD(swapType)
   let totalLocked           = totalLockedREAD(swapType)
   let totalLockedByUser     = totalLockedByUserREAD(swapType, userAddressStr)
   let nodeAddress           = getStakingNodeByIndex(0)
   let priceByIndex          = priceIndex.getHeightPriceByIndex().getPriceHistory()
   let isSwapByNode          = nodeAddress == userAddressStr
-  let minBlocksBetweenSwaps = swapsTimeframeREAD()
 
-  strict amountCheck         = if (pmtAmount < minSwapAmount) then minSwapAmountFAIL(swapType, minSwapAmount) else true
   let balanceLockMaxInterval = if (isSwapByNode) then nodeBalanceLockIntervalREAD() else balanceLockIntervalREAD(swapType)
   let selfUnlockHeight       = height + balanceLockMaxInterval
   let swapUsdnVolume         = if (swapType == "neutrino") then pmtAmount else pmtAmount.convertWavesToNeutrino(priceByIndex)
 
-  strict validateNodeIsCaller = if(isSwapByNode) then true else {
-    let lastSwapHeight = getNumberByKey(keyUserLastSwapHeight(userAddressStr))
-
-    if (height - lastSwapHeight < minBlocksBetweenSwaps) then throw("You have exceeded swap limit! Next allowed swap height is " + (lastSwapHeight + minBlocksBetweenSwaps).toString()) else
-    if (swapUsdnVolume > swapLimit) then throw("You have exceeded your swap limit! Requested: "+ toString(swapUsdnVolume) + ", available: " + toString(swapLimit)) else
-    true
-  }
+  if (pmtAmount < minSwapAmount) then minSwapAmountFAIL(swapType, minSwapAmount) else
+  if (!isSwapByNode && swapLimitSpent > 0) then throw("You have exceeded swap limit! Next allowed swap height is " + (height + blcks2LmtReset).toString()) else
+  if (!isSwapByNode && swapUsdnVolume > swapLimitMax) then throw("You have exceeded your swap limit! Requested: "+ toString(swapUsdnVolume) + ", available: " + toString(swapLimitMax)) else
   if (isBlocked) then emergencyShutdownFAIL() else  # see control.ride
+
   let leasePart = if (swapType == "waves") then prepareUnleaseAndLease(0) else []
 
   ([
@@ -488,10 +492,9 @@ func swapWavesToNeutrino() = {
     let userAddress = i.caller.toString()
     let txId58 = i.transactionId.toBase58String()
 
-    let userGNsbtAmount = nsbtStakingContract.getInteger(keyLockParamUserAmount(userAddress)).valueOrElse(0)
-    let swapLimit = mathContract.invoke("calcSwapLimitREADONLY", [userGNsbtAmount], []).asInt()
+    let swapParamsSTRUCT = this.invoke("swapParamsByUserSYSREADONLY", [userAddress, 0], []).asSwapParamsSTRUCT()
 
-    let commonSwapResult =  commonSwap("waves", pmt.amount, userAddress, txId58, swapLimit)
+    let commonSwapResult =  commonSwap("waves", pmt.amount, userAddress, txId58, swapParamsSTRUCT)
     commonSwapResult
 }
 
@@ -506,10 +509,10 @@ func swapNeutrinoToWaves() = {
 
     let userAddress = i.caller.toString()
     let txId58 = i.transactionId.toBase58String()
-    let userGNsbtAmount = nsbtStakingContract.getInteger(keyLockParamUserAmount(userAddress)).valueOrElse(0)
-    let swapLimitTotal = mathContract.invoke("calcSwapLimitREADONLY", [userGNsbtAmount], []).asInt()
 
-    let commonSwapResult = commonSwap("neutrino", pmt.amount, userAddress, txId58, swapLimitTotal)
+    let swapParamsSTRUCT = this.invoke("swapParamsByUserSYSREADONLY", [userAddress, 0], []).asSwapParamsSTRUCT()
+
+    let commonSwapResult = commonSwap("neutrino", pmt.amount, userAddress, txId58, swapParamsSTRUCT)
     commonSwapResult
 }
 
@@ -561,6 +564,25 @@ func acceptWaves() = {
         then throw("Currently only auction contract is allowed to call")
     else
         (prepareUnleaseAndLease(0), "success")
+}
+
+@Callable(i)
+func swapParamsByUserSYSREADONLY(userAddressStr: String, nsbtDiff: Int) = {
+  strict nsbtData = nsbtStakingContract.invoke("nsbtStakingSYSREADONLY", [userAddressStr], []).asAnyList()
+  let gnsbtAmt = nsbtData[0].asInt() + nsbtDiff
+  let gnsbtAmtTotal = nsbtData[1].asInt() + nsbtDiff
+
+  let swapLimitMax = mathContract.invoke("calcSwapLimitREADONLY", [gnsbtAmt], []).asInt()
+
+  let lastSwapHeight = this.getInteger(keyUserLastSwapHeight(userAddressStr)).valueOrElse(0)
+  let swapLimitTimelifeBlocks = swapsTimeframeREAD()
+  let passedBlocksAfterLastSwap = height - lastSwapHeight
+  let isSwapTimelifeNew = passedBlocksAfterLastSwap >= swapLimitTimelifeBlocks
+  let swapLimitSpent = if (isSwapTimelifeNew) then 0 else this.getInteger(keySwapUserSpentInPeriod(userAddressStr)).valueOrElse(0)
+  let blcks2LmtReset = if (isSwapTimelifeNew) then 0 else swapLimitTimelifeBlocks - passedBlocksAfterLastSwap
+
+  # WARNING if you change returned value - MUST have to change "asSwapParamsSTRUCT" function
+  ([], (swapLimitMax, swapLimitSpent, blcks2LmtReset, gnsbtAmt, gnsbtAmtTotal))
 }
 
 @Verifier(tx)

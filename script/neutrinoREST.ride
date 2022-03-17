@@ -33,21 +33,15 @@ func keyNeutrinoOutFeePart() = "neutrinoOut_swap_feePart"
 func keyNsbtLockContract() = "%s__nsbtLockContract"
 func keyMathContract() = "%s__mathContract"
 
-func keySwapUserSpentInPeriod(userAddress: String) = ["%s%s", "swapUserSpentInPeriod", userAddress].makeString(SEP)
-func keyUserLastSwapHeight(userAddress: String) = ["%s%s", "userLastSwapHeight", userAddress].makeString(SEP)
-
 func keyBalanceWavesLockInterval() = "balance_waves_lock_interval"
 func keyBalanceNeutrinoLockInterval() = "balance_neutrino_lock_interval"
-func keySwapsTimeframe() = "swaps_timeframe"
 
 #------control keys-------
 func keyPrice() = "price"
 
 #-------- nsbt staking keys-----------
-func keyLockParamUserAmount(userAddress: String) = ["%s%s%s", "paramByUser", userAddress, "amount"].makeString(SEP)
 func keyLockParamStartBlock(userAddress: String) = ["%s%s%s", "paramByUser", userAddress, "start"].makeString(SEP)
 func keyHalfLife() = "%s__halfLife"
-func keyLockParamTotalAmount() = ["%s%s", "stats", "activeTotalLocked"].makeString(SEP)
 func keyMinLockAmount() = "%s__minLockAmount"
 
 #------- auction keys------
@@ -85,6 +79,13 @@ func asTuple2Ints(val: Any) = {
   match val {
     case v: (Int, Int) => v
     case _ => throw("fail to cast into Tuple2 ints")
+  }
+}
+
+func asSwapParamsSTRUCT(val: Any) = {
+  match val {
+    case struct: (Int,Int,Int,Int,Int) => struct
+    case _ => throw("fail to cast into Int")
   }
 }
 
@@ -178,20 +179,8 @@ func swapInfoREADONLY(userAddressStr: String) = {
   let usdnSwapDelayDuration  = neutrinoContract.getIntegerValue(keyBalanceNeutrinoLockInterval())
   let wavesSwapDelayDuration = neutrinoContract.getIntegerValue(keyBalanceWavesLockInterval())
 
-  let (swapUserSpent, 
-      blocks2LimitReset, 
-      maxUsdnLimit, 
-      maxWavesLimit) = if(userAddressStr == "") then (0,0,0,0) else
-      
-      let userGNsbtAmount = nsbtStakingContract.getInteger(keyLockParamUserAmount(userAddressStr)).valueOrElse(0)
-      strict usdnLmtMax = mathContract.invoke("calcSwapLimitREADONLY", [userGNsbtAmount], []).asInt()
-      let swapResetBlocks = neutrinoContract.getInteger(keySwapsTimeframe()).valueOrElse(1440)
-      let lastSwapBlock = neutrinoContract.getInteger(keyUserLastSwapHeight(userAddressStr)).valueOrElse(0)
-      let isNewSwapPeriod = height - lastSwapBlock > swapResetBlocks
-      let swapUserSpent = if (isNewSwapPeriod) then 0 else neutrinoContract.getInteger(keySwapUserSpentInPeriod(userAddressStr)).valueOrElse(0)
-      let blcks2LmtReset = if (isNewSwapPeriod) then 0 else swapResetBlocks - (height - lastSwapBlock)
-      let wavesLmtMax = convertNeutrinoToWaves(usdnLmtMax, currentPrice)
-      (swapUserSpent, blcks2LmtReset, usdnLmtMax, wavesLmtMax)
+  let (swapLimitMaxUsdn, swapLimitSpentUsdn, blcks2LmtReset) = neutrinoContract.invoke("swapParamsByUserSYSREADONLY", [userAddressStr, 0], []).asSwapParamsSTRUCT()
+  let swapLimitMaxWaves = convertNeutrinoToWaves(swapLimitMaxUsdn, currentPrice)
 
   ([], 
     makeString([
@@ -203,41 +192,40 @@ func swapInfoREADONLY(userAddressStr: String) = {
           usdn2WavesFee.toString(),
           usdnSwapDelayDuration.toString(), # usdn swap delay duration
           wavesSwapDelayDuration.toString(),  # waves swap delay duration          
-          blocks2LimitReset.toString(),
-          maxWavesLimit.toString(), # max allowed swap limit based on gnsbt balance
-          maxUsdnLimit.toString(),  # max allowed swap limit based on gnsbt balance
-          swapUserSpent.toString()
+          blcks2LmtReset.toString(),
+          swapLimitMaxWaves.toString(), # max allowed swap limit based on gnsbt balance
+          swapLimitMaxUsdn.toString(),  # max allowed swap limit based on gnsbt balance
+          swapLimitSpentUsdn.toString()
           ], SEP))
 }
 
 @Callable(i)
-func gnsbtInfoREADONLY(userAddressStrOrEmpty: String, additionalNsbtAmountOrZero: Int) = {
-  let gnsbtAmount = nsbtStakingContract.getInteger(keyLockParamUserAmount(userAddressStrOrEmpty)).valueOrElse(0)
-  let gnsbtTotal = nsbtStakingContract.getInteger(keyLockParamTotalAmount()).valueOrElse(0)
+func gnsbtInfoREADONLY(userAddressStrOpt: String, nsbtAmtDiff: Int) = {
+  let currentPrice = controlContract.getIntegerValue(keyPrice())
 
-  let gnsbtAmountNew = gnsbtAmount + additionalNsbtAmountOrZero
-  let gnsbtTotalNew = gnsbtTotal + additionalNsbtAmountOrZero
+  let (limitMaxUsdn, limitSpent, blcks2LmtReset, gnsbtAmt, gnsbtAmtTotal)
+      = neutrinoContract.invoke("swapParamsByUserSYSREADONLY", [userAddressStrOpt, 0], []).asSwapParamsSTRUCT()
 
-  let gnsbtShare = if (gnsbtTotal != 0) then fraction(gnsbtAmount * 100, scale12, gnsbtTotal) else 0
-  let gnsbtShareNew = if (gnsbtTotalNew != 0) then fraction(gnsbtAmountNew * 100, scale12, gnsbtTotalNew) else 0
+  let (limitMaxUsdnNEW, limitSpentNEW, blcks2LmtResetNEW, gnsbtAmtNEW, gnsbtAmtTotalNEW)
+      = neutrinoContract.invoke("swapParamsByUserSYSREADONLY", [userAddressStrOpt, nsbtAmtDiff], []).asSwapParamsSTRUCT()
 
-  let maxUsdnLimit = 1000_000_000
-  let maxWavesLimit = 100_0000_0000
-  let maxUsdnLimitNew = 1100_000_000
-  let maxWavesLimitNew = 110_0000_0000
+  let limitMaxWaves = convertNeutrinoToWaves(limitMaxUsdn, currentPrice)
+  let limitMaxWavesNEW = convertNeutrinoToWaves(limitMaxUsdnNEW, currentPrice)
 
-  let rewardInfo = nsbtStakingContract.invoke("unclaimedRewardsREADONLY", [userAddressStrOrEmpty], []).asString()
-  ([],
-    makeString([
+  let gnsbtShare = if (gnsbtAmtTotal != 0) then fraction(gnsbtAmt * 100, scale12, gnsbtAmtTotal) else 0
+  let gnsbtShareNEW = if (gnsbtAmtTotalNEW != 0) then fraction(gnsbtAmtNEW * 100, scale12, gnsbtAmtTotalNEW) else 0
+
+  let rewardInfo = nsbtStakingContract.invoke("unclaimedRewardsREADONLY", [userAddressStrOpt], []).asString()
+  ([], makeString([
           "%d%d%d%d%d%d%d%d%s",
-          gnsbtAmount.toString(),
-          gnsbtAmountNew.toString(),
+          gnsbtAmt.toString(),
+          gnsbtAmtNEW.toString(),
           gnsbtShare.toString(),
-          gnsbtShareNew.toString(),
-          maxUsdnLimit.toString(),
-          maxWavesLimit.toString(),
-          maxUsdnLimitNew.toString(),
-          maxWavesLimitNew.toString(),
+          gnsbtShareNEW.toString(),
+          limitMaxUsdn.toString(),
+          limitMaxWaves.toString(),
+          limitMaxUsdnNEW.toString(),
+          limitMaxWavesNEW.toString(),
           rewardInfo
           ], SEP))
 }
