@@ -399,9 +399,10 @@ func unclaimedRewardsREADONLY(userAddressStr: String) = {
 # (gNsbtAmount, stakingStartHeight)
 @Callable(i)
 func nsbtStakingSYSREADONLY(userAddressStr: String) = {
-  if (userAddressStr == "") then ([], (0, 0)) else
+  let totalNsbtAmt = keyLockParamTotalAmount().getIntOrElse(0)
+
+  if (userAddressStr == "") then ([], [0, totalNsbtAmt, 0]) else
   let userAddress = userAddressStr.toAddressOrFail()
   let (isNewUser, userNsbtAmt, stakingStart) = userAddress.getUserParamsOrUnit().valueOrElse((true, 0, 0))
-  let totalNsbtAmt = keyLockParamTotalAmount().getIntOrElse(0)
   ([], [userNsbtAmt, totalNsbtAmt, stakingStart])
 }
