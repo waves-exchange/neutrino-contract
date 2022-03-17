@@ -127,9 +127,9 @@ func constructor(neutrinoAddress: String, nsbtLockAddress: String, mathAddress: 
 
 @Callable(i)
 func neutrinoStatsREADONLY() = {
-  strict neutrinoMetrics = mathContract.invoke("calcNeutinoMetricsREADONLY",[],[]).asAnyList()
+  let neutrinoMetrics = mathContract.invoke("calcNeutinoMetricsREADONLY",[],[]).asAnyList()
   
-  strict prices = mathContract.invoke("calcContractNsbtPriceREADONLY",[],[]).asAnyList()
+  let prices = mathContract.invoke("calcContractNsbtPriceSYSREADONLY",[],[]).asAnyList()
   
   let currentPrice           = neutrinoMetrics[0].asInt()
   let neutrinoLockedBalance  = neutrinoMetrics[1].asInt()
