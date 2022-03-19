@@ -19,6 +19,28 @@ let scale6BigInt     = 1_000_000.toBigInt()
 let scale8BigInt     = 100_000_000.toBigInt()
 let scale10BigInt     = 10_000_000_000.toBigInt()
 
+# indices for calculateKREADONLY result array
+let kResultIdxA = 0
+let kResultIdxPaulB = 1
+let kResultIdxWReservesInUsdn = 2
+let kResultIdxMultBR = 3 # BR with 8 decimals
+let kResultIdxMultPower = 4
+let kResultIdxMultExpInPowerStr = 5
+let kResultIdxMultKStr = 6
+
+#indices for calcNeutinoMetricsREADONLY result array
+let nMetricIdxPrice = 0
+let nMetricIdxUsdnLockedBalance = 1
+let nMetricIdxWavesLockedBalance = 2
+let nMetricIdxReserve = 3
+let nMetricIdxReserveInUsdn = 4
+let nMetricIdxUsdnSupply = 5
+let nMetricIdxSurplus = 6
+let nMetricIdxSurplusPercent = 7
+let nMetricIdxBR = 8 # BR with 6 decimals
+let nMetricIdxNsbtSupply = 9
+let nMetricIdxMaxNsbtSupply = 10
+
 #-------this keys---------
 func keyNeutrinoAddress()     = "%s%s__config__neutrinoAddress"
 func keySwapAmountAParam()    = "%s%s__config__swapAParam"
@@ -77,14 +99,14 @@ let nsbtAssetId           = fromBase58String(neutrinoContract.getStringValue(key
 
 func calcContractNsbtPriceInternal(nsbtSupplyDELTA: Int) = {
   let neutrinoMetrics = this.invoke("calcNeutinoMetricsREADONLY", [], []).asAnyList()
-  let price  = neutrinoMetrics[0].asInt()
-  let wRaw   = neutrinoMetrics[3].asInt()
-  let uRaw   = neutrinoMetrics[5].asInt()
-  let sRaw   = neutrinoMetrics[9].asInt() + nsbtSupplyDELTA
-  let mRaw   = neutrinoMetrics[10].asInt()
+  let price  = neutrinoMetrics[nMetricIdxPrice].asInt()
+  let wRaw   = neutrinoMetrics[nMetricIdxReserve].asInt()
+  let uRaw   = neutrinoMetrics[nMetricIdxUsdnSupply].asInt()
+  let sRaw   = neutrinoMetrics[nMetricIdxNsbtSupply].asInt() + nsbtSupplyDELTA
+  let mRaw   = neutrinoMetrics[nMetricIdxMaxNsbtSupply].asInt()
 
   let kCalcArray = this.invoke("calculateKREADONLY", [wRaw, uRaw, price, mRaw, sRaw], []).asAnyList()
-  let multKX16 = kCalcArray[6].asString().parseBigIntValue() # 16 decimals bigint
+  let multKX16 = kCalcArray[kResultIdxMultKStr].asString().parseBigIntValue() # 16 decimals bigint
 
   let multStep1X16 = fraction(mRaw.toBigInt(), BIGMULT16, (mRaw - sRaw).toBigInt())
   let multStep2X16 = fraction(multStep1X16, multStep1X16, BIGMULT16)
@@ -124,10 +146,10 @@ func calculateKREADONLY(wRaw: Int, uRaw: Int, price: Int, mRaw: Int, sRaw: Int) 
   let paulB = auctionContract.getInteger("nsbtCurveParam_b").valueOrElse((3*PAULI)/10)
 
   let wReservesInUsdn = convertWavesToNeutrino(wRaw, price)
-  let multBR = fraction(wReservesInUsdn, MULT, uRaw)
+  let multBR = fraction(wReservesInUsdn, MULT, uRaw) # BR with 8 decimals
   if (multBR > 10678564816) then throw("BR > 10678.564816% will overflow exponent") else
 
-  let multPower = a * (multBR - MULT)
+  let multPower = a * (multBR - MULT) # a*(BR-1) with 8 decimals
   let multExpInPower = pow(EXP, EXPSCALE, toBigInt(multPower), MULTSCALE, SCALE16, DOWN) # 16 decimals
   let multK = fraction(toBigInt(paulB), multExpInPower, BIGPAULI)
 
@@ -139,15 +161,15 @@ func calculateKREADONLY(wRaw: Int, uRaw: Int, price: Int, mRaw: Int, sRaw: Int) 
 @Callable(i)
 func curveFunctionREADONLY(wavesPayRaw: Int) = {
     let neutrinoMetrics = this.invoke("calcNeutinoMetricsREADONLY", [], []).asAnyList()
-    let price  = neutrinoMetrics[0].asInt()
-    let wRaw   = neutrinoMetrics[3].asInt()
-    let uRaw   = neutrinoMetrics[5].asInt()
-    let sRaw   = neutrinoMetrics[9].asInt()
-    let mRaw   = neutrinoMetrics[10].asInt()
+    let price  = neutrinoMetrics[nMetricIdxPrice].asInt()
+    let wRaw   = neutrinoMetrics[nMetricIdxReserve].asInt()
+    let uRaw   = neutrinoMetrics[nMetricIdxUsdnSupply].asInt()
+    let sRaw   = neutrinoMetrics[nMetricIdxNsbtSupply].asInt()
+    let mRaw   = neutrinoMetrics[nMetricIdxMaxNsbtSupply].asInt()
 
     let kCalcArray = this.invoke("calculateKREADONLY", [wRaw, uRaw, price, mRaw, sRaw], []).asAnyList()
 
-    let multK = kCalcArray[6].asString().parseBigIntValue()
+    let multK = kCalcArray[kResultIdxMultKStr].asString().parseBigIntValue()
 
     let usdnPay = convertWavesToNeutrino(wavesPayRaw, price)
     let bigMaxNsbtSupply = toBigInt(mRaw)
@@ -158,8 +180,11 @@ func curveFunctionREADONLY(wavesPayRaw: Int) = {
     let step3 = fraction(bigNsbtSupply, bigMaxNsbtSupply, step2 + bigMaxNsbtSupply).toInt()
     let nsbtAmountRaw = mRaw - sRaw - step3
 
-    ([], [nsbtAmountRaw, usdnPay, wRaw, uRaw, mRaw, sRaw, kCalcArray[0].asInt(), kCalcArray[1].asInt(), kCalcArray[2].asInt(), price,
-    kCalcArray[3].asInt(), kCalcArray[4].asInt(), kCalcArray[5], kCalcArray[6], step1.toString(), step2.toString(), step3])
+    ([], [nsbtAmountRaw, usdnPay, wRaw, uRaw, mRaw, sRaw, kCalcArray[kResultIdxA].asInt(), 
+      kCalcArray[kResultIdxPaulB].asInt(), kCalcArray[kResultIdxWReservesInUsdn].asInt(), price,
+      kCalcArray[kResultIdxMultBR].asInt(), kCalcArray[kResultIdxMultPower].asInt(), 
+      kCalcArray[kResultIdxMultExpInPowerStr], kCalcArray[kResultIdxMultKStr], 
+      step1.toString(), step2.toString(), step3])
 }
 
 @Callable(i)
@@ -183,7 +208,8 @@ func calcNeutinoMetricsREADONLY() = {
   let nsbtSupplyMAX =  assetInfo(nsbtAssetId).value().quantity
   let nsbtSupply = nsbtSupplyMAX - auctionContract.assetBalance(nsbtAssetId)
 
-  ([], [currentPrice, neutrinoLockedBalance, wavesLockedBalance, reserve, reservesInUsdn, neutrinoSupply, surplus, surplusPercent, BR, nsbtSupply, nsbtSupplyMAX])
+  ([], [currentPrice, neutrinoLockedBalance, wavesLockedBalance, reserve, reservesInUsdn, 
+    neutrinoSupply, surplus, surplusPercent, BR, nsbtSupply, nsbtSupplyMAX])
 }
 
 @Callable(i)
