@@ -101,7 +101,7 @@ func calcContractNsbtPriceInternal(nsbtSupplyDELTA: Int) = {
   let neutrinoMetrics = this.invoke("calcNeutinoMetricsREADONLY", [], []).asAnyList()
   let price  = neutrinoMetrics[nMetricIdxPrice].asInt()
   let wRaw   = neutrinoMetrics[nMetricIdxReserve].asInt()
-  let uRaw   = neutrinoMetrics[nMetricIdxUsdnSupply].asInt()
+  let uRaw   = neutrinoMetrics[nMetricIdxUsdnSupply].asInt() - nsbtSupplyDELTA
   let sRaw   = neutrinoMetrics[nMetricIdxNsbtSupply].asInt() + nsbtSupplyDELTA
   let mRaw   = neutrinoMetrics[nMetricIdxMaxNsbtSupply].asInt()
 
