@@ -210,7 +210,7 @@ func sellNsbt() = {
   if (pmtAmount < minNsbtSell) then throw("min "+ (minNsbtSell / PAULI).toString() + " nsbt expected") else
 
   let newPrice = mathContract.invoke("calcContractNsbtPriceSYSREADONLY", [-pmtAmount], []).asAnyList()[0].asInt()
-  if (newPrice < PAULI) then throw("resulting nsbt price would be < 1 (" + newPrice.toString() + " usdn") else
+  if (newPrice < PAULI) then throw("resulting nsbt price would be < 1 (" + newPrice.toString() + " usdn)") else
   strict transf = neutrinoContract.invoke("transferUsdnToUser", [pmtAmount, i.caller.toString()], [])
   ([], newPrice)
 }
