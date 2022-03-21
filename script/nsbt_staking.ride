@@ -280,6 +280,7 @@ func stake() = {
 
 @Callable(i)
 func unstake(amount: Int) = {
+  if (i.payments.size() != 0) then throw("unstake doesn't require any payment") else
   let userAddress  = i.caller
   let userAddressStr = userAddress.toString()
   let (auctionAddress, bondAssetId, minLockAmount, halfLife) = getParamsOrFail()
