@@ -347,6 +347,7 @@ func claimRewards() = {
   let userAddress = i.caller
   let userAddressStr = userAddress.toString()
 
+  if (i.payments.size() > 0) then throw("payments are not accepted") else
   let (isNewUser, stakedAmount, stakingStart) = userAddress.getUserParamsOrUnit().valueOrElse((true, 0, 0))
 
   let stakedAmountX = stakedAmount.toBigInt()
