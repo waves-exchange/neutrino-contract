@@ -366,6 +366,7 @@ func claimRewards() = {
   let transfers = FOLD<10>(supportedAssetsList, [], forEachAssetCalcUnclaimedReward)
   if (transfers.size() <= 0) then throw("nothing to claim") else
   transfers
+    :+ IntegerEntry(userRewardFromDepositNumKEY, depositNumLast)
 }
 
 @Callable(i)
