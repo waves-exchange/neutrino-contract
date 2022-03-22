@@ -268,14 +268,12 @@ func stake() = {
 
   let (statsEntries, totalStaked, totalStakedNew) = StatsResult(amount, 1, if (isNewUser) then 1 else 0)
 
-  let depositNumLast = keyDepositNumLast().getIntOrElse(-1)
-
   [
     HistoryRecordEntry("stake", userAddress, i.transactionId, lockAmount, lockStartHeight, mergedAmount, mergedStartHeight)
   ]
+  ++ RewardEntries(isNewUser, userAddressStr, lockAmount)
   ++ LockParamsEntry(userAddress, mergedAmount, mergedStartHeight)
   ++ statsEntries
-  :+ IntegerEntry(keyUserRewardFromDepositNum(userAddressStr), keyDepositNumLast().getIntOrElse(-1))
 }
 
 @Callable(i)
@@ -349,6 +347,7 @@ func claimRewards() = {
   let userAddress = i.caller
   let userAddressStr = userAddress.toString()
 
+  if (i.payments.size() > 0) then throw("payments are not accepted") else
   let (isNewUser, stakedAmount, stakingStart) = userAddress.getUserParamsOrUnit().valueOrElse((true, 0, 0))
 
   let stakedAmountX = stakedAmount.toBigInt()
@@ -367,6 +366,7 @@ func claimRewards() = {
   let transfers = FOLD<10>(supportedAssetsList, [], forEachAssetCalcUnclaimedReward)
   if (transfers.size() <= 0) then throw("nothing to claim") else
   transfers
+    :+ IntegerEntry(userRewardFromDepositNumKEY, depositNumLast)
 }
 
 @Callable(i)
