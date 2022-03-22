@@ -380,6 +380,7 @@ func commonSwap(swapType: String, pmtAmount: Int, userAddressStr: String, txId58
 @Callable(i)
 func commonWithdraw(account : String, index: Int, swapTxId: String, withdrawTxId: String) = {
     strict checkCaller = i.thisOnly()
+    if (i.payments.size() != 0) then throw("no payments allowed") else
 
     let userAddress = addressFromStringValue(account)
     let feeManagerAddress = feeManagerAddressREAD()
@@ -454,6 +455,7 @@ func constructor(
   wavesOutFeePartPrm: Int) = {
 
   strict checkCaller = i.thisOnly()
+  if (i.payments.size() != 0) then throw("no payments allowed") else
 
   [
     StringEntry(NeutrinoAssetIdKey, neutrinoAssetIdPrm),
@@ -474,6 +476,7 @@ func constructor(
 @Callable(i)
 func constructorV2(mathContract: String, nsbtStakingContract: String, swapsTimeframeBlocks: Int) = {
   strict checkCaller = i.thisOnly()
+  if (i.payments.size() != 0) then throw("no payments allowed") else
   [
     StringEntry(MathContractKey, mathContract),
     StringEntry(NsbtStakingContractKey, nsbtStakingContract),
@@ -488,6 +491,7 @@ func swapWavesToNeutrino() = {
     let pmt = i.payments[0].value()
 
     if (isDefined(pmt.assetId)) then throw("Only Waves token is allowed for swapping.") else
+    if (i.payments.size() > 1) then throw("swapWavesToNeutrino require only one payment") else
 
     let userAddress = i.caller.toString()
     let txId58 = i.transactionId.toBase58String()
@@ -506,6 +510,7 @@ func swapNeutrinoToWaves() = {
     let pmt = i.payments[0].value()
 
     if (pmt.assetId != neutrinoAssetId) then throw("Only appropriate Neutrino tokens are allowed for swapping.") else
+    if (i.payments.size() > 1) then throw("swapNeutrinoToWaves require only one payment") else
 
     let userAddress = i.caller.toString()
     let txId58 = i.transactionId.toBase58String()
@@ -521,6 +526,7 @@ func swapNeutrinoToWaves() = {
 # [called by user]
 @Callable(i)
 func withdraw(account: String, index: Int, swapTxId: String) = {
+    if (i.payments.size() != 0) then throw("no payments allowed") else
     strict commonWithdrawInv = this.invoke("commonWithdraw", [account, index, swapTxId, i.transactionId.toBase58String()], [])
     []
 }
@@ -530,7 +536,7 @@ func withdraw(account: String, index: Int, swapTxId: String) = {
 # [called by pacemaker oracles]
 @Callable(i)
 func transferToAuction() = {
-
+    if (i.payments.size() != 0) then throw("no payments allowed") else
     let neutrinoMetrics = mathContract.invoke("calcNeutinoMetricsREADONLY", [], []).asAnyList()
     let reserve                = neutrinoMetrics[3].asInt()
     let neutrinoSupply         = neutrinoMetrics[5].asInt()
