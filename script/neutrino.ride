@@ -488,10 +488,9 @@ func constructorV2(mathContract: String, nsbtStakingContract: String, swapsTimef
 # [called by user]
 @Callable(i)
 func swapWavesToNeutrino() = {
+    if (i.payments.size() != 1) then throw("swapWavesToNeutrino require only one payment") else
     let pmt = i.payments[0].value()
-
     if (isDefined(pmt.assetId)) then throw("Only Waves token is allowed for swapping.") else
-    if (i.payments.size() > 1) then throw("swapWavesToNeutrino require only one payment") else
 
     let userAddress = i.caller.toString()
     let txId58 = i.transactionId.toBase58String()
@@ -507,11 +506,10 @@ func swapWavesToNeutrino() = {
 # [called by user]
 @Callable(i)
 func swapNeutrinoToWaves() = {
+    if (i.payments.size() != 1) then throw("swapNeutrinoToWaves require only one payment") else
     let pmt = i.payments[0].value()
-
     if (pmt.assetId != neutrinoAssetId) then throw("Only appropriate Neutrino tokens are allowed for swapping.") else
-    if (i.payments.size() > 1) then throw("swapNeutrinoToWaves require only one payment") else
-
+    
     let userAddress = i.caller.toString()
     let txId58 = i.transactionId.toBase58String()
 
