@@ -268,14 +268,12 @@ func stake() = {
 
   let (statsEntries, totalStaked, totalStakedNew) = StatsResult(amount, 1, if (isNewUser) then 1 else 0)
 
-  let depositNumLast = keyDepositNumLast().getIntOrElse(-1)
-
   [
     HistoryRecordEntry("stake", userAddress, i.transactionId, lockAmount, lockStartHeight, mergedAmount, mergedStartHeight)
   ]
+  ++ RewardEntries(isNewUser, userAddressStr, lockAmount)
   ++ LockParamsEntry(userAddress, mergedAmount, mergedStartHeight)
   ++ statsEntries
-  :+ IntegerEntry(keyUserRewardFromDepositNum(userAddressStr), keyDepositNumLast().getIntOrElse(-1))
 }
 
 @Callable(i)
