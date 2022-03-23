@@ -187,15 +187,12 @@ func RewardEntries(isNewUser: Boolean, userAddress: String, stakedAmount: Int) =
 #      * FAIL
 #   4) если depositNumLast == -1 и depositNumUser  > -1 и isNewUser == false - INVALID
 #      * FAIL
-#   5) если depositNumLast  > -1 и depositNumUser == -1 и isNewUser == true  - новый пользователь когда уже были депозит
+#   5) если depositNumLast  > -1 и depositNumUser == -1 и isNewUser == true  - новый пользователь когда уже были депозиты
 #      * depositNumUser=depositNumLast
-#   6) если depositNumLast  > -1 и depositNumUser == -1 и isNewUser == false - старый пользователь, после fullUnstake и после депозитов, который пришел опять
-#      при fullUnstake должен удаляться depositNumUser и isNewUser = true
-#      * FAIL
-#   7) если depositNumLast  > -1 и depositNumUser  > -1 и isNewUser == true  - потенциально невозможный кейс, но нужно продумать
-#      такое возможно если неправильно заменеджить стейт при fullUnstake операции или неправильно посчитать isNewUser
-#      при fullUnstake удаляется depositNumUser и isNewUser = true
-#      * FAIL
+#   6) если depositNumLast  > -1 и depositNumUser == -1 и isNewUser == false - старый пользователь, который пришел до первых депозитов
+#      * depositNumUser=depositNumLast и rewardCachedPart
+#   7) если depositNumLast  > -1 и depositNumUser  > -1 и isNewUser == true  - пользователь который пришел при fullUnstake
+#      * depositNumUser=depositNumLast
 #   8) если depositNumLast  > -1 и depositNumUser  > -1 и isNewUser == false - старый пользователь, который доносит в стейкинг
 #      * depositNumUser=depositNumLast и rewardCachedPart
 
@@ -211,11 +208,13 @@ func RewardEntries(isNewUser: Boolean, userAddress: String, stakedAmount: Int) =
   if (depositNumLast == -1 && depositNumUser  > -1) then throw("invalid depositNumLast and depositNumUser state") else
   # 5 + 6
   if (depositNumLast  > -1 && depositNumUser == -1) then {
-    if (isNewUser) then [IntegerEntry(userRewardFromDepositNumKEY, depositNumLast)] else throw("isNewUser must not be false in 5 + 6 cases")
+    if (isNewUser) then [IntegerEntry(userRewardFromDepositNumKEY, depositNumLast)] else
+    FOLD<10>(supportedAssetsList, [], forEachAssetCacheUserReward)
+          :+ IntegerEntry(userRewardFromDepositNumKEY, depositNumLast)
   } else
   # 7 + 8
   if (depositNumLast  > -1 && depositNumUser  > -1) then {
-    if (isNewUser) then throw("invalid management for isNewUser=" + isNewUser.toString() + " and depositNumUser=" + depositNumUser.toString() + " during full unstake") else
+    if (isNewUser) then [IntegerEntry(userRewardFromDepositNumKEY, depositNumLast)] else
 
     FOLD<10>(supportedAssetsList, [], forEachAssetCacheUserReward)
           :+ IntegerEntry(userRewardFromDepositNumKEY, depositNumLast)
