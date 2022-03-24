@@ -377,11 +377,7 @@ func commonSwap(swapType: String, pmtAmount: Int, userAddressStr: String, txId58
 
 }
 
-@Callable(i)
 func commonWithdraw(account : String, index: Int, swapTxId: String, withdrawTxId: String) = {
-    strict checkCaller = i.thisOnly()
-    if (i.payments.size() != 0) then throw("no payments allowed") else
-
     let userAddress = addressFromStringValue(account)
     let feeManagerAddress = feeManagerAddressREAD()
 
@@ -424,17 +420,15 @@ func commonWithdraw(account : String, index: Int, swapTxId: String, withdrawTxId
         then prepareUnleaseAndLease(outAmountGrossTuple._1)
         else []
 
-    strict nsbtStakingDeposit = nsbtStakingContract.invoke("deposit", [], [AttachedPayment(outAmountGrossTuple._2, outFeeAmount)])
-
-    (leasePart ++ [IntegerEntry(totalLockedByUserKEY(swapType, account), totalLockedByUser - inAmount),
-    IntegerEntry(totalLockedKEY(swapType), totalLocked - inAmount),
-
-    ScriptTransfer(userAddress,       outNetAmount, outAmountGrossTuple._2),
-
-    StringEntry(
-      swapKEY(account, swapTxId),
-      finishSwapDATA(dataArray, priceByIndex, outNetAmount, outFeeAmount, unlockHeight, index, i.transactionId.toBase58String()))
-    ], unit)
+    let state = leasePart
+      ++ [IntegerEntry(totalLockedByUserKEY(swapType, account), totalLockedByUser - inAmount),
+        IntegerEntry(totalLockedKEY(swapType), totalLocked - inAmount),
+        ScriptTransfer(userAddress,       outNetAmount, outAmountGrossTuple._2),
+        StringEntry(
+            swapKEY(account, swapTxId),
+            finishSwapDATA(dataArray, priceByIndex, outNetAmount, outFeeAmount, unlockHeight, index, withdrawTxId))
+        ]
+    (state, AttachedPayment(outAmountGrossTuple._2, outFeeAmount))
 }
 
 #-------------------Callable----------------------
@@ -509,7 +503,7 @@ func swapNeutrinoToWaves() = {
     if (i.payments.size() != 1) then throw("swapNeutrinoToWaves require only one payment") else
     let pmt = i.payments[0].value()
     if (pmt.assetId != neutrinoAssetId) then throw("Only appropriate Neutrino tokens are allowed for swapping.") else
-    
+
     let userAddress = i.caller.toString()
     let txId58 = i.transactionId.toBase58String()
 
@@ -525,8 +519,9 @@ func swapNeutrinoToWaves() = {
 @Callable(i)
 func withdraw(account: String, index: Int, swapTxId: String) = {
     if (i.payments.size() != 0) then throw("no payments allowed") else
-    strict commonWithdrawInv = this.invoke("commonWithdraw", [account, index, swapTxId, i.transactionId.toBase58String()], [])
-    []
+    let (state, depositPayment) = commonWithdraw(account, index, swapTxId, i.transactionId.toBase58String())
+    strict nsbtStakingDeposit = nsbtStakingContract.invoke("deposit", [], [depositPayment])
+    state
 }
 
 # Transfers bonds from neutrino.ride to auction.ride to fulfill 'buy bonds' orders
