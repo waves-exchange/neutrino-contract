@@ -2,6 +2,8 @@
 {-# CONTENT_TYPE DAPP #-}
 {-# SCRIPT_TYPE ACCOUNT #-}
 
+let revisionNum = ""
+
 #-------------------Constants---------------------------
 let PRICELET         = 1_000_000    # 10^6
 let MULTSCALE        = 8

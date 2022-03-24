@@ -3,8 +3,8 @@
 {-# SCRIPT_TYPE ACCOUNT #-}
 
 # NSBT Staking Smart Contract
-
 let revisionNum = ""
+
 let separator = "__"
 
 let MULT6 = 1_000_000

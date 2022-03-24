@@ -6,6 +6,7 @@
 # Smart Contract Implementing Staking and Reward Withdrawal by Users of Neutrino Protocol
 # (RPD is Reward Payouts Distribution)
 #
+let revisionNum = ""
 
 #-------------------Base functions----------------------
 func getNumberByKey(key: String) = {

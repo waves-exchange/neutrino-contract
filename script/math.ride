@@ -2,6 +2,8 @@
 {-# CONTENT_TYPE DAPP #-}
 {-# SCRIPT_TYPE ACCOUNT #-}
 
+let revisionNum = ""
+
 #-------------------Constants---------------------------
 let WAVELET          = 1_0000_0000
 let PAULI            = 1_000_000
