@@ -44,6 +44,7 @@ func keyDepositNumLast() = ["%s%s%s", "dep", "lastNum"].makeString(separator)
 func keyUserRewardFromDepositNum(userAddress: String) = ["%s%s%s", "userRwdFromDepNum", userAddress].makeString(separator)
 func keyRewardPerNsbtSumAt(depositNum: Int, tkn: String) = ["%s%d", "rwdPerNsbtSumByDepNum", depositNum.toString(), tkn].makeString(separator)
 func keyReward(userAddress: String, tkn: String) = ["%s%s%s", "rwd", userAddress, tkn].makeString(separator)
+func keyClaimed(userAddress: String, tkn: String) = ["%s%s%s", "clm", userAddress, tkn].makeString(separator)
 # accumulated reward if nobody stakes NSBT int this key
 func keyNotDistributedReward(tkn: String) = ["%s%s", "notDistributed", tkn].makeString(separator)
 
@@ -356,9 +357,11 @@ func claimRewards() = {
 
   func forEachAssetCalcUnclaimedReward(accum: List[ScriptTransfer|IntegerEntry], asset: String) = {
     let (rewardTotal, cached, dynamic, rewardCachedPartKEY) = calcReward(userAddressStr, asset, stakedAmountX, depositNumUser, depositNumLast)
+    let claimedKEY = keyClaimed(userAddressStr, asset)
     if (rewardTotal <= 0) then accum else
     accum
       :+ ScriptTransfer(userAddress, rewardTotal, toAssetVect(asset))
+      :+ IntegerEntry(claimedKEY, claimedKEY.getInteger().valueOrElse(0) + rewardTotal)
       :+ IntegerEntry(rewardCachedPartKEY, 0)
   }
 
@@ -386,7 +389,8 @@ func unclaimedRewardsREADONLY(userAddressStr: String) = {
 
     func forEachAssetCalcUnclaimedReward(accum: String, asset: String) = {
       let (rewardTotal, cached, dynamic, rewardCachedPartKEY) = calcReward(userAddressStr, asset, stakedAmountX, depositNumUser, depositNumLast)
-      accum + makeString([asset, rewardTotal.toString(), "0"], ":") + "_"
+      let claimed = keyClaimed(userAddressStr, asset).getInteger().valueOrElse(0)
+      accum + makeString([asset, rewardTotal.toString(), claimed.toString()], ":") + "_"
     }
 
     FOLD<10>(supportedAssetsList, "", forEachAssetCalcUnclaimedReward)
