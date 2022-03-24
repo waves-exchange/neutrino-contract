@@ -161,12 +161,12 @@ func lockNeutrino() = {
 
 @Callable(i)
 func lockNsbtSP(receiver: String, share: Int) = {
-    internalLockNeutrino(NSBTTYPE, i, receiver, share)
+    throw("nsbt staking has been move to a new contract, please check Neutrino web site for more info")
 }
 
 @Callable(i)
 func lockNsbt() = {
-    internalLockNeutrino(NSBTTYPE, i, toString(i.caller), 100)
+    throw("nsbt staking has been move to a new contract, please check Neutrino web site for more info")
 }
 
 # cancel neutrino staking
