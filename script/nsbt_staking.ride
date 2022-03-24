@@ -97,11 +97,28 @@ func formatHistoryRecord(oldAmount: Int, oldStart: Int, newAmount: Int, newStart
   ].makeString(separator)
 }
 
+func formatClaimHistoryRecord(user: String, claimedRewards: String) = {
+  [
+    "%s%d%d%s",
+    user,
+    lastBlock.height.toString(),
+    lastBlock.timestamp.toString(),
+    claimedRewards
+  ].makeString(separator)
+}
+
 func HistoryRecordEntry(type: String, userAddress: Address, txId: ByteVector,
     oldAmount: Int, oldStart: Int, newAmount: Int, newStart: Int) = {
   StringEntry(
     keyHistoryRecord(type, userAddress, txId),
     formatHistoryRecord(oldAmount, oldStart, newAmount, newStart)
+  )
+}
+
+func ClaimHistoryEntry(userAddress: Address, txId: ByteVector, claimedRewards: String) = {
+  StringEntry(
+    keyHistoryRecord("claim", userAddress, txId),
+    formatClaimHistoryRecord(userAddress.toString(), claimedRewards)
   )
 }
 
@@ -355,20 +372,26 @@ func claimRewards() = {
   let depositNumUser = userRewardFromDepositNumKEY.getIntOrElse(-1)
   let depositNumLast = keyDepositNumLast().getIntOrElse(-1)
 
-  func forEachAssetCalcUnclaimedReward(accum: List[ScriptTransfer|IntegerEntry], asset: String) = {
+  func forEachAssetCalcUnclaimedReward(accum: (List[ScriptTransfer|IntegerEntry], String), asset: String) = {
     let (rewardTotal, cached, dynamic, rewardCachedPartKEY) = calcReward(userAddressStr, asset, stakedAmountX, depositNumUser, depositNumLast)
     let claimedKEY = keyClaimed(userAddressStr, asset)
-    if (rewardTotal <= 0) then accum else
-    accum
+    let (data, claimedAmtByAsset) = accum
+    let newPart = makeString([asset, rewardTotal.toString()], ":")
+    let claimedAmtByAssetNew = makeString([claimedAmtByAsset, newPart], "_")
+    if (rewardTotal <= 0) then (data, claimedAmtByAssetNew) else
+    (data
       :+ ScriptTransfer(userAddress, rewardTotal, toAssetVect(asset))
       :+ IntegerEntry(claimedKEY, claimedKEY.getInteger().valueOrElse(0) + rewardTotal)
       :+ IntegerEntry(rewardCachedPartKEY, 0)
+
+    , claimedAmtByAssetNew)
   }
 
-  let transfers = FOLD<10>(supportedAssetsList, [], forEachAssetCalcUnclaimedReward)
+  let (transfers, claimedAmtByAssetResult) = FOLD<10>(supportedAssetsList, ([],""), forEachAssetCalcUnclaimedReward)
   if (transfers.size() <= 0) then throw("nothing to claim") else
   transfers
     :+ IntegerEntry(userRewardFromDepositNumKEY, depositNumLast)
+    :+ ClaimHistoryEntry(userAddress, i.transactionId, claimedAmtByAssetResult)
 }
 
 @Callable(i)
