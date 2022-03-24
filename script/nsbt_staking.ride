@@ -391,7 +391,7 @@ func claimRewards() = {
   if (transfers.size() <= 0) then throw("nothing to claim") else
   transfers
     :+ IntegerEntry(userRewardFromDepositNumKEY, depositNumLast)
-    :+ ClaimHistoryEntry(userAddress, i.transactionId, claimedAmtByAssetResult)
+    :+ ClaimHistoryEntry(userAddress, i.transactionId, claimedAmtByAssetResult.drop(1))
 }
 
 @Callable(i)
