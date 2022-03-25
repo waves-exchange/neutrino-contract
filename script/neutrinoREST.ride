@@ -116,6 +116,18 @@ func minNsbtForSell() = {
   auctionContract.invoke("minNsbtAmountForSellSYSREADONLY", [], []).asInt()
 }
 
+func privateNsbtPriceREST() = {
+  let prices = mathContract.invoke("calcContractNsbtPriceSYSREADONLY",[0],[]).asAnyList()
+
+  let nsbt2usdnPrice         = prices[0].asInt()
+  let nsbt2wavesPrice        = prices[1].asInt()
+
+ (
+    IntegerEntry("nsbt2usdnPrice",  nsbt2usdnPrice),
+    IntegerEntry("nsbt2wavesPrice", nsbt2wavesPrice)
+  )
+}
+
 @Callable(i)
 # swapAmountAParam is scale8
 func constructor(neutrinoAddress: String, nsbtLockAddress: String, mathAddress: String) = {
@@ -272,3 +284,55 @@ func unstakeComissionAmountByUserREADONLY(amount: Int, userAddress: String) = {
   strict a = mathContract.invoke("getUnstakeComissionAmountREADONLY", [amount, startHeight, halfLife], []).asInt()
   ([], makeString(["%d", a.toString()], SEP))
 }
+
+@Callable(i)
+func neutrinoStateREST() = {
+
+  let neutrinoMetrics = mathContract.invoke("calcNeutinoMetricsREADONLY",[],[]).asAnyList()
+
+  let currentPrice           = neutrinoMetrics[0].asInt()
+  let neutrinoLockedBalance  = neutrinoMetrics[1].asInt()
+  let wavesLockedBalance     = neutrinoMetrics[2].asInt()
+  let reservesInWaves        = neutrinoMetrics[3].asInt()
+  let reservesInUsdn         = neutrinoMetrics[4].asInt()
+  let neutrinoSupply         = neutrinoMetrics[5].asInt()
+  let surplus                = neutrinoMetrics[6].asInt()
+  let surplusPercent         = neutrinoMetrics[7].asInt()
+  let BR                     = neutrinoMetrics[8].asInt()
+  let nsbtSupply             = neutrinoMetrics[9].asInt()
+
+  throw(
+    makeString([
+          "resultNeutrinoStateREST",        # 0
+          currentPrice.toString(),          # 1
+          neutrinoLockedBalance.toString(), # 2
+          wavesLockedBalance.toString(),    # 3
+          reservesInWaves.toString(),       # 4
+          reservesInUsdn.toString(),        # 5
+          neutrinoSupply.toString(),        # 6
+          surplus.toString(),               # 7
+          surplusPercent.toString(),        # 8
+          BR.toString(),                    # 9
+          nsbtSupply.toString()             # 10
+          ],
+    "__"))
+}
+
+@Callable(i)
+func nsbtPriceREST() = {
+  let prices = mathContract.invoke("calcContractNsbtPriceSYSREADONLY",[0],[]).asAnyList()
+
+  let nsbt2usdnPrice         = prices[0].asInt()
+  let nsbt2wavesPrice        = prices[1].asInt()
+
+  let restData = makeString([
+        "startNsbtPriceREST",       #0
+        nsbt2usdnPrice.toString(),  #1
+        nsbt2wavesPrice.toString(), #2
+        "endNsbtPriceREST"          #3
+        ],
+    "__")
+
+  throw(restData)
+}
+
