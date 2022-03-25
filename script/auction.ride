@@ -161,6 +161,15 @@ func toStr(name: String, curveResult: List[Any]) = {
 }
 
 #-------------------Callable---------------------------
+@Callable(i)
+func constructor(mathContractAddress: String, minWavesForNsbtBuy: Int, minNsbtSell: Int) = {
+  if (i.caller != this) then throw("Permission denied") else
+  [
+    StringEntry(MathContractKey, mathContractAddress),
+    IntegerEntry(MinNsbtSellKey, minNsbtSell),
+    IntegerEntry(MinWavesForNsbtBuyKey, minWavesForNsbtBuy)
+  ]
+}
 
 @Callable(i)
 func buyNsbt() = {
