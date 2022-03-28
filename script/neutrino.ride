@@ -5,6 +5,7 @@
 # Main Smart Contract of Neutrino Protocol
 # Implemented actions: Swap, Bond Liquidation, Leasing
 #
+let revisionNum = ""
 
 #-------------------Base functions----------------------
 func getNumberByKey(key: String) = {

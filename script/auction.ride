@@ -4,6 +4,7 @@
 #
 # Smart Contract Implementing NSBT Auction in the Orderbook of Neutrino Protocol
 #
+let revisionNum = ""
 
 #-------------------Base functions----------------------
 func getNumberByKey(key: String) = {

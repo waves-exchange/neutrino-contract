@@ -2,6 +2,8 @@
 {-# CONTENT_TYPE DAPP #-}
 {-# SCRIPT_TYPE ACCOUNT #-}
 
+let revisionNum = ""
+
 #-------------------Base functions----------------------
 func getNumberByKey(key: String) = {
     getInteger(this, key).valueOrElse(0)
