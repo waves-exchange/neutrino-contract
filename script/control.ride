@@ -4,6 +4,7 @@
 #
 # Smart Contract for Price Oracles and Emergency Oracles of Neutrino Protocol
 #
+let revisionNum = ""
 
 #-------------------Functions----------------------
 func convertWavesToNeutrino(amount: Int, price: Int) = fraction(fraction(amount, price, 1000000), 1000000, 100000000)
