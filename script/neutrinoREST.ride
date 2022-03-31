@@ -230,8 +230,11 @@ func gnsbtInfoREADONLY(userAddressStrOpt: String, nsbtAmtDiff: Int) = {
   let gnsbtShareNEW = if (gnsbtAmtTotalNEW != 0) then fraction(gnsbtAmtNEW * 100, scale12, gnsbtAmtTotalNEW) else 0
 
   let rewardInfo = nsbtStakingContract.invoke("unclaimedRewardsREADONLY", [userAddressStrOpt], []).asString()
+
+  let nsbtAmt = gnsbtAmt
+  let nsbtAmtNew = gnsbtAmtNEW
   ([], makeString([
-          "%d%d%d%d%d%d%d%d%s",
+          "%d%d%d%d%d%d%d%d%s%d%d",
           gnsbtAmt.toString(),
           gnsbtAmtNEW.toString(),
           gnsbtShare.toString(),
@@ -240,7 +243,9 @@ func gnsbtInfoREADONLY(userAddressStrOpt: String, nsbtAmtDiff: Int) = {
           limitMaxWaves.toString(),
           limitMaxUsdnNEW.toString(),
           limitMaxWavesNEW.toString(),
-          rewardInfo
+          rewardInfo,
+          nsbtAmt.toString(),
+          nsbtAmtNew.toString()
           ], SEP))
 }
 
