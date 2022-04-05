@@ -46,6 +46,7 @@ let nMetricIdxMaxNsbtSupply = 10
 #-------this keys---------
 func keyNeutrinoAddress()     = "%s%s__config__neutrinoAddress"
 func keySwapAmountAParam()    = "%s%s__config__swapAParam"
+func keySwapAmountBParam()    = "%s%s__config__swapBParam"
 #-------neutrino keys------
 func keyNeutrinoAssetId()            = "neutrino_asset_id"
 func keyLiquidationContractAddress() = "liquidation_contract"
@@ -110,10 +111,11 @@ func constructor(neutrinoAddress: String, nsbtLockAddress: String, swapAmountAPa
 
 @Callable(i)
 func calcSwapLimitREADONLY(gNsbtAmount: Int) = {
-  # limit = a * gNsbtAmount^e
+  # limit = a * gNsbtAmount^b
   let limitParamA  = this.getIntOrFail(keySwapAmountAParam()).toBigInt() # A is scale8
+  let limitParamB  = this.getIntOrFail(keySwapAmountBParam()).toBigInt() # A is scale16
   let gNsbtAmountScale16 = toX16(gNsbtAmount, scale6) # scale6
-  let limitPowPart = pow(gNsbtAmountScale16, 16, EULERNUMBER, 16, 8, CEILING)
+  let limitPowPart = pow(gNsbtAmountScale16, 16, limitParamB, 16, 8, CEILING)
   let limit = fraction(limitParamA, limitPowPart, scale10BigInt)
   ([],  (limit.toInt()))
 }
