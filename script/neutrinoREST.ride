@@ -270,7 +270,7 @@ func mergedStakeREADONLY(amount1: Int, height1: Int, amount2: Int, height2: Int)
   strict h = mathContract.invoke("mergeStakesREADONLY", [amount1, height1, amount2, height2, halfLife], []).asInt()
   ([], makeString([
     "%d%d",
-    (amount1 + amount2).toString(), 
+    (amount1 + amount2).toString(),
     h.toString()
     ], SEP))
 }

@@ -200,7 +200,7 @@ func buyNsbt() = {
 
     (orderData(i.transactionId.toBase58String(), pmtAmount, pmtAmount, ownerAddress.toString(), FILLED,
         roi,                # to keep backward compatability with prev. format
-        nsbt2WavesPriceRaw, 
+        nsbt2WavesPriceRaw,
         currentPrice) # to keep backward compatability with prev. format
     ++ [
       ScriptTransfer(ownerAddress, nsbtAmount, nsbtAssetId),
