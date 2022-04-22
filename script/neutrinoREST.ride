@@ -184,7 +184,7 @@ func neutrinoStatsREADONLY() = {
 }
 
 @Callable(i)
-func swapInfoREADONLY(userAddressStr: String) = {
+func swapInfoREADONLY(userAddressStrOpt: String) = {
   let currentPrice           = controlContract.getIntegerValue(keyPrice())
   let minWavesSwapAmt        = neutrinoContract.getIntegerValue(keyMinWavesSwapAmount())
   let minUsdnSwapAmt         = neutrinoContract.getIntegerValue(keyMinNeutrinoSwapAmount())
@@ -193,23 +193,23 @@ func swapInfoREADONLY(userAddressStr: String) = {
   let usdnSwapDelayDuration  = neutrinoContract.getIntegerValue(keyBalanceNeutrinoLockInterval())
   let wavesSwapDelayDuration = neutrinoContract.getIntegerValue(keyBalanceWavesLockInterval())
 
-  let (swapLimitMaxUsdn, swapLimitSpentUsdn, blcks2LmtReset) = neutrinoContract.invoke("swapParamsByUserSYSREADONLY", [userAddressStr, 0], []).asSwapParamsSTRUCT()
+  let (swapLimitMaxUsdn, swapLimitSpentUsdn, blcks2LmtReset) = neutrinoContract.invoke("swapParamsByUserSYSREADONLY", [userAddressStrOpt, 0], []).asSwapParamsSTRUCT()
   let swapLimitMaxWaves = convertNeutrinoToWaves(swapLimitMaxUsdn, currentPrice)
 
   ([],
     makeString([
-          "%d%d%d%d%d%d%d%d%d%d%d",
-          currentPrice.toString(),
-          minWavesSwapAmt.toString(),
-          minUsdnSwapAmt.toString(),
-          waves2UsdnFee.toString(),
-          usdn2WavesFee.toString(),
-          usdnSwapDelayDuration.toString(), # usdn swap delay duration
-          wavesSwapDelayDuration.toString(),  # waves swap delay duration
-          blcks2LmtReset.toString(),
-          swapLimitMaxWaves.toString(), # max allowed swap limit based on gnsbt balance
-          swapLimitMaxUsdn.toString(),  # max allowed swap limit based on gnsbt balance
-          swapLimitSpentUsdn.toString()
+          "%d%d%d%d%d%d%d%d%d%d%d",         # 0
+          currentPrice.toString(),          # 1
+          minWavesSwapAmt.toString(),       # 2
+          minUsdnSwapAmt.toString(),        # 3
+          waves2UsdnFee.toString(),         # 4
+          usdn2WavesFee.toString(),         # 5
+          usdnSwapDelayDuration.toString(), # 6  usdn swap delay duration
+          wavesSwapDelayDuration.toString(),# 7  waves swap delay duration
+          blcks2LmtReset.toString(),        # 8
+          swapLimitMaxWaves.toString(),     # 9  max allowed swap limit based on gnsbt balance
+          swapLimitMaxUsdn.toString(),      # 10 max allowed swap limit based on gnsbt balance
+          swapLimitSpentUsdn.toString()     # 11
           ], SEP))
 }
 
@@ -233,19 +233,23 @@ func gnsbtInfoREADONLY(userAddressStrOpt: String, nsbtAmtDiff: Int) = {
 
   let nsbtAmt = gnsbtAmt
   let nsbtAmtNew = gnsbtAmtNEW
+  let nsbtAmtStakedTotal = gnsbtAmtTotal
+  let nsbtAmtStakedTotalNew = gnsbtAmtTotalNEW
   ([], makeString([
-          "%d%d%d%d%d%d%d%d%s%d%d",
-          gnsbtAmt.toString(),
-          gnsbtAmtNEW.toString(),
-          gnsbtShare.toString(),
-          gnsbtShareNEW.toString(),
-          limitMaxUsdn.toString(),
-          limitMaxWaves.toString(),
-          limitMaxUsdnNEW.toString(),
-          limitMaxWavesNEW.toString(),
-          rewardInfo,
-          nsbtAmt.toString(),
-          nsbtAmtNew.toString()
+          "%d%d%d%d%d%d%d%d%s%d%d%d%d",     # 0
+          gnsbtAmt.toString(),              # 1
+          gnsbtAmtNEW.toString(),           # 2
+          gnsbtShare.toString(),            # 3
+          gnsbtShareNEW.toString(),         # 4
+          limitMaxUsdn.toString(),          # 5
+          limitMaxWaves.toString(),         # 6
+          limitMaxUsdnNEW.toString(),       # 7
+          limitMaxWavesNEW.toString(),      # 8
+          rewardInfo,                       # 9
+          nsbtAmt.toString(),               # 10
+          nsbtAmtNew.toString(),            # 11
+          nsbtAmtStakedTotal.toString(),    # 12
+          nsbtAmtStakedTotalNew.toString()  # 13
           ], SEP))
 }
 

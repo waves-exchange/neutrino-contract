@@ -1,0 +1,68 @@
+{-# STDLIB_VERSION 5 #-}
+{-# CONTENT_TYPE DAPP #-}
+{-# SCRIPT_TYPE ACCOUNT #-}
+
+let SEP = "__"
+
+func keyControlAddress()  = "%s%s__config__controlAddress"
+func keyRestAddress()     = "%s%s__config__restAddress"
+
+func getStrOrFail(key: String) = {
+  this.getString(key).valueOrErrorMessage("Mandatory this." + key + " is not defined")
+}
+
+func getAddressOrFail(key: String) = {
+  key.getStrOrFail().addressFromString().valueOrErrorMessage("fail to parse address for this." + key)
+}
+
+func asString(val: Any) = {
+  match val {
+    case valStr: String => valStr
+    case _ => throw("fail to cast into String")
+  }
+}
+
+func produceJson(strMap: List[String]) = {
+  let indexes = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
+
+  let length = strMap.size()
+  if (length % 2 != 0) then throw("only even args size is accepeted") else
+  if (length > indexes.size()) then throw("strMap length is greater then " + indexes.size().toString()) else
+
+  func produceJson(jsonAccum: String, nextIdx: Int) = {
+   if (nextIdx % 2 == 0 && (nextIdx + 1) <= length) then jsonAccum + "\n\"" + strMap[nextIdx] + "\": \"" + strMap[nextIdx + 1] + "\"," else jsonAccum
+  }
+
+  let preJsonResult = FOLD<20>(indexes, "", produceJson)
+  "{" + preJsonResult.dropRight(1) + "}"
+}
+
+let controlAcc = keyControlAddress().getAddressOrFail()
+let restAcc = keyRestAddress().getAddressOrFail()
+
+@Callable(i)
+func constructor(controlAddress58: String, restAddress58: String) = {
+  if (i.caller != this) then throw("not authorized") else
+  [
+      StringEntry(keyControlAddress(), controlAddress58),
+      StringEntry(keyRestAddress(),    restAddress58)
+  ]
+}
+
+
+@Callable(i)
+func stakeNsbtPageREADONLY(userAddressStrOpt: String, nsbtAmtDiff: Int) = {
+  let gnsbtInfo = restAcc.invoke("gnsbtInfoREADONLY", [userAddressStrOpt, nsbtAmtDiff], []).asString()
+  let swapInfo = restAcc.invoke("swapInfoREADONLY", [userAddressStrOpt], []).asString()
+
+  ([], produceJson(["gnsbtInfoREADONLY", gnsbtInfo, "swapInfoREADONLY", swapInfo]))
+}
+
+
+@Callable(i)
+func buyNsbtPageREADONLY(userAddressStrOpt: String) = {
+  let gnsbtInfo = restAcc.invoke("gnsbtInfoREADONLY", [userAddressStrOpt, 0], []).asString()
+  let neutrinoStats = restAcc.invoke("neutrinoStatsREADONLY", [], []).asString()
+
+  ([], produceJson(["gnsbtInfoREADONLY", gnsbtInfo, "neutrinoStatsREADONLY", neutrinoStats]))
+}
