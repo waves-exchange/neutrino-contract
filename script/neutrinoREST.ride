@@ -56,6 +56,7 @@ func getIntOrFail(address: Address, key: String) = address.getInteger(key).value
 func getBoolOrFail(address: Address, key: String) = address.getBoolean(key).valueOrErrorMessage(makeString(["mandatory ", address.toString(), ".", key, " is not defined"], ""))
 func convertNeutrinoToWaves(amount: Int, price: Int) = fraction(fraction(amount, PRICELET, price),scale8, scale6)
 func convertWavesToNeutrino(amount: Int, price: Int) = fraction(fraction(amount, price, PRICELET), scale6, scale8)
+
 func asAnyList(val: Any) = {
   match val {
     case valAnyList: List[Any] => valAnyList
@@ -88,6 +89,13 @@ func asSwapParamsSTRUCT(val: Any) = {
   match val {
     case struct: (Int,Int,Int,Int,Int) => struct
     case _ => throw("fail to cast into Int")
+  }
+}
+
+func toTimestamp(start: Int) = {
+  match blockInfoByHeight(start) {
+    case block: BlockInfo => block.timestamp
+    case _ => -1
   }
 }
 
@@ -235,8 +243,16 @@ func gnsbtInfoREADONLY(userAddressStrOpt: String, nsbtAmtDiff: Int) = {
   let nsbtAmtNew = gnsbtAmtNEW
   let nsbtAmtStakedTotal = gnsbtAmtTotal
   let nsbtAmtStakedTotalNew = gnsbtAmtTotalNEW
+
+  let nsbtData = nsbtStakingContract.invoke("nsbtStakingSYSREADONLY", [userAddressStrOpt], []).asAnyList()
+  let startHeight = nsbtData[2].asInt()
+  let startTimestamp = toTimestamp(startHeight)
+  let halfLife = nsbtStakingContract.getIntOrFail(keyHalfLife());
+  let startHeightNew = mathContract.invoke("mergeStakesREADONLY", [gnsbtAmt, startHeight, gnsbtAmtNEW, height, halfLife], []).asInt()
+  let startTimestampNew = toTimestamp(startHeightNew)
+
   ([], makeString([
-          "%d%d%d%d%d%d%d%d%s%d%d%d%d",     # 0
+          "%d%d%d%d%d%d%d%d%s%d%d%d%d%d%d%d%d", # 0
           gnsbtAmt.toString(),              # 1
           gnsbtAmtNEW.toString(),           # 2
           gnsbtShare.toString(),            # 3
@@ -249,7 +265,11 @@ func gnsbtInfoREADONLY(userAddressStrOpt: String, nsbtAmtDiff: Int) = {
           nsbtAmt.toString(),               # 10
           nsbtAmtNew.toString(),            # 11
           nsbtAmtStakedTotal.toString(),    # 12
-          nsbtAmtStakedTotalNew.toString()  # 13
+          nsbtAmtStakedTotalNew.toString(), # 13
+          startHeight.toString(),           # 14
+          startTimestamp.toString(),        # 15
+          startHeightNew.toString(),        # 16
+          startTimestampNew.toString()      # 17
           ], SEP))
 }
 

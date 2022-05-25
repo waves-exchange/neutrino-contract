@@ -1,0 +1,174 @@
+{-# STDLIB_VERSION 5 #-}
+{-# CONTENT_TYPE DAPP #-}
+{-# SCRIPT_TYPE ACCOUNT #-}
+
+let SEP = "__"
+let MULT6 = 1_000_000
+let MULT8 = 1_0000_0000
+
+let WAVESIDSTR = "WAVES"
+let WAVESID    = fromBase58String(WAVESIDSTR)
+
+func getIntOrFail(key: String) = {
+  this.getInteger(key).valueOrErrorMessage("Mandatory this." + key + " is not defined")
+}
+
+func getStrOrElse(key: String, defaultVal: String) = {
+  this.getString(key).valueOrElse(defaultVal)
+}
+
+func getStringOrFail(key: String) = {
+  this.getString(key).valueOrErrorMessage("Mandatory this." + key + " is not defined")
+}
+
+func getAddressOrFail(key: String) = {
+  getStringOrFail(key).addressFromString().valueOrErrorMessage("Fail to convert this." + key + " value into Address")
+}
+
+func validateAddressOrFail(addressStr: String) = {
+  let address = addressStr.addressFromString().valueOrErrorMessage("fail to convert into address " + addressStr)
+  if (wavesBalance(address).available < 0) then throw() else addressStr
+}
+
+func keyNodeRegistry(address: String)       = "%s__" + address
+func keyNodeRewardsTotals(address: String)  = "%s%s__totals__" + address
+func keyDepositAmount()                     = "%s%s__cfg__depositAmount"
+func keyNeutrinoAddressStr()                = "%s%s__cfg__neutrinoAddress"
+func keyMasterNodeAddressStr()              = "%s%s__cfg__mainNeutrinoNodeAddress"
+func keyProtocolPartX6()                    = "%s%s__cfg__protocolPartX6"
+func keyBenificaryPartX6()                  = "%s%s__cfg__benificaryPartX6"
+
+func formatDepositRecord(txIdStr: String, depositAmount: Int, remainingDepositAmount: Int) = {
+  ["%s%d%d%d%d",
+      txIdStr,
+      lastBlock.height.toString(),
+      lastBlock.timestamp.toString(),
+      depositAmount.toString(),
+      remainingDepositAmount.toString()
+  ].makeString(SEP)
+}
+
+func keyRewardHistory(nodeAddress: Address, txId: ByteVector) = {
+  ["%s%s%s",
+      "history",
+      nodeAddress.toString(),
+      txId.toBase58String()
+  ].makeString(SEP)
+}
+
+func dataRewardHistory(wavesAmountTotal: Int, beneficiaryAmt: Int, protocolAmt: Int, protocolAmtPart1: Int, protocolAmtPart2: Int) = {
+  ["%d%d%d%d%d%d%d",
+      lastBlock.height.toString(),
+      lastBlock.timestamp.toString(),
+      wavesAmountTotal.toString(),
+      beneficiaryAmt.toString(),
+      protocolAmt.toString(),
+      protocolAmtPart1.toString(),
+      protocolAmtPart2.toString()
+  ].makeString(SEP)
+}
+
+func RewardHistoryEntry(nodeAddress: Address, txId: ByteVector, minedAmt: Int, beneficiaryAmt: Int, protocolAmt: Int, protocolAmt1: Int, protocolAmt2: Int) = {
+  StringEntry(
+      keyRewardHistory(nodeAddress, txId),
+      dataRewardHistory(minedAmt, beneficiaryAmt, protocolAmt, protocolAmt1, protocolAmt2))
+}
+
+func dataRewardTotals(minedAmt: Int, beneficiaryAmt: Int, protocolAmt: Int, protocolAmtPart1: Int, protocolAmtPart2: Int) = {
+  ["%d%d%d%d%d",
+      minedAmt.toString(),
+      beneficiaryAmt.toString(),
+      protocolAmt.toString(),
+      protocolAmtPart1.toString(),
+      protocolAmtPart2.toString()
+  ].makeString(SEP)
+}
+
+func RewardTotalsEntry(miner: Address, minedAmt: Int, beneficiaryAmt: Int, protocolAmt: Int, protocolAmtPart1: Int, protocolAmtPart2: Int) = {
+  let nodeRewardsTotalsKEY = keyNodeRewardsTotals(miner.toString())
+  let nodeRewardsArray = nodeRewardsTotalsKEY.getStrOrElse(dataRewardTotals(0, 0, 0, 0, 0)).split(SEP)
+
+  let newMinedAmt         = nodeRewardsArray[1].parseIntValue() + minedAmt
+  let newBeneficiaryAmt   = nodeRewardsArray[2].parseIntValue() + beneficiaryAmt
+  let newProtocolAmt      = nodeRewardsArray[3].parseIntValue() + protocolAmt
+  let newProtocolAmtPart1 = nodeRewardsArray[4].parseIntValue() + protocolAmtPart1
+  let newProtocolAmtPart2 = nodeRewardsArray[5].parseIntValue() + protocolAmtPart2
+
+  StringEntry(
+      nodeRewardsTotalsKEY,
+      dataRewardTotals(newMinedAmt, newBeneficiaryAmt, newProtocolAmt, newProtocolAmtPart1, newProtocolAmtPart2)
+  )
+}
+
+@Callable(i)
+func constructor(depositAmount: Int, neutrinoAddressStr: String, masterNodeAddressStr: String, protocolPartX6: Int, benificaryPartX6: Int) = {
+  if (i.caller != this) then throw("permissions denied") else
+  if (depositAmount < 0) then throw("depositAmount less then zero") else
+  if (protocolPartX6 < 0) then throw("protocolPartX6 less then zero") else
+  if (benificaryPartX6 < 0) then throw("benificaryPartX6 less then zero") else
+  if ((protocolPartX6 + benificaryPartX6) != MULT6) then throw("parts sum must be 1") else
+
+  [IntegerEntry(keyDepositAmount(), depositAmount),
+    StringEntry(keyNeutrinoAddressStr(), neutrinoAddressStr.validateAddressOrFail()),
+    StringEntry(keyMasterNodeAddressStr(), masterNodeAddressStr.validateAddressOrFail()),
+    IntegerEntry(keyProtocolPartX6(), protocolPartX6),
+    IntegerEntry(keyBenificaryPartX6(), benificaryPartX6)
+  ]
+}
+
+@Callable(i)
+func sumbitApplication() = {
+  if (i.payments.size() != 1) then throw("exact 1 payment must be attached") else
+  if (i.caller != i.originCaller) then throw("dapp to dapp calls are not allowed") else
+  let pmt = i.payments[0]
+  let deposit = pmt.amount
+  let pmtAssetId = pmt.assetId.valueOrElse(WAVESID)
+
+  let expectedDepositAmount = keyDepositAmount().getIntOrFail()
+  let txId = i.transactionId.toBase58String()
+  let nodeAddress = i.caller.toString()
+  let nodeRegistryKEY = keyNodeRegistry(nodeAddress)
+
+  if (pmtAssetId != WAVESID) then throw("only Waves can be used for deposit") else
+  if (deposit != expectedDepositAmount) then throw("exactly " + expectedDepositAmount.toString() + " Wavelets are expected") else
+  if (nodeRegistryKEY.getStrOrElse("") != "") then throw("your node already registered") else
+
+  [StringEntry(nodeRegistryKEY, formatDepositRecord(txId, deposit, deposit))]
+}
+
+@Callable(i)
+func distibuteMinerReward(benificaryAddressStr: String) = {
+  if (i.payments.size() != 1) then throw("exact 1 payment must be attached") else
+  if (i.caller != i.originCaller) then throw("dapp to dapp calls are not allowed") else
+  let pmt = i.payments[0]
+  let minedAmt = pmt.amount
+  let pmtAssetId = pmt.assetId.valueOrElse(WAVESID)
+  let feeAmt = i.fee
+  let feeAssetId = i.feeAssetId.valueOrElse(WAVESID)
+
+  if (pmtAssetId != WAVESID) then throw("only Waves can be used in payment") else
+  if (feeAssetId != WAVESID) then throw("only Waves can be used in fees") else
+  if (feeAmt != 5 * MULT8 / 1000) then throw("fee amount couldn't exceed 0.005") else
+  let neutrinoAddress = keyNeutrinoAddressStr().getAddressOrFail()
+  let masterNodeAddress = keyMasterNodeAddressStr().getAddressOrFail()
+
+  let minerAddress = i.caller
+  let benificaryAddress = benificaryAddressStr.addressFromStringValue()
+  let protocolPart    = keyProtocolPartX6().getIntOrFail()
+  let benificaryPart  = keyBenificaryPartX6().getIntOrFail()
+
+  let availableBalance = wavesBalance(minerAddress).available - feeAmt
+  if (availableBalance != 0) then throw("all " + availableBalance.toString() + " Wavelets from the Node balance must be attached into the payment") else
+
+  let benificaryAmt = fraction(minedAmt, benificaryPart, MULT6)
+  let protocolAmt = minedAmt - benificaryAmt
+  let protocolAmt1 = protocolAmt / 2
+  let protocolAmt2 = protocolAmt - protocolAmt1
+
+  [ScriptTransfer(benificaryAddress,  benificaryAmt, unit),
+    ScriptTransfer(neutrinoAddress,   protocolAmt1,  unit),
+    ScriptTransfer(masterNodeAddress, protocolAmt2,  unit),
+    RewardHistoryEntry(minerAddress, i.transactionId, minedAmt, benificaryAmt, protocolAmt, protocolAmt1, protocolAmt2),
+    RewardTotalsEntry(minerAddress, minedAmt, benificaryAmt, protocolAmt, protocolAmt1, protocolAmt2)
+  ]
+}
