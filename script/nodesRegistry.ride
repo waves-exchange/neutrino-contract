@@ -137,7 +137,7 @@ func sumbitApplication() = {
 }
 
 @Callable(i)
-func distibuteMinerReward(benificaryAddressStr: String) = {
+func distributeMinerReward(benificaryAddressStr: String) = {
   if (i.payments.size() != 1) then throw("exact 1 payment must be attached") else
   if (i.caller != i.originCaller) then throw("dapp to dapp calls are not allowed") else
   let pmt = i.payments[0]
