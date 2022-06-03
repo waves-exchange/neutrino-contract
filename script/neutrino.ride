@@ -8,6 +8,15 @@
 let revisionNum = ""
 
 #-------------------Base functions----------------------
+func getStringOrFail(address: Address, key: String) = {
+  address.getString(key).valueOrErrorMessage("Mandatory this." + key + " is not defined")
+}
+
+# workaround to reduce size
+func lcalc(l: Lease) = {
+  calculateLeaseId(l)
+}
+
 func getNumberByKey(key: String) = {
     getInteger(this, key).valueOrElse(0)
 }
@@ -90,6 +99,9 @@ let FeesManagerAddressKey = "fees_manager_address"
 
 #------Common----------------
 
+#---Nodes Registry contract--
+func keyNodeRegistry(address: String)       = "%s__" + address
+
 #------Control contract-------
 let PriceKey = "price"
 
@@ -108,7 +120,10 @@ func getReservedAmountForSponsorship() =
 # TODO need to move into zero
 func getBalanceUnlockBlockKey(owner: String)               = "balance_unlock_block_" + owner
 func getLeaseIdKey(nodeIndex: Int)                         = makeString(["%s%d%s", "lease", toString(nodeIndex), "id"], SEP)
+func getLeaseIdByAddressKey(nodeAddress: String)           = makeString(["%s%s%s", "leaseByAddress", nodeAddress, "id"], SEP)
 func getLeaseAmountKey(nodeIndex: Int)                     = makeString(["%s%d%s", "lease", toString(nodeIndex), "amount"], SEP)
+func getLeaseAmountByAddressKey(nodeAddress: String)       = makeString(["%s%s%s", "leaseByAddress", nodeAddress, "amount"], SEP)
+func getLeaseGroupNodeListKey(groupNum: Int)               = makeString(["%s%d%s", "leaseGroup", groupNum.toString(), "nodeList"], SEP)
 
 func minSwapAmountKEY(swapType: String)                    = "min_" + swapType + "_swap_amount"
 func totalLockedKEY(swapType: String)                      = "balance_lock_" + swapType
@@ -337,7 +352,7 @@ func prepareUnleaseAndLease(unleaseAmount: Int) = {
 
         unleaseOrEmpty ++ [
             lease,
-            BinaryEntry(leaseIdKey, calculateLeaseId(lease)),
+            BinaryEntry(leaseIdKey, lcalc(lease)),
             IntegerEntry(getLeaseAmountKey(nodeIndex), newLeaseAmount)]
     } else []
 }
@@ -432,6 +447,17 @@ func commonWithdraw(account : String, index: Int, swapTxId: String, withdrawTxId
     (state, AttachedPayment(outAmountGrossTuple._2, outFeeAmount))
 }
 
+
+func readNodeInfo(nodeIdx: Int) = {
+  let nodeAddress = getStakingNodeAddressByIndex(nodeIdx)
+  let leasedAmtKEY = getLeaseAmountKey(nodeIdx)
+  let leasedAmt = leasedAmtKEY.getNumberByKey()
+
+  let leaseIdKEY = getLeaseIdKey(nodeIdx)
+  let leaseId = this.getBinary(leaseIdKEY).value()
+
+  (nodeAddress, leasedAmtKEY, leasedAmt, leaseIdKEY, leaseId)
+}
 #-------------------Callable----------------------
 
 @Callable(i)
@@ -566,6 +592,55 @@ func acceptWaves() = {
         (prepareUnleaseAndLease(0), "success")
 }
 
+@Callable(i)
+func approveLeasings(nListS: String, lAmt: Int, groupNum: Int) = {
+  let nIdxs = [0, 1, 2, 3, 4, 5, 6, 7]
+
+  let mngPubS = getString("%s%s__cfg__leasingManagerPub").valueOrElse("7AUMX54ukYMYvPmma7yoFf5NjZhs4Bu5nz3Ez9EV8sur")
+  let mngPub = mngPubS.fromBase58String()
+
+  let nodeRegAddrStr = getString("%s%s__cfg__nodesRegistryAddress").valueOrElse("3P9vKqQKjUdmpXAfiWau8krREYAY1Xr69pE")
+  let nodeRegAddr = nodeRegAddrStr.addressFromStringValue()
+
+  let lGroupNodeListKEY = getLeaseGroupNodeListKey(groupNum)
+  let lGrNodeOpt = this.getString(lGroupNodeListKEY)
+  if (lGrNodeOpt.isDefined()) then throw("group " + groupNum.toString() + " already initialized") else
+
+  let nList = nListS.split(SEP)
+  let expCount = nIdxs.size()
+
+  if (i.callerPublicKey != mngPub) then throw("approveLeasings not authorized") else
+
+  let (nAddr0, lAmtKEY0, lAmt0, lIdKEY0, lId0) = readNodeInfo(0)
+  let (nAddr1, lAmtKEY1, lAmt1, lIdKEY1, lId1) = readNodeInfo(1)
+
+  let newL0 = Lease(nAddr0, lAmt0 - lAmt * expCount / 2)
+  let newL1 = Lease(nAddr1, lAmt1 - lAmt * expCount / 2)
+
+  strict validation = nodeRegAddr.invoke("validateAndApproveLeasings", [nListS], [])
+
+  func forEachNodeValidateAndGenerateLease(a: List[Lease|BinaryEntry|IntegerEntry], i: Int) = {
+    let node = nList[i]
+    let la = Lease(node.addressFromStringValue(), lAmt)
+    a++[la,
+        BinaryEntry(getLeaseIdByAddressKey(node), lcalc(la)),
+        IntegerEntry(getLeaseAmountByAddressKey(node), lAmt)]
+  }
+
+  [StringEntry(lGroupNodeListKEY, nListS),
+    BinaryEntry(lIdKEY0, lcalc(newL0)),
+    BinaryEntry(lIdKEY1, lcalc(newL1)),
+    IntegerEntry(lAmtKEY0, newL0.amount),
+    IntegerEntry(lAmtKEY1, newL1.amount),
+    LeaseCancel(lId0),
+    LeaseCancel(lId1),
+    newL0,
+    newL1
+  ]
+    ++ FOLD<8>(nIdxs, [], forEachNodeValidateAndGenerateLease)
+}
+
+# READONLY methods
 @Callable(i)
 func swapParamsByUserSYSREADONLY(userAddressStr: String, nsbtDiff: Int) = {
   strict nsbtData = nsbtStakingContract.invoke("nsbtStakingSYSREADONLY", [userAddressStr], []).asAnyList()
