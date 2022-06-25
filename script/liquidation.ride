@@ -22,6 +22,7 @@ func getNumberByAddressAndKey(address: Address, key: String) = {
 }
 
 #-------------------Constants---------------------------
+let SEP = "__"
 let WAVELET = 100000000
 let PAULI = 1000000
 let PRICELET = 1000000 # 10^6
@@ -293,12 +294,17 @@ func liquidateBond() = {
 
 @Verifier(tx)
 func verify() = {
-       let pubKeyAdminsList = [
+    let pubKeyAdminsListStr = makeString([
         "GJdLSaLiv5K7xuejac8mcRcHoyo3dPrESrvktG3a6MAR",
-        "FWVffYr2ALmHMejZm3WqeLz6Sdym3gLFGtJn4KTwyU5x",
-        "3Wh2LaWcb5gg7K2pPcW3Ep6EAuRBzYkAgrdpt43jTDFa",
+        "EYwZmURd5KKaQRBjsVa6g8DPisFoS6SovRJtFiL5gMHU",
+        "DtmAfuDdCrHK8spdAeAYzq6MsZegeD9gnsrpuTRkCbVA",
         "5WRXFSjwcTbNfKcJs8ZqXmSSWYsSVJUtMvMqZj5hH4Nc"
-    ]
+    ], SEP)
+
+    let pubKeyAdminsList = controlContract.getString("%s__multisig")
+          .valueOrElse(pubKeyAdminsListStr)
+          .split(SEP)
+
     let count =
         (if(sigVerify(tx.bodyBytes, tx.proofs[0], fromBase58String(pubKeyAdminsList[0]))) then 1 else 0) +
         (if(sigVerify(tx.bodyBytes, tx.proofs[1], fromBase58String(pubKeyAdminsList[1]))) then 1 else 0) +

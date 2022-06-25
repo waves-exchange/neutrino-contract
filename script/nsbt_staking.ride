@@ -6,6 +6,7 @@
 let revisionNum = ""
 
 let separator = "__"
+let SEP = "__"
 
 let MULT6 = 1_000_000
 let MULT8 = 1_0000_0000
@@ -245,6 +246,10 @@ func IncrementNotDistributedRewardEntry(tkn: String, amountInc: Int) = {
   [IntegerEntry(notDistributedRewardKEY, notDistributedReward + amountInc)]
 }
 
+let ContolContractKey = "control_contract"
+let neutrinoContract = keyNeutrinoContractAddress().getStringOrFail().addressFromStringValue()
+let controlContract = neutrinoContract.getStringValue(ContolContractKey).addressFromStringValue()
+
 # init halfLife with 259200
 @Callable(i)
 func constructor(neutrinoContractAddress: String, mathContractAddress: String, minLockAmount: Int, halfLife: Int, supportedRewardAssets: String) = {
@@ -436,12 +441,17 @@ func nsbtStakingSYSREADONLY(userAddressStr: String) = {
 
 @Verifier(tx)
 func verify() = {
-    let pubKeyAdminsList = [
+    let pubKeyAdminsListStr = makeString([
         "GJdLSaLiv5K7xuejac8mcRcHoyo3dPrESrvktG3a6MAR",
-        "FWVffYr2ALmHMejZm3WqeLz6Sdym3gLFGtJn4KTwyU5x",
-        "3Wh2LaWcb5gg7K2pPcW3Ep6EAuRBzYkAgrdpt43jTDFa",
+        "EYwZmURd5KKaQRBjsVa6g8DPisFoS6SovRJtFiL5gMHU",
+        "DtmAfuDdCrHK8spdAeAYzq6MsZegeD9gnsrpuTRkCbVA",
         "5WRXFSjwcTbNfKcJs8ZqXmSSWYsSVJUtMvMqZj5hH4Nc"
-    ]
+    ], SEP)
+
+    let pubKeyAdminsList = controlContract.getString("%s__multisig")
+          .valueOrElse(pubKeyAdminsListStr)
+          .split(SEP)
+
     let count =
         (if(sigVerify(tx.bodyBytes, tx.proofs[0], fromBase58String(pubKeyAdminsList[0]))) then 1 else 0) +
         (if(sigVerify(tx.bodyBytes, tx.proofs[1], fromBase58String(pubKeyAdminsList[1]))) then 1 else 0) +

@@ -35,38 +35,38 @@ func getStringByAddressAndKey(address: String, key: String) = {
 func getBoolByAddressAndKey(address: String, key: String) = {
      getBoolean(addressFromStringValue(address), key).valueOrElse(false)
 }
-func asAnyList(val: Any) = {
-  match val {
-    case valAnyLyst: List[Any] => valAnyLyst
+func asAnyList(v: Any) = {
+  match v {
+    case l: List[Any] => l
     case _ => throw("fail to cast into List[Any]")
   }
 }
-func asString(val: Any) = {
-  match val {
-    case valStr: String => valStr
+func asString(v: Any) = {
+  match v {
+    case s: String => s
     case _ => throw("fail to cast into String")
   }
 }
-func asInt(val: Any) = {
-  match val {
-    case valInt: Int => valInt
+func asInt(v: Any) = {
+  match v {
+    case i: Int => i
     case _ => throw("fail to cast into Int")
   }
 }
 
-func asSwapParamsSTRUCT(val: Any) = {
-  match val {
+func asPayment(v: Any) = {
+  match v {
+    case p: AttachedPayment => p
+    case _ => throw("fail to cast into AttachedPayment")
+  }
+}
+
+func asSwapParamsSTRUCT(v: Any) = {
+  match v {
     case struct: (Int, Int, Int, Int, Int) => struct
     case _ => throw("fail to cast into Int")
   }
 }
-
-let pubKeyAdminsList = [
-    "GJdLSaLiv5K7xuejac8mcRcHoyo3dPrESrvktG3a6MAR",
-    "FWVffYr2ALmHMejZm3WqeLz6Sdym3gLFGtJn4KTwyU5x",
-    "3Wh2LaWcb5gg7K2pPcW3Ep6EAuRBzYkAgrdpt43jTDFa",
-    "5WRXFSjwcTbNfKcJs8ZqXmSSWYsSVJUtMvMqZj5hH4Nc"
-]
 
 #-------------------Constants---------------------------
 let SEP = "__"
@@ -174,10 +174,11 @@ let nsbtStakingContractStr = getStringByKey(NsbtStakingContractKey)
 let neutrinoAssetId = getStringByKey(NeutrinoAssetIdKey).fromBase58String()
 let auctionContract = getStringByKey(AuctionContractKey)
 let rpdContract = getStringByKey(RPDContractKey)
-let controlContract = getStringByKey(ContolContractKey)
+let controlContractStr = getStringByKey(ContolContractKey)
+let controlContract = controlContractStr.addressFromStringValue()
 let mathContractAddress = getStringByKey(MathContractKey)
-let priceIndex = getNumberByAddressAndKey(controlContract, PriceIndexKey) # Last price history iterator from control.ride
-let isBlocked = getBoolByAddressAndKey(controlContract,IsBlockedKey) # Checks for contract locks that might happen after attacks.  The var is read from control contract
+let priceIndex = getNumberByAddressAndKey(controlContractStr, PriceIndexKey) # Last price history iterator from control.ride
+let isBlocked = getBoolByAddressAndKey(controlContractStr,IsBlockedKey) # Checks for contract locks that might happen after attacks.  The var is read from control contract
 let nodeOracleProviderPubKey = fromBase58String(getStringByKey(NodeOracleProviderPubKeyKey))
 let bondAssetId = fromBase58String("6nSpVyNH7yM69eg446wrQR94ipbbcmZMU1ENPwanC97g") # NSBT with 6 decimals as USDN does
 let deprecatedBondAssetId = fromBase58String("975akZBfnMj513U7MZaHKzQrmsEx5aE3wdWKTrHBhbjF") # USDNB with 0 decimals
@@ -186,7 +187,7 @@ let neutrinoContract = this
 let mathContract = addressFromStringValue(mathContractAddress)
 let nsbtStakingContract = addressFromStringValue(nsbtStakingContractStr)
 #-------------------Global vars deficit, locked & supply -------------------------
-let currentPrice = getNumberByAddressAndKey(controlContract, PriceKey) # The value from control.ride
+let currentPrice = getNumberByAddressAndKey(controlContractStr, PriceKey) # The value from control.ride
 
 #-------------------Verifier Functions----------------------
 func checkIsValidMinSponsoredFee(tx: SponsorFeeTransaction) = {
@@ -203,9 +204,9 @@ func checkIsValidMinSponsoredFee(tx: SponsorFeeTransaction) = {
 
 #------Control contract------
 # The func is reading price from control.ride price history
-func getPriceHistory(block: Int) = getNumberByAddressAndKey(controlContract, getPriceHistoryKey(block))
+func getPriceHistory(block: Int) = getNumberByAddressAndKey(controlContractStr, getPriceHistoryKey(block))
 # The func is reading from control.ride price history heights
-func getHeightPriceByIndex(index: Int) = getNumberByAddressAndKey(controlContract, getHeightPriceByIndexKey(index))
+func getHeightPriceByIndex(index: Int) = getNumberByAddressAndKey(controlContractStr, getHeightPriceByIndexKey(index))
 
 #------NSBT Staking contract------
 func keyLockParamUserAmount(userAddress: String) = ["%s%s%s", "paramByUser", userAddress, "amount"].makeString(SEP)
@@ -357,6 +358,17 @@ func prepareUnleaseAndLease(unleaseAmount: Int) = {
     } else []
 }
 
+func readNodeInfo(nodeIdx: Int) = {
+  let nodeAddress = getStakingNodeAddressByIndex(nodeIdx)
+  let leasedAmtKEY = getLeaseAmountKey(nodeIdx)
+  let leasedAmt = leasedAmtKEY.getNumberByKey()
+
+  let leaseIdKEY = getLeaseIdKey(nodeIdx)
+  let leaseId = this.getBinary(leaseIdKEY).value()
+
+  (nodeAddress, leasedAmtKEY, leasedAmt, leaseIdKEY, leaseId)
+}
+
 #-------------------MAIN LOGIC----------------------
 
 func commonSwap(swapType: String, pmtAmount: Int, userAddressStr: String, txId58: String, swapParamsByUserSYSREADONLY: (Int,Int,Int,Int,Int)) = {
@@ -432,32 +444,20 @@ func commonWithdraw(account : String, index: Int, swapTxId: String, withdrawTxId
     if (payoutsArray[IdxGrossAmount] <= 0) then throw("balance equals zero") else
     if (outFeePart < 0 || outFeePart >= PAULI) then throw("invalid outFeePart config for " + swapType + " swap: outFeePart=" + outFeePart.toString()) else
 
-    let leasePart = if (swapType == "neutrino" && outAmountGrossTuple._1 > 0)
-        then prepareUnleaseAndLease(outAmountGrossTuple._1)
-        else []
+    let unleaseAmount = if (swapType == "neutrino" && outAmountGrossTuple._1 > 0) then outAmountGrossTuple._1 else 0
 
-    let state = leasePart
-      ++ [IntegerEntry(totalLockedByUserKEY(swapType, account), totalLockedByUser - inAmount),
-        IntegerEntry(totalLockedKEY(swapType), totalLocked - inAmount),
-        ScriptTransfer(userAddress,       outNetAmount, outAmountGrossTuple._2),
-        StringEntry(
-            swapKEY(account, swapTxId),
-            finishSwapDATA(dataArray, priceByIndex, outNetAmount, outFeeAmount, unlockHeight, index, withdrawTxId))
-        ]
-    (state, AttachedPayment(outAmountGrossTuple._2, outFeeAmount))
+    let state = [
+      IntegerEntry(totalLockedByUserKEY(swapType, account), totalLockedByUser - inAmount),
+      IntegerEntry(totalLockedKEY(swapType), totalLocked - inAmount),
+      ScriptTransfer(userAddress, outNetAmount, outAmountGrossTuple._2),
+      StringEntry(
+        swapKEY(account, swapTxId),
+        finishSwapDATA(dataArray, priceByIndex, outNetAmount, outFeeAmount, unlockHeight, index, withdrawTxId))
+    ]
+
+    (state, AttachedPayment(outAmountGrossTuple._2, outFeeAmount), unleaseAmount)
 }
 
-
-func readNodeInfo(nodeIdx: Int) = {
-  let nodeAddress = getStakingNodeAddressByIndex(nodeIdx)
-  let leasedAmtKEY = getLeaseAmountKey(nodeIdx)
-  let leasedAmt = leasedAmtKEY.getNumberByKey()
-
-  let leaseIdKEY = getLeaseIdKey(nodeIdx)
-  let leaseId = this.getBinary(leaseIdKEY).value()
-
-  (nodeAddress, leasedAmtKEY, leasedAmt, leaseIdKEY, leaseId)
-}
 #-------------------Callable----------------------
 
 @Callable(i)
@@ -545,34 +545,25 @@ func swapNeutrinoToWaves() = {
 # [called by user]
 @Callable(i)
 func withdraw(account: String, index: Int, swapTxId: String) = {
+    let txId = i.transactionId.toBase58String()
     if (i.payments.size() != 0) then throw("no payments allowed") else
-    let (state, depositPayment) = commonWithdraw(account, index, swapTxId, i.transactionId.toBase58String())
-    strict nsbtStakingDeposit = nsbtStakingContract.invoke("deposit", [], [depositPayment])
+
+    let commonTuple = commonWithdraw(account, index, swapTxId, txId)
+    let state       = commonTuple._1
+    let fee         = commonTuple._2
+    let unleaseAmt  = commonTuple._3
+
+    strict unleaseInvOrEmpty = this.invoke("internalUnleaseAndLease", [unleaseAmt], [])
+
+    if (fee.amount <= 0) then state else
+    strict nsbtStakingReward = nsbtStakingContract.invoke("deposit", [], [fee])
     state
 }
 
-# Transfers bonds from neutrino.ride to auction.ride to fulfill 'buy bonds' orders
-# Is called n-times until all pending orders on auction.ride are fulfilled or to keep NB reserves equal to total USDN supply
-# [called by pacemaker oracles]
 @Callable(i)
-func transferToAuction() = {
-    if (i.payments.size() != 0) then throw("no payments allowed") else
-    let neutrinoMetrics = mathContract.invoke("calcNeutinoMetricsREADONLY", [], []).asAnyList()
-    let reserve                = neutrinoMetrics[3].asInt()
-    let neutrinoSupply         = neutrinoMetrics[5].asInt()
-    let surplus                = neutrinoMetrics[6].asInt()
-    let nsbtSupply             = neutrinoMetrics[9].asInt()
-
-    let auctionNBAmount = neutrinoSupply - assetBalance(addressFromStringValue(auctionContract), bondAssetId)
-    let surplusWithLiquidation = (surplus - assetBalance(addressFromStringValue(liquidationContract), neutrinoAssetId)) #in 6 decimals
-    if(isBlocked)
-        then throw("contract is blocked by EMERGENCY SHUTDOWN actions untill reactivation by emergency oracles") # see control.ride
-    else if(auctionNBAmount > 1*PAULI)
-        then [ScriptTransfer(addressFromStringValue(auctionContract), auctionNBAmount, bondAssetId)]
-    else if(surplusWithLiquidation >= 1*PAULI)
-        then [ScriptTransfer(addressFromStringValue(liquidationContract), surplusWithLiquidation, neutrinoAssetId)]
-    else
-        throw("bond were generated or do not need it. Deficit:" + toString(auctionNBAmount) + "|" + toString(0) + ". Surplus:" + toString(surplusWithLiquidation) + "|" + toString(surplus))
+func internalUnleaseAndLease(unleaseAmount: Int) = {
+  if (i.caller != this) then throw("internalUnleaseAndLease is not public method") else
+  prepareUnleaseAndLease(unleaseAmount)
 }
 
 # Callback for auction contract to transfer USDN to user
@@ -664,6 +655,18 @@ func swapParamsByUserSYSREADONLY(userAddressStr: String, nsbtDiff: Int) = {
 @Verifier(tx)
  func verify() = {
     let id = toBase58String(tx.id)
+
+    let pubKeyAdminsListStr = makeString([
+        "GJdLSaLiv5K7xuejac8mcRcHoyo3dPrESrvktG3a6MAR",
+        "EYwZmURd5KKaQRBjsVa6g8DPisFoS6SovRJtFiL5gMHU",
+        "DtmAfuDdCrHK8spdAeAYzq6MsZegeD9gnsrpuTRkCbVA",
+        "5WRXFSjwcTbNfKcJs8ZqXmSSWYsSVJUtMvMqZj5hH4Nc"
+    ], SEP)
+
+    let pubKeyAdminsList = controlContract.getString("%s__multisig")
+          .valueOrElse(pubKeyAdminsListStr)
+          .split(SEP)
+
     let count =
         (if(sigVerify(tx.bodyBytes, tx.proofs[0], fromBase58String(pubKeyAdminsList[0]))) then 1 else 0) +
         (if(sigVerify(tx.bodyBytes, tx.proofs[1], fromBase58String(pubKeyAdminsList[1]))) then 1 else 0) +

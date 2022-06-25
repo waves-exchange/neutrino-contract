@@ -6,6 +6,8 @@
 #
 let revisionNum = ""
 
+let SEP = "__"
+
 #-------------------Functions----------------------
 func convertWavesToNeutrino(amount: Int, price: Int) = fraction(fraction(amount, price, 1000000), 1000000, 100000000)
 
@@ -49,6 +51,7 @@ let pubKeyOraclesList = convertJsonArrayToList(pubKeyOracles)
 let neutrinoAddress     = Address(base58'3PC9BfRwJWWiw9AREE2B3eWzCks3CYtg4yo')
 let liquidationAddress  = Address(base58'3P4PCxsJqMzQBALo8zANHtBDZRRquobHQp7')
 let neutrinoAsset       = base58'DG2xFkPdDwKUoBkzGAhQtLpSGzfXLiCYPEzeKH2Ad24p'
+let controlContract     = this
 
 #locked balance from USDN -> WAVES swap
 let neutrinoLockedBalance = getInteger(neutrinoAddress, "balance_lock_neutrino").valueOrElse(0)
@@ -219,12 +222,17 @@ func finalizeCurrentPrice(price1: Int, sign1: ByteVector, price2: Int, sign2: By
 
 @Verifier(tx)
 func verify() = {
-    let pubKeyAdminsList = [
+    let pubKeyAdminsListStr = makeString([
         "GJdLSaLiv5K7xuejac8mcRcHoyo3dPrESrvktG3a6MAR",
-        "FWVffYr2ALmHMejZm3WqeLz6Sdym3gLFGtJn4KTwyU5x",
-        "3Wh2LaWcb5gg7K2pPcW3Ep6EAuRBzYkAgrdpt43jTDFa",
+        "EYwZmURd5KKaQRBjsVa6g8DPisFoS6SovRJtFiL5gMHU",
+        "DtmAfuDdCrHK8spdAeAYzq6MsZegeD9gnsrpuTRkCbVA",
         "5WRXFSjwcTbNfKcJs8ZqXmSSWYsSVJUtMvMqZj5hH4Nc"
-    ]
+    ], SEP)
+
+    let pubKeyAdminsList = controlContract.getString("%s__multisig")
+          .valueOrElse(pubKeyAdminsListStr)
+          .split(SEP)
+
     let count =
         (if(sigVerify(tx.bodyBytes, tx.proofs[0], fromBase58String(pubKeyAdminsList[0]))) then 1 else 0) +
         (if(sigVerify(tx.bodyBytes, tx.proofs[1], fromBase58String(pubKeyAdminsList[1]))) then 1 else 0) +
