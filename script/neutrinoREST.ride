@@ -93,6 +93,7 @@ func asSwapParamsSTRUCT(val: Any) = {
 }
 
 func toTimestamp(start: Int) = {
+  if start < 0 then -1 else
   match blockInfoByHeight(start) {
     case block: BlockInfo => block.timestamp
     case _ => -1
@@ -245,10 +246,13 @@ func gnsbtInfoREADONLY(userAddressStrOpt: String, nsbtAmtDiff: Int) = {
   let nsbtAmtStakedTotalNew = gnsbtAmtTotalNEW
 
   let nsbtData = nsbtStakingContract.invoke("nsbtStakingSYSREADONLY", [userAddressStrOpt], []).asAnyList()
-  let startHeight = nsbtData[2].asInt()
+  # for unknown user or user without gNsbt (gnsbtAmt = gnsbtAmtNEW == 0) we return heights and timestamps -1
+  let isEmptyNsbtBalance = gnsbtAmt == 0 && gnsbtAmtNEW == 0
+  let startHeight = if (isEmptyNsbtBalance) then -1 else nsbtData[2].asInt()
   let startTimestamp = toTimestamp(startHeight)
   let halfLife = nsbtStakingContract.getIntOrFail(keyHalfLife());
-  let startHeightNew = mathContract.invoke("mergeStakesREADONLY", [gnsbtAmt, startHeight, gnsbtAmtNEW, height, halfLife], []).asInt()
+  let startHeightNew = if (isEmptyNsbtBalance) then -1 else
+    mathContract.invoke("mergeStakesREADONLY", [gnsbtAmt, startHeight, gnsbtAmtNEW, height, halfLife], []).asInt()
   let startTimestampNew = toTimestamp(startHeightNew)
 
   ([], makeString([
