@@ -252,7 +252,7 @@ func gnsbtInfoREADONLY(userAddressStrOpt: String, nsbtAmtDiff: Int) = {
   let startTimestamp = toTimestamp(startHeight)
   let halfLife = nsbtStakingContract.getIntOrFail(keyHalfLife());
   let startHeightNew = if (isEmptyNsbtBalance) then -1 else
-    mathContract.invoke("mergeStakesREADONLY", [gnsbtAmt, startHeight, gnsbtAmtNEW, height, halfLife], []).asInt()
+  mathContract.invoke("mergeStakesREADONLY", [gnsbtAmt, startHeight, gnsbtAmtNEW, height, halfLife], []).asInt()
   let startTimestampNew = toTimestamp(startHeightNew)
 
   ([], makeString([
