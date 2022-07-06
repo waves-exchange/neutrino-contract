@@ -1,4 +1,4 @@
-{-# STDLIB_VERSION 5 #-}
+{-# STDLIB_VERSION 6 #-}
 {-# CONTENT_TYPE DAPP #-}
 {-# SCRIPT_TYPE ACCOUNT #-}
 #
@@ -95,7 +95,6 @@ let MinNeutrinoSwapAmountKey = "min_neutrino_swap_amount"
 let NodeOracleProviderPubKeyKey = "node_oracle_provider"
 let NeutrinoOutFeePartKey = "neutrinoOut_swap_feePart"
 let WavesOutFeePartKey = "wavesOut_swap_feePart"
-let FeesManagerAddressKey = "fees_manager_address"
 
 #------Common----------------
 
@@ -142,11 +141,6 @@ func balanceLockIntervalREAD(swapType: String) = this.getInteger(balanceLockInte
 func nodeBalanceLockIntervalREAD() = this.getInteger(nodeBalanceLockIntervalKEY()).valueOrElse(1)
 func keySwapUserSpentInPeriod(userAddress: String) = ["%s%s", "swapUserSpentInPeriod", userAddress].makeString(SEP)
 func keyUserLastSwapHeight(userAddress: String) = ["%s%s", "userLastSwapHeight", userAddress].makeString(SEP)
-
-func feeManagerAddressREAD() = this.getString(FeesManagerAddressKey)
-          .valueOrErrorMessage(FeesManagerAddressKey + " is not specified")
-          .addressFromString()
-          .valueOrErrorMessage(FeesManagerAddressKey + " invalid address format")
 
 #-------------------Convert functions-------------------
 func convertNeutrinoToWaves(amount: Int, price: Int) = fraction(fraction(amount, PRICELET, price),WAVELET, PAULI)
@@ -407,7 +401,6 @@ func commonSwap(swapType: String, pmtAmount: Int, userAddressStr: String, txId58
 
 func commonWithdraw(account : String, index: Int, swapTxId: String, withdrawTxId: String) = {
     let userAddress = addressFromStringValue(account)
-    let feeManagerAddress = feeManagerAddressREAD()
 
     let dataArray         = swapDataFailOrREAD(account, swapTxId)
     let selfUnlockHeight  = dataArray[sIdxSelfUnlockHeight].parseIntValue()
@@ -630,6 +623,47 @@ func approveLeasings(nListS: String, groupNum: Int) = {
     newL1
   ]
     ++ FOLD<8>(nIdxs, [], forEachNodeValidateAndGenerateLease)
+}
+
+@Callable(i)
+func rebalanceLeasings(amount: Int, groupNum: Int) = {
+  let nIdxs = [0, 1, 2, 3, 4, 5, 6, 7]
+
+  let mngPubS = getString("%s%s__cfg__leasingManagerPub").valueOrElse("7AUMX54ukYMYvPmma7yoFf5NjZhs4Bu5nz3Ez9EV8sur")
+  let mngPub = mngPubS.fromBase58String()
+
+  let lGroupNodeListKEY = getLeaseGroupNodeListKey(groupNum)
+  let nListS = this.getStringOrFail(lGroupNodeListKEY)
+  let nList = nListS.split(SEP)
+
+  if (i.callerPublicKey != mngPub) then throw("rebalanceLeasings not authorized") else
+
+  let unleaseAmt = amount / nList.size() + 1
+  let (nAddr0, lAmtKEY0, lAmt0, lIdKEY0, lId0) = readNodeInfo(0)
+
+  let newL0 = Lease(nAddr0, lAmt0 + unleaseAmt * nList.size())
+
+  func forEachNodeDoUnlease(a: List[Lease|BinaryEntry|IntegerEntry], i: Int) = {
+    let node = nList[i]
+    let lIdKEY = getLeaseIdByAddressKey(node)
+    let lId = this.getBinaryValue(lIdKEY)
+    let lAmtKEY = getLeaseAmountByAddressKey(node)
+    let lAmt = this.getIntegerValue(lAmtKEY)
+
+    let ula = LeaseCancel(lId.value())
+    let la  = Lease(node.addressFromStringValue(), lAmt - unleaseAmt)
+    a++[LeaseCancel(lId.value()),
+        la,
+        BinaryEntry(lIdKEY, lcalc(la)),
+        IntegerEntry(lAmtKEY, la.amount)]
+  }
+
+  FOLD<8>(nIdxs, [], forEachNodeDoUnlease)
+    ++ [
+      BinaryEntry(lIdKEY0, lcalc(newL0)),
+      IntegerEntry(lAmtKEY0, newL0.amount),
+      LeaseCancel(lId0),
+      newL0]
 }
 
 # READONLY methods
