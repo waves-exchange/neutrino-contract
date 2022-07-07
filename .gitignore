@@ -1,7 +1,36 @@
-/test/deployMain.js
-/test/deploy.js
-/test/deploy/*.development.js
-npm-debug.log
-surfboard.development.config.json
+/target/
+**/target/**
+**/surefire-reports/
+**/target
 
-node_modules/
+!.mvn/wrapper/maven-wrapper.jar
+
+/.allure
+**/allure-results/**
+/logs/
+*.txt
+
+### STS ###
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+
+### IntelliJ IDEA ###
+.idea
+*.iws
+*.iml
+*.ipr
+
+### NetBeans ###
+/nbproject/private/
+/build/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+
+/.mvn/
