@@ -17,12 +17,12 @@ func getStrOrElse(key: String, defaultVal: String) = {
   this.getString(key).valueOrElse(defaultVal)
 }
 
-func getStringOrFail(key: String) = {
-  this.getString(key).valueOrErrorMessage("Mandatory this." + key + " is not defined")
+func getStringOrFail(address: Address, key: String) = {
+  address.getString(key).valueOrErrorMessage("Mandatory this." + key + " is not defined")
 }
 
 func getAddressOrFail(key: String) = {
-  getStringOrFail(key).addressFromString().valueOrErrorMessage("Fail to convert this." + key + " value into Address")
+  this.getStringOrFail(key).addressFromString().valueOrErrorMessage("Fail to convert this." + key + " value into Address")
 }
 
 func validateAddressOrFail(addressStr: String) = {
@@ -37,7 +37,10 @@ func keyNeutrinoAddressStr()                = "%s%s__cfg__neutrinoAddress"
 func keyMasterNodeAddressStr()              = "%s%s__cfg__mainNeutrinoNodeAddress"
 func keyProtocolPartX6()                    = "%s%s__cfg__protocolPartX6"
 func keyBenificaryPartX6()                  = "%s%s__cfg__benificaryPartX6"
+func keyMinDistributeAmount()               = "%s%s__cfg__minDistributeAmount"
 
+# miningNode KEYs
+func keyBeneficiaryAddress()  = "%s%s__cfg__beneficiaryAddress"
 
 func formatDepositAdd(txIdStr: String, depositAmount: Int, remainingDepositAmount: Int, status: String) = {
   ["%s%d%d%d%d%s%d%d",
@@ -155,15 +158,19 @@ func sumbitApplication() = {
 }
 
 @Callable(i)
-func distributeMinerReward(benificaryAddressStr: String) = {
+func distributeMinerReward(beneficiaryAddressStr: String) = {
+  let minDistributeAmount = this.getInteger(keyMinDistributeAmount()).valueOrElse(24 * MULT8)
   if (i.payments.size() != 1) then throw("exact 1 payment must be attached") else
   if (i.caller != i.originCaller) then throw("dapp to dapp calls are not allowed") else
   let pmt = i.payments[0]
-  let minedAmt = pmt.amount
   let pmtAssetId = pmt.assetId.valueOrElse(WAVESID)
   let feeAmt = i.fee
   let feeAssetId = i.feeAssetId.valueOrElse(WAVESID)
 
+  let callReward = feeAmt * 3
+  let minedAmt = pmt.amount - callReward
+
+  if (pmt.amount < minDistributeAmount) then throw("attached payment is less then min " + minDistributeAmount.toString() + " Wavelets") else
   if (pmtAssetId != WAVESID) then throw("only Waves can be used in payment") else
   if (feeAssetId != WAVESID) then throw("only Waves can be used in fees") else
   if (feeAmt != 5 * MULT8 / 1000) then throw("fee amount couldn't exceed 0.005") else
@@ -171,23 +178,31 @@ func distributeMinerReward(benificaryAddressStr: String) = {
   let masterNodeAddress = keyMasterNodeAddressStr().getAddressOrFail()
 
   let minerAddress = i.caller
-  let benificaryAddress = benificaryAddressStr.addressFromStringValue()
+  let minerScriptHash = scriptHash(minerAddress)
+
+  let beneficiaryFromParam = beneficiaryAddressStr.addressFromStringValue()
+  let beneficiaryFromMinerState = minerAddress.getStringOrFail(keyBeneficiaryAddress()).addressFromStringValue()
+  let (beneficiaryAddress, callRewardReceiver) = if (minerScriptHash == unit)
+        then (beneficiaryFromParam, beneficiaryFromParam)
+        else (beneficiaryFromMinerState, beneficiaryFromParam)
+
   let protocolPart    = keyProtocolPartX6().getIntOrFail()
-  let benificaryPart  = keyBenificaryPartX6().getIntOrFail()
+  let beneficiaryPart  = keyBenificaryPartX6().getIntOrFail()
 
   let availableBalance = wavesBalance(minerAddress).available - feeAmt
   if (availableBalance != 0) then throw("all " + availableBalance.toString() + " Wavelets from the Node balance must be attached into the payment") else
 
-  let benificaryAmt = fraction(minedAmt, benificaryPart, MULT6)
-  let protocolAmt = minedAmt - benificaryAmt
+  let beneficiaryAmt = fraction(minedAmt, beneficiaryPart, MULT6)
+  let protocolAmt = minedAmt - beneficiaryAmt
   let protocolAmt1 = protocolAmt / 2
   let protocolAmt2 = protocolAmt - protocolAmt1
 
-  [ScriptTransfer(benificaryAddress,  benificaryAmt, unit),
-    ScriptTransfer(neutrinoAddress,   protocolAmt1,  unit),
-    ScriptTransfer(masterNodeAddress, protocolAmt2,  unit),
-    RewardHistoryEntry(minerAddress, i.transactionId, minedAmt, benificaryAmt, protocolAmt, protocolAmt1, protocolAmt2),
-    RewardTotalsEntry(minerAddress, minedAmt, benificaryAmt, protocolAmt, protocolAmt1, protocolAmt2)
+  [ScriptTransfer(beneficiaryAddress,    beneficiaryAmt, unit),
+    ScriptTransfer(neutrinoAddress,     protocolAmt1,  unit),
+    ScriptTransfer(masterNodeAddress,   protocolAmt2,  unit),
+    ScriptTransfer(callRewardReceiver,  callReward,    unit),
+    RewardHistoryEntry(minerAddress, i.transactionId, minedAmt, beneficiaryAmt, protocolAmt, protocolAmt1, protocolAmt2),
+    RewardTotalsEntry(minerAddress, minedAmt, beneficiaryAmt, protocolAmt, protocolAmt1, protocolAmt2)
   ]
 }
 
