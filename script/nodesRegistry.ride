@@ -32,6 +32,7 @@ func validateAddressOrFail(addressStr: String) = {
 
 func keyNodeRegistry(address: String)       = "%s__" + address
 func keyNodeRewardsTotals(address: String)  = "%s%s__totals__" + address
+func keyApprovedNodeList()                  = "%s__approvedNodeList"
 func keyDepositAmount()                     = "%s%s__cfg__depositAmount"
 func keyNeutrinoAddressStr()                = "%s%s__cfg__neutrinoAddress"
 func keyMasterNodeAddressStr()              = "%s%s__cfg__mainNeutrinoNodeAddress"
@@ -121,6 +122,14 @@ func RewardTotalsEntry(miner: Address, minedAmt: Int, beneficiaryAmt: Int, proto
   )
 }
 
+func resolveBeneficiaries(minerAddress: Address, beneficiaryFromParam: Address) = {
+  let minerScriptHash = scriptHash(minerAddress)
+
+  let beneficiaryFromMinerState = minerAddress.getStringOrFail(keyBeneficiaryAddress()).addressFromStringValue()
+
+  if (minerScriptHash == unit) then beneficiaryFromParam else beneficiaryFromMinerState
+}
+
 @Callable(i)
 func constructor(depositAmount: Int, neutrinoAddressStr: String, masterNodeAddressStr: String, protocolPartX6: Int, benificaryPartX6: Int) = {
   if (i.caller != this) then throw("permissions denied") else
@@ -178,13 +187,10 @@ func distributeMinerReward(beneficiaryAddressStr: String) = {
   let masterNodeAddress = keyMasterNodeAddressStr().getAddressOrFail()
 
   let minerAddress = i.caller
-  let minerScriptHash = scriptHash(minerAddress)
-
   let beneficiaryFromParam = beneficiaryAddressStr.addressFromStringValue()
-  let beneficiaryFromMinerState = minerAddress.getStringOrFail(keyBeneficiaryAddress()).addressFromStringValue()
-  let (beneficiaryAddress, callRewardReceiver) = if (minerScriptHash == unit)
-        then (beneficiaryFromParam, beneficiaryFromParam)
-        else (beneficiaryFromMinerState, beneficiaryFromParam)
+
+  let beneficiaryAddress = resolveBeneficiaries(minerAddress, beneficiaryFromParam)
+  let txRewardReceiver   = beneficiaryFromParam
 
   let protocolPart    = keyProtocolPartX6().getIntOrFail()
   let beneficiaryPart  = keyBenificaryPartX6().getIntOrFail()
@@ -200,7 +206,7 @@ func distributeMinerReward(beneficiaryAddressStr: String) = {
   [ScriptTransfer(beneficiaryAddress,    beneficiaryAmt, unit),
     ScriptTransfer(neutrinoAddress,     protocolAmt1,  unit),
     ScriptTransfer(masterNodeAddress,   protocolAmt2,  unit),
-    ScriptTransfer(callRewardReceiver,  callReward,    unit),
+    ScriptTransfer(txRewardReceiver,  callReward,    unit),
     RewardHistoryEntry(minerAddress, i.transactionId, minedAmt, beneficiaryAmt, protocolAmt, protocolAmt1, protocolAmt2),
     RewardTotalsEntry(minerAddress, minedAmt, beneficiaryAmt, protocolAmt, protocolAmt1, protocolAmt2)
   ]
@@ -236,18 +242,24 @@ func validateAndApproveLeasings(nListS: String) = {
 }
 
 @Callable(i)
-func returnDeposit(nodeAddress: String) = {
+func returnDeposit(nodeAddressStr: String) = {
   if (i.payments.size() != 0) then throw("No payments allowed") else
   let callerAddress = i.caller
+  let nodeAddress = nodeAddressStr.addressFromStringValue()
+  let approvedNodeList = this.getStringOrFail(keyApprovedNodeList())
 
-  if (callerAddress != this) then throw("returnDeposit permissions denied") else
-  let nodeRegistryKEY = keyNodeRegistry(nodeAddress) # "%s__" + address
+  if (callerAddress != this && nodeAddress != callerAddress) then throw("returnDeposit permissions denied") else
+  let nodeRegistryKEY = keyNodeRegistry(nodeAddressStr) # "%s__" + address
   let nodeDataOpt = this.getString(nodeRegistryKEY)
-  if (!nodeDataOpt.isDefined()) then throw("Address is not applied as neutrino node: " + nodeAddress) else
+  if (!nodeDataOpt.isDefined()) then throw("Address is not applied as neutrino node: " + nodeAddressStr) else
+  if (approvedNodeList.contains(nodeAddressStr)) then throw("Impossible to return deposit from approved Node, please contact support team") else
+
   let nodeData = nodeDataOpt.value().split(SEP)
   let status = if (nodeData.size() >= 9) then nodeData[6] else "PENDING"
   if (status != "PENDING") then throw("Application status is not PENDING!") else
 
   let depoAmount = nodeData[4].parseIntValue()
-  [DeleteEntry(nodeRegistryKEY), ScriptTransfer(addressFromStringValue(nodeAddress), depoAmount,  unit)]
+
+  let beneficiaryAddress = resolveBeneficiaries(nodeAddress, nodeAddress)
+  [DeleteEntry(nodeRegistryKEY), ScriptTransfer(beneficiaryAddress, depoAmount,  unit)]
 }
