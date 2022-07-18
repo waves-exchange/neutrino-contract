@@ -596,10 +596,8 @@ func approveLeasings(nListS: String, groupNum: Int, lAmt: Int) = {
   if (i.callerPublicKey != mngPub) then throw("approveLeasings not authorized") else
 
   let (nAddr0, lAmtKEY0, lAmt0, lIdKEY0, lId0) = readNodeInfo(0)
-  let (nAddr1, lAmtKEY1, lAmt1, lIdKEY1, lId1) = readNodeInfo(1)
 
-  let newL0 = Lease(nAddr0, lAmt0 - lAmt * expCount / 2)
-  let newL1 = Lease(nAddr1, lAmt1 - lAmt * expCount / 2)
+  let newL0 = Lease(nAddr0, lAmt0 - lAmt * expCount)
 
   strict validation = nodeRegAddr.invoke("validateAndApproveLeasings", [nListS], [])
 
@@ -613,13 +611,9 @@ func approveLeasings(nListS: String, groupNum: Int, lAmt: Int) = {
 
   [StringEntry(lGroupNodeListKEY, nListS),
     BinaryEntry(lIdKEY0, lcalc(newL0)),
-    BinaryEntry(lIdKEY1, lcalc(newL1)),
     IntegerEntry(lAmtKEY0, newL0.amount),
-    IntegerEntry(lAmtKEY1, newL1.amount),
     LeaseCancel(lId0),
-    LeaseCancel(lId1),
-    newL0,
-    newL1
+    newL0
   ]
     ++ FOLD<8>(nIdxs, [], forEachNodeValidateAndGenerateLease)
 }
