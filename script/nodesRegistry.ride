@@ -195,8 +195,8 @@ func distributeMinerReward(beneficiaryAddressStr: String) = {
   let protocolPart    = keyProtocolPartX6().getIntOrFail()
   let beneficiaryPart  = keyBenificaryPartX6().getIntOrFail()
 
-  let availableBalance = wavesBalance(minerAddress).available - feeAmt
-  if (availableBalance != 0) then throw("all " + availableBalance.toString() + " Wavelets from the Node balance must be attached into the payment") else
+  #let availableBalance = wavesBalance(minerAddress).available - feeAmt
+  #if (availableBalance != 0) then throw("all " + availableBalance.toString() + " Wavelets from the Node balance must be attached into the payment") else
 
   let beneficiaryAmt = fraction(minedAmt, beneficiaryPart, MULT6)
   let protocolAmt = minedAmt - beneficiaryAmt
