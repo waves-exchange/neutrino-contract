@@ -179,7 +179,7 @@ func distributeMinerReward(beneficiaryAddressStr: String) = {
   let callReward = feeAmt * 3
   let minedAmt = pmt.amount - callReward
 
-  if (pmt.amount < minDistributeAmount) then throw("attached payment is less then min " + minDistributeAmount.toString() + " Wavelets") else
+  if (pmt.amount != minDistributeAmount) then throw("attached payment must be exact " + minDistributeAmount.toString() + " Wavelets") else
   if (pmtAssetId != WAVESID) then throw("only Waves can be used in payment") else
   if (feeAssetId != WAVESID) then throw("only Waves can be used in fees") else
   if (feeAmt != 5 * MULT8 / 1000) then throw("fee amount couldn't exceed 0.005") else
