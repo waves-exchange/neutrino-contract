@@ -70,6 +70,7 @@ let FILLED = "filled"
 let PriceKey = "price"
 let NsbtAssetIdKey = "bond_asset_id"
 let NeutrinoAssetIdKey = "neutrino_asset_id"
+let SurfAssetIdKey = "surf_asset_id"
 let BalanceLockedkKey = "balance_lock_"
 let WavesLockedBalanceKey = BalanceLockedkKey + "waves"
 let NeutrinoLockedBalanceKey = BalanceLockedkKey + "neutrino"
@@ -77,6 +78,8 @@ let FirstOrderKey = "order_first"
 let MathContractKey = "math_contract"
 let MinWavesForNsbtBuyKey = "min_waves_nsbt_buy"
 let MinNsbtSellKey = "min_nsbt_sell"
+let MinWavesForSurfBuyKey = "min_waves_surf_buy"
+let MinUsdnForSurfBuyKey = "min_usdn_surf_buy"
 
 func getRoiByOrderIdKey(orderId: String) = "debug_order_roi_" + orderId
 
@@ -170,6 +173,20 @@ func constructor(mathContractAddress: String, minWavesForNsbtBuy: Int, minNsbtSe
     StringEntry(MathContractKey, mathContractAddress),
     IntegerEntry(MinNsbtSellKey, minNsbtSell),
     IntegerEntry(MinWavesForNsbtBuyKey, minWavesForNsbtBuy)
+  ]
+}
+
+# Note, to use Reissue script action, token must be Issued by dApp
+@Callable(i)
+func constructorV2(minWavesForSurfBuyKey: Int, minUsdnForSurfBuyKey: Int, description: String) = {
+  if (i.caller != this) then throw("Permission denied") else
+  let issue = Issue("SURF", description, 0, 6, true, unit, 0)
+  let assetId = issue.calculateAssetId()
+  [
+    issue,
+    StringEntry(SurfAssetIdKey, assetId.toBase58String()),
+    IntegerEntry(MinWavesForSurfBuyKey, minWavesForSurfBuyKey),
+    IntegerEntry(MinUsdnForSurfBuyKey, minUsdnForSurfBuyKey)
   ]
 }
 
