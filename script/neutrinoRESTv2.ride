@@ -148,7 +148,7 @@ func gnsbtInfoINTERNAL(userAddressStrOrEmpty: String, additionalNsbtToStakeOrZer
   let currentPrice = controlContract.getIntegerValue(keyPrice())
 
   let gnsbtFromNsbtDiff = additionalNsbtToStakeOrZero
-  let gnsbtFromSurfDiff = gnsbtControllerContract.invoke("gnsbtFromSurfSYSREADONLY", [additionalSurfToStakeOrZero], []).asInt()
+  let gnsbtFromSurfDiff = surfStakingContract.invoke("gnsbtFromSurfSYSREADONLY", [additionalSurfToStakeOrZero], []).asInt()
   let gNsbtDiff = gnsbtFromNsbtDiff + gnsbtFromSurfDiff
 
   let swapParamsTuple = neutrinoContract.invoke("swapParamsByUserSYSREADONLY", [userAddressStrOrEmpty, 0], []).asSwapParamsSTRUCT()

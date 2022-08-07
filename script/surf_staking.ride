@@ -34,6 +34,7 @@ func getStringOrFail(address: Address, key: String) = address.getString(key).val
 
 func keyControlAddress() = "%s%s__config__controlAddress"
 func keyControlCfg()     = "%s__controlConfig"
+func keyGnsbtFromSurfCoeff()  = "%s%s__cfg__gnsbtFromSurfCoeff"
 
 func readControlCfgOrFail(control: Address) = control.getStringOrFail(keyControlCfg()).split(SEP)
 func getContractAddressOrFail(controlCfg: List[String], idx: Int) = controlCfg[idx].addressFromString()
@@ -46,6 +47,7 @@ let mathContract = controlCfg.getContractAddressOrFail(IdxControlCfgMathDapp)
 let neutrinoContract = controlCfg.getContractAddressOrFail(IdxControlCfgNeutrinoDapp)
 let auctionContract = controlCfg.getContractAddressOrFail(IdxControlCfgAuctionDapp)
 
+let gnsbtFromSurfCoeff    = this.getInteger(keyGnsbtFromSurfCoeff()).valueOrElse(300)
 
 # Neutrino Contract Keys
 func keyBondAsset() = "bond_asset_id"
@@ -263,9 +265,8 @@ func IncrementNotDistributedRewardEntry(tkn: String, amountInc: Int) = {
   [IntegerEntry(notDistributedRewardKEY, notDistributedReward + amountInc)]
 }
 
-# TODO
 func surfToGnsbt(surfAmt: Int) = {
-  surfAmt / 300
+  surfAmt / gnsbtFromSurfCoeff
 }
 
 # @param quarantinePeriod
@@ -506,11 +507,15 @@ func surfStakingSYSREADONLY(userAddressStrOrEmpty: String, surfDiff: Int) = {
 }
 
 @Callable(i)
+func gnsbtFromSurfSYSREADONLY(surfAmt: Int) = {
+  ([], surfToGnsbt(surfAmt))
+}
+
+@Callable(i)
 func configSYSREADONLY() = {
   let minLockAmt = getIntegerValue(keyMinLockAmount())
-  let gnsbtFromSurfCoeff = 300 * MULT6
   let surfVotingPowerRestrictivePeriod = 1440 * 14
   let brToStartSurfTransformation = 1150000
 
-  ([], [minLockAmt, gnsbtFromSurfCoeff, surfVotingPowerRestrictivePeriod, brToStartSurfTransformation])
+  ([], [minLockAmt, gnsbtFromSurfCoeff * MULT6, surfVotingPowerRestrictivePeriod, brToStartSurfTransformation])
 }

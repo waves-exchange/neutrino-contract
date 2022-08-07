@@ -18,7 +18,6 @@ let SEP        = "__"
 let WAVESID = fromBase58String("WAVES")
 
 #-------this keys---------
-func keyGnsbtFromSurfCoeff()  = "%s%s__cfg__gnsbtFromSurfCoeff"
 
 #-------------------Base functions----------------------
 func getStringOrFail(address: Address, key: String) = address.getString(key).valueOrErrorMessage(makeString(["mandatory ", address.toString(), ".", key, " is not defined"], ""))
@@ -107,13 +106,6 @@ let rpdContract = controlCfg.getContractAddressOrFail(IdxControlCfgRpdDapp)
 let nsbtStakingContract = controlCfg.getContractAddressOrFail(IdxControlCfgNsbtStakingDapp)
 let surfStakingContract = controlCfg.getContractAddressOrFail(IdxControlCfgSurfStakingDapp)
 
-
-let gnsbtFromSurfCoeff    = this.getInteger(keyGnsbtFromSurfCoeff()).valueOrElse(300)
-
-@Callable(i)
-func gnsbtFromSurfSYSREADONLY(surfAmt: Int) = {
- ([], surfAmt / gnsbtFromSurfCoeff)
-}
 
 @Callable(i)
 func gnsbtInfoSYSREADONLY(userAddressStrOrEmpty: String, nsbtDiff: Int, surfDiff: Int) = {

@@ -412,7 +412,7 @@ func buySurfREADONLY(userAddressStrOpt: String, amount: Int, assetIdStr: String)
 
   let surfResult = mathContract.invoke("surfFunctionREADONLY", [amount, assetId], []).asAnyList()
   let surfAmount = surfResult[bFuncIdxSurf].asInt()
-  let gNsbtAmount = gnsbtControllerContract.invoke("gnsbtFromSurfSYSREADONLY", [surfAmount], []).asInt()
+  let gNsbtAmount = surfStakingContract.invoke("gnsbtFromSurfSYSREADONLY", [surfAmount], []).asInt()
 
   let limitOld = neutrinoContract.invoke("swapParamsByUserSYSREADONLY", [userAddressStrOpt, 0], []).asSwapParamsSTRUCT()._1
   let limitNew = neutrinoContract.invoke("swapParamsByUserSYSREADONLY", [userAddressStrOpt, gNsbtAmount], []).asSwapParamsSTRUCT()._1
