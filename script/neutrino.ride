@@ -8,9 +8,7 @@
 let revisionNum = ""
 
 #-------------------Base functions----------------------
-func getStringOrFail(address: Address, key: String) = {
-  address.getString(key).valueOrErrorMessage("Mandatory this." + key + " is not defined")
-}
+func getStringOrFail(address: Address, key: String)  = address.getString(key).valueOrErrorMessage(makeString(["mandatory ", address.toString(), ".", key, " is not defined"], ""))
 
 # workaround to reduce size
 func lcalc(l: Lease) = {
@@ -26,14 +24,14 @@ func getStringByKey(key: String) = {
 func getBoolByKey(key: String) = {
     getBoolean(this, key).valueOrElse(false)
 }
-func getNumberByAddressAndKey(address: String, key: String) = {
-    getInteger(addressFromStringValue(address), key).valueOrElse(0)
+func getNumberByAddressAndKey(address: Address, key: String) = {
+    getInteger(address, key).valueOrElse(0)
 }
 func getStringByAddressAndKey(address: String, key: String) = {
      getString(addressFromStringValue(address), key).valueOrElse("")
 }
-func getBoolByAddressAndKey(address: String, key: String) = {
-     getBoolean(addressFromStringValue(address), key).valueOrElse(false)
+func getBoolByAddressAndKey(address: Address, key: String) = {
+     getBoolean(address, key).valueOrElse(false)
 }
 func asAnyList(v: Any) = {
   match v {
@@ -78,6 +76,35 @@ let DEFAULTSWAPFEE = 20000 # 0.02 * 1000000 or 2%
 let IdxNetAmount = 0
 let IdxFeeAmount = 1
 let IdxGrossAmount = 2
+
+# data indices from controlConfig
+let IdxControlCfgNeutrinoDapp     = 1
+let IdxControlCfgAuctionDapp      = 2
+let IdxControlCfgRpdDapp          = 3
+let IdxControlCfgMathDapp         = 4
+let IdxControlCfgLiquidationDapp  = 5
+let IdxControlCfgRestDapp         = 6
+let IdxControlCfgNodeRegistryDapp = 7
+let IdxControlCfgNsbtStakingDapp  = 8
+let IdxControlCfgMediatorDapp     = 9
+let IdxControlCfgSurfStakingDapp  = 10
+let IdxControlCfgGnsbtControllerDapp  = 11
+
+func keyControlAddress() = "%s%s__config__controlAddress"
+func keyControlCfg()     = "%s__controlConfig"
+
+func readControlCfgOrFail(control: Address) = control.getStringOrFail(keyControlCfg()).split(SEP)
+func getContractAddressOrFail(controlCfg: List[String], idx: Int) = controlCfg[idx].addressFromString()
+  .valueOrErrorMessage("Control cfg doesn't contain address at index " + idx.toString())
+
+# GLOBAL VARIABLES
+let controlContract = this.getString(keyControlAddress()).valueOrElse("3P5Bfd58PPfNvBM2Hy8QfbcDqMeNtzg7KfP").addressFromStringValue()
+let controlCfg = controlContract.readControlCfgOrFail()
+let mathContract = controlCfg.getContractAddressOrFail(IdxControlCfgMathDapp)
+let nsbtStakingContract = controlCfg.getContractAddressOrFail(IdxControlCfgNsbtStakingDapp)
+let surfStakingContract = controlCfg.getContractAddressOrFail(IdxControlCfgSurfStakingDapp)
+let gnsbtControllerContract = controlCfg.getContractAddressOrFail(IdxControlCfgGnsbtControllerDapp)
+let auctionContract = controlCfg.getContractAddressOrFail(IdxControlCfgAuctionDapp)
 
 #-------------------Constructor-------------------------
 let NeutrinoAssetIdKey = "neutrino_asset_id"
@@ -163,25 +190,16 @@ func priceIndexFAIL(index: Int, priceIndex: Int, indexHeight: Int, unlockHeight:
 
 #-------------------Global vars-------------------------
 
-let liquidationContract = getStringByKey(LiquidationContractKey)
-let nsbtStakingContractStr = getStringByKey(NsbtStakingContractKey)
 let neutrinoAssetId = getStringByKey(NeutrinoAssetIdKey).fromBase58String()
-let auctionContract = getStringByKey(AuctionContractKey)
-let rpdContract = getStringByKey(RPDContractKey)
-let controlContractStr = getStringByKey(ContolContractKey)
-let controlContract = controlContractStr.addressFromStringValue()
-let mathContractAddress = getStringByKey(MathContractKey)
-let priceIndex = getNumberByAddressAndKey(controlContractStr, PriceIndexKey) # Last price history iterator from control.ride
-let isBlocked = getBoolByAddressAndKey(controlContractStr,IsBlockedKey) # Checks for contract locks that might happen after attacks.  The var is read from control contract
+let priceIndex = getNumberByAddressAndKey(controlContract, PriceIndexKey) # Last price history iterator from control.ride
+let isBlocked = getBoolByAddressAndKey(controlContract, IsBlockedKey) # Checks for contract locks that might happen after attacks.  The var is read from control contract
 let nodeOracleProviderPubKey = fromBase58String(getStringByKey(NodeOracleProviderPubKeyKey))
 let bondAssetId = fromBase58String("6nSpVyNH7yM69eg446wrQR94ipbbcmZMU1ENPwanC97g") # NSBT with 6 decimals as USDN does
 let deprecatedBondAssetId = fromBase58String("975akZBfnMj513U7MZaHKzQrmsEx5aE3wdWKTrHBhbjF") # USDNB with 0 decimals
 
 let neutrinoContract = this
-let mathContract = addressFromStringValue(mathContractAddress)
-let nsbtStakingContract = addressFromStringValue(nsbtStakingContractStr)
 #-------------------Global vars deficit, locked & supply -------------------------
-let currentPrice = getNumberByAddressAndKey(controlContractStr, PriceKey) # The value from control.ride
+let currentPrice = getNumberByAddressAndKey(controlContract, PriceKey) # The value from control.ride
 
 #-------------------Verifier Functions----------------------
 func checkIsValidMinSponsoredFee(tx: SponsorFeeTransaction) = {
@@ -198,9 +216,9 @@ func checkIsValidMinSponsoredFee(tx: SponsorFeeTransaction) = {
 
 #------Control contract------
 # The func is reading price from control.ride price history
-func getPriceHistory(block: Int) = getNumberByAddressAndKey(controlContractStr, getPriceHistoryKey(block))
+func getPriceHistory(block: Int) = getNumberByAddressAndKey(controlContract, getPriceHistoryKey(block))
 # The func is reading from control.ride price history heights
-func getHeightPriceByIndex(index: Int) = getNumberByAddressAndKey(controlContractStr, getHeightPriceByIndexKey(index))
+func getHeightPriceByIndex(index: Int) = getNumberByAddressAndKey(controlContract, getHeightPriceByIndexKey(index))
 
 #------NSBT Staking contract------
 func keyLockParamUserAmount(userAddress: String) = ["%s%s%s", "paramByUser", userAddress, "amount"].makeString(SEP)
@@ -474,9 +492,9 @@ func constructor(
   [
     StringEntry(NeutrinoAssetIdKey, neutrinoAssetIdPrm),
     StringEntry(BondAssetIdKey, bondAssetIdPrm),
-    StringEntry(AuctionContractKey, auctionContractPrm),
-    StringEntry(LiquidationContractKey, liquidationContractPrm),
-    StringEntry(RPDContractKey, rpdContractPrm),
+    StringEntry(AuctionContractKey, auctionContractPrm), # ignored
+    StringEntry(LiquidationContractKey, liquidationContractPrm), # ignored
+    StringEntry(RPDContractKey, rpdContractPrm), #ignored
     StringEntry(NodeOracleProviderPubKeyKey, nodeOracleProviderPubKeyPrm),
     IntegerEntry(BalanceWavesLockIntervalKey, balanceWavesLockIntervalPrm),
     IntegerEntry(BalanceNeutrinoLockIntervalKey, balanceNeutrinoLockIntervalPrm),
@@ -547,9 +565,23 @@ func withdraw(account: String, index: Int, swapTxId: String) = {
     let unleaseAmt  = commonTuple._3
 
     strict unleaseInvOrEmpty = this.invoke("internalUnleaseAndLease", [unleaseAmt], [])
+    let gnsbtData = gnsbtControllerContract.invoke("gnsbtInfoSYSREADONLY", ["", 0, 0], []).asAnyList()
+    let gnsbtAmtTotal           = gnsbtData[1].asInt()
+    let gnsbtAmtFromSurfTotal   = gnsbtData[3].asAnyList()[3].asInt()
 
-    if (fee.amount <= 0) then state else
-    strict nsbtStakingReward = nsbtStakingContract.invoke("deposit", [], [fee])
+    let surfFeeAmt = if (gnsbtAmtTotal != 0) then fraction(fee.amount, gnsbtAmtFromSurfTotal, gnsbtAmtTotal) else 0
+    let nsbtFeeAmt = fee.amount - surfFeeAmt
+
+    strict surfDeposit = if (surfFeeAmt > 0) then {
+      strict surfInv = surfStakingContract.invoke("deposit", [], [AttachedPayment(fee.assetId, surfFeeAmt)])
+      []
+    } else {[]}
+
+    strict nsbtDeposit = if (nsbtFeeAmt > 0) then {
+      strict nsbtInv = nsbtStakingContract.invoke("deposit", [], [AttachedPayment(fee.assetId, nsbtFeeAmt)])
+      []
+    } else {[]}
+
     state
 }
 
@@ -562,7 +594,7 @@ func internalUnleaseAndLease(unleaseAmount: Int) = {
 # Callback for auction contract to transfer USDN to user
 @Callable(i)
 func transferUsdnToUser(amount: Int, addr: String) = {
-    if (i.caller != addressFromStringValue(auctionContract)) then throw("Only auction contract is authorized") else
+    if (i.caller != auctionContract) then throw("Only auction contract is authorized") else
 
     [ScriptTransfer(addressFromStringValue(addr), amount, neutrinoAssetId)]
 }
@@ -570,7 +602,7 @@ func transferUsdnToUser(amount: Int, addr: String) = {
 # Accept waves from auction.ride after buyNsbt() to lease them immediately
 @Callable(i)
 func acceptWaves() = {
-    if (i.caller != addressFromStringValue(auctionContract))
+    if (i.caller != auctionContract)
         then throw("Currently only auction contract is allowed to call")
     else
         (prepareUnleaseAndLease(0), "success")
@@ -668,10 +700,11 @@ func rebalanceLeasings(amount: Int, groupNum: Int) = {
 
 # READONLY methods
 @Callable(i)
-func swapParamsByUserSYSREADONLY(userAddressStr: String, nsbtDiff: Int) = {
-  strict nsbtData = nsbtStakingContract.invoke("nsbtStakingSYSREADONLY", [userAddressStr], []).asAnyList()
-  let gnsbtAmt = nsbtData[0].asInt() + nsbtDiff
-  let gnsbtAmtTotal = nsbtData[1].asInt() + nsbtDiff
+func swapParamsByUserSYSREADONLY(userAddressStr: String, gnsbtDiff: Int) = {
+  let gnsbtData = gnsbtControllerContract.invoke("gnsbtInfoSYSREADONLY", [userAddressStr, 0, 0], []).asAnyList()
+
+  let gnsbtAmt      = gnsbtData[0].asInt() + gnsbtDiff
+  let gnsbtAmtTotal = gnsbtData[1].asInt() + gnsbtDiff
 
   let swapLimitMax = mathContract.invoke("calcSwapLimitREADONLY", [gnsbtAmt], []).asInt()
 

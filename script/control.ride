@@ -8,6 +8,43 @@ let revisionNum = ""
 
 let SEP = "__"
 
+#------------------------
+# CONTRACT FUNCTIONS
+#------------------------
+# data indices from controlConfig
+let IdxControlCfgNeutrinoDapp     = 1
+let IdxControlCfgAuctionDapp      = 2
+let IdxControlCfgRpdDapp          = 3
+let IdxControlCfgMathDapp         = 4
+let IdxControlCfgLiquidationDapp  = 5
+let IdxControlCfgRestDapp         = 6
+let IdxControlCfgNodeRegistryDapp = 7
+let IdxControlCfgNsbtStakingDapp  = 8
+let IdxControlCfgMediatorDapp     = 9
+
+func keyControlConfig() = "%s__controlConfig"
+
+func dataControlCfg(neutrinoContract: String, auctionContract: String, rpdContract: String, mathContract: String,
+                    liquidationContract: String, restContract: String, nodeRegistryContract: String, nsbtStakingContract: String,
+                    mediatorContract: String, surfStakingContract: String, gnsbtControllerContract: String, restV2Contract: String) = {
+  makeString(
+    ["%s%s%s%s%s%s%s%s%s%s%s%s",
+    neutrinoContract,         #1
+    auctionContract,          #2
+    rpdContract,              #3
+    mathContract,             #4
+    liquidationContract,      #5
+    restContract,             #6
+    nodeRegistryContract,     #7
+    nsbtStakingContract,      #8
+    mediatorContract,         #9
+    surfStakingContract,      #10
+    gnsbtControllerContract,  #11
+    restV2Contract            #12
+    ],
+    SEP)
+}
+
 #-------------------Functions----------------------
 func convertWavesToNeutrino(amount: Int, price: Int) = fraction(fraction(amount, price, 1000000), 1000000, 100000000)
 
@@ -145,6 +182,20 @@ func findPricesInRange(prices: List[Int]) = {
 
 func formattingPriceMsg(price: Int) = {
     toBytes("WAVESNEUTRINOPREFIX" + "_" + toString(height) + "_" + toString(price))
+}
+
+@Callable(i)
+func constructor(neutrinoContract: String, auctionContract: String, rpdContract: String, mathContract: String,
+                    liquidationContract: String, restContract: String, nodeRegistryContract: String,
+                    nsbtStakingContract: String, mediatorContract: String, surfStakingContract: String, gnsbtControllerContract: String,
+                    restV2Contract: String) = {
+   if (i.caller != this) then throw("permissions denied") else
+
+   [StringEntry(keyControlConfig(), dataControlCfg(
+        neutrinoContract, auctionContract, rpdContract, mathContract, liquidationContract,
+        restContract, nodeRegistryContract, nsbtStakingContract, mediatorContract,
+        surfStakingContract, gnsbtControllerContract, restV2Contract
+    ))]
 }
 
 #-------------------Callable----------------------

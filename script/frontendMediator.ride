@@ -4,8 +4,32 @@
 
 let SEP = "__"
 
-func keyControlAddress()  = "%s%s__config__controlAddress"
-func keyRestAddress()     = "%s%s__config__restAddress"
+# data indices from controlConfig
+let IdxControlCfgNeutrinoDapp     = 1
+let IdxControlCfgAuctionDapp      = 2
+let IdxControlCfgRpdDapp          = 3
+let IdxControlCfgMathDapp         = 4
+let IdxControlCfgLiquidationDapp  = 5
+let IdxControlCfgRestDapp         = 6
+let IdxControlCfgNodeRegistryDapp = 7
+let IdxControlCfgNsbtStakingDapp  = 8
+let IdxControlCfgMediatorDapp     = 9
+
+func getStringOrFail(address: Address, key: String) = address.getString(key).valueOrErrorMessage("mandatory " + address.toString() + "." + key + " is not defined")
+
+func keyControlAddress() = "%s%s__config__controlAddress"
+func keyControlCfg()     = "%s__controlConfig"
+
+func readControlCfgOrFail(control: Address) = control.getStringOrFail(keyControlCfg()).split(SEP)
+func getContractAddressOrFail(controlCfg: List[String], idx: Int) = controlCfg[idx].addressFromString()
+  .valueOrErrorMessage("Control cfg doesn't contain address at index " + idx.toString())
+
+# GLOBAL VARIABLES
+let controlContract = this.getString(keyControlAddress()).valueOrElse("3P5Bfd58PPfNvBM2Hy8QfbcDqMeNtzg7KfP").addressFromStringValue()
+let controlCfg = controlContract.readControlCfgOrFail()
+let restAcc = controlCfg.getContractAddressOrFail(IdxControlCfgRestDapp)
+
+func keyRestAddress() = "%s%s__config__restAddress" # ignored
 
 func getStrOrFail(key: String) = {
   this.getString(key).valueOrErrorMessage("Mandatory this." + key + " is not defined")
@@ -37,8 +61,23 @@ func produceJson(strMap: List[String]) = {
   "{" + preJsonResult.dropRight(1) + "}"
 }
 
-let controlAcc = keyControlAddress().getAddressOrFail()
-let restAcc = keyRestAddress().getAddressOrFail()
+# Restrictions:
+#  * MAX 10 functions
+#  * function can have any number of any params, and return value of any type
+# E.g.:
+# curl -X 'POST' 'https://nodes-testnet.wavesnodes.com/utils/script/evaluate/3MyBtJnMg6n7m1sDczbrijVyosLnRh4FFbc' \
+# -H 'accept: application/json' -H 'Content-Type: application/json' \
+# -d '{"expr": "genericV2READONLY([(\"3Mxd5o7PwH76ZkN8zG4xwDLubEnbkaihKzi\", \"unstakeComissionAmountByHeightREADONLY\", [100000000, 1906325]), (\"3Mxd5o7PwH76ZkN8zG4xwDLubEnbkaihKzi\", \"buyNsbtREADONLY\", [10000000000])])"}'
+#
+#                                 dApp    func     args
+func genericV2READONLY(x: List[(String, String, List[Any])]) = {
+
+  func call(a: List[Any], e: (String, String, List[Any])) = {
+    a :+ Address(fromBase58String(e._1)).invoke(e._2, e._3, [])
+  }
+
+  FOLD<10>(x, [], call)
+}
 
 @Callable(i)
 func constructor(controlAddress58: String, restAddress58: String) = {
@@ -49,7 +88,6 @@ func constructor(controlAddress58: String, restAddress58: String) = {
   ]
 }
 
-
 @Callable(i)
 func stakeNsbtPageREADONLY(userAddressStrOpt: String, nsbtAmtDiff: Int) = {
   let gnsbtInfo = restAcc.invoke("gnsbtInfoREADONLY", [userAddressStrOpt, nsbtAmtDiff], []).asString()
@@ -58,13 +96,31 @@ func stakeNsbtPageREADONLY(userAddressStrOpt: String, nsbtAmtDiff: Int) = {
   ([], produceJson(["gnsbtInfoREADONLY", gnsbtInfo, "swapInfoREADONLY", swapInfo]))
 }
 
-
 @Callable(i)
 func buyNsbtPageREADONLY(userAddressStrOpt: String) = {
   let gnsbtInfo = restAcc.invoke("gnsbtInfoREADONLY", [userAddressStrOpt, 0], []).asString()
   let neutrinoStats = restAcc.invoke("neutrinoStatsREADONLY", [], []).asString()
 
   ([], produceJson(["gnsbtInfoREADONLY", gnsbtInfo, "neutrinoStatsREADONLY", neutrinoStats]))
+}
+
+@Callable(i)
+func buySurfPageREADONLY(userAddressStrOpt: String, amount: Int, assetIdStr: String) = {
+  let neutrinoStats = restAcc.invoke("neutrinoStatsREADONLY", [], []).asString()
+  let surfBuy = restAcc.invoke("buySurfREADONLY", [userAddressStrOpt, amount, assetIdStr], []).asString()
+  let neutrinoCfg = restAcc.invoke("neutrinoConfigREADONLY", [], []).asString()
+
+  ([], produceJson([
+    "neutrinoStatsREADONLY", neutrinoStats,
+    "buySurfREADONLY", surfBuy,
+    "neutrinoConfigREADONLY", neutrinoCfg]))
+}
+
+@Callable(i)
+func walletPageREADONLY(userAddressStr: String) = {
+  let walletInfo = restAcc.invoke("walletInfoREADONLY", [userAddressStr], []).asString()
+
+  ([], produceJson(["walletInfoREADONLY", walletInfo]))
 }
 
 # Restrictions:

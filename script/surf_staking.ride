@@ -1,4 +1,4 @@
-{-# STDLIB_VERSION 5 #-}
+{-# STDLIB_VERSION 6 #-}
 {-# CONTENT_TYPE DAPP #-}
 {-# SCRIPT_TYPE ACCOUNT #-}
 
@@ -27,6 +27,8 @@ let IdxControlCfgRestDapp         = 6
 let IdxControlCfgNodeRegistryDapp = 7
 let IdxControlCfgNsbtStakingDapp  = 8
 let IdxControlCfgMediatorDapp     = 9
+let IdxControlCfgSurfStakingDapp  = 10
+let IdxControlCfgGnsbtControllerDapp  = 11
 
 func getStringOrFail(address: Address, key: String) = address.getString(key).valueOrErrorMessage("mandatory " + address.toString() + "." + key + " is not defined")
 
@@ -44,23 +46,25 @@ let mathContract = controlCfg.getContractAddressOrFail(IdxControlCfgMathDapp)
 let neutrinoContract = controlCfg.getContractAddressOrFail(IdxControlCfgNeutrinoDapp)
 let auctionContract = controlCfg.getContractAddressOrFail(IdxControlCfgAuctionDapp)
 
+
 # Neutrino Contract Keys
 func keyBondAsset() = "bond_asset_id"
+func keyAuctionContractAddress() = "auction_contract"
 
 # NSBT Lock Contract Keys
-func keyNeutrinoContractAddress() = "%s__neutrinoContractAddress"
-func keyMathContractAddress() = "%s__mathContract"
-func keyMinLockAmount() = "%s__minLockAmount"
-func keyHalfLife() = "%s__halfLife"
+func keyMinLockAmount()             = "%s__minLockAmount"
+func keyStakedAssetId()             = "%s__stakedAssetId"
+
 # Lock Params
 func keyLockParamUserAmount(userAddress: Address) = ["%s%s%s", "paramByUser", userAddress.toString(), "amount"].makeString(separator)
 func keyLockParamStartBlock(userAddress: Address) = ["%s%s%s", "paramByUser", userAddress.toString(), "start"].makeString(separator)
+func keyLockParamVotingPowerEffectiveHeight(userAddress: Address) = ["%s%s%s", "paramByUser", userAddress.toString(), "vpEffectiveHeight"].makeString(separator)
 # History
 func keyHistoryRecord(type: String, userAddress: Address, txId: ByteVector) = ["%s%s%s%s", "history", type, userAddress.toString(), txId.toBase58String()].makeString(separator)
 # Stats
-func keyLockParamTotalAmount() = ["%s%s", "stats", "activeTotalLocked"].makeString(separator)
-func keyStatsLocksCount() = ["%s%s", "stats", "locksCount"].makeString(separator)
-func keyStatsUsersCount() = ["%s%s", "stats", "activeUsersCount"].makeString(separator)
+func keyLockParamTotalAmount()  = ["%s%s", "stats", "activeTotalLocked"].makeString(separator)
+func keyStatsLocksCount()       = ["%s%s", "stats", "locksCount"].makeString(separator)
+func keyStatsUsersCount()       = ["%s%s", "stats", "activeUsersCount"].makeString(separator)
 
 # Reward Payouts Distribution Keys
 func keyNextPeriod() = "%s__nextPeriod"
@@ -156,18 +160,17 @@ func StatsResult(totalLockedInc: Int, lockCountInc: Int, usersCountInc: Int) = {
     totalAmount, totalAmountNew)
 }
 
-func LockParamsEntry(userAddress: Address, amount: Int, start: Int) = {
+func LockParamsEntry(userAddress: Address, amount: Int, votingPowerEffectiveHeight: Int) = {
   [
     IntegerEntry(userAddress.keyLockParamUserAmount(), amount),
-    IntegerEntry(userAddress.keyLockParamStartBlock(), start)
+    IntegerEntry(userAddress.keyLockParamStartBlock(), votingPowerEffectiveHeight)
   ]
 }
 
 func getParamsOrFail() = {
   (
-    neutrinoContract.getStringValue(keyBondAsset()).fromBase58String(),
-    keyMinLockAmount().getIntOrFail(),
-    keyHalfLife().getIntOrFail()
+    this.getStringOrFail(keyStakedAssetId()).fromBase58String(),
+    keyMinLockAmount().getIntOrFail()
   )
 }
 
@@ -248,6 +251,7 @@ func RewardEntries(isNewUser: Boolean, userAddress: String, stakedAmount: Int) =
   # 5 + 6 + 7 + 8
   if (depositNumLast  > -1 && depositNumUser >= -1) then {
     if (isNewUser) then [IntegerEntry(userRewardFromDepositNumKEY, depositNumLast)] else
+
     FOLD<10>(supportedAssetsList, [], forEachAssetCacheUserReward)
           :+ IntegerEntry(userRewardFromDepositNumKEY, depositNumLast)
   } else throw("uncovered condition: depositNumLast=" + depositNumLast.toString() + " depositNumUser=" + depositNumUser.toString())
@@ -257,6 +261,69 @@ func IncrementNotDistributedRewardEntry(tkn: String, amountInc: Int) = {
   let notDistributedRewardKEY = keyNotDistributedReward(tkn)
   let notDistributedReward = notDistributedRewardKEY.getIntOrElse(0)
   [IntegerEntry(notDistributedRewardKEY, notDistributedReward + amountInc)]
+}
+
+# TODO
+func surfToGnsbt(surfAmt: Int) = {
+  surfAmt / 300
+}
+
+# @param quarantinePeriod
+# @param vpEffectiveHeight - current voting power effective height
+# @param stakedAmt - current staked amount by user
+# @param stakedAmtNEW - new staked amount that will be accounted to user
+# @return NEW voting power effective height
+func mergeVotingPowerEffectiveHeight(quarantinePeriod: Int, vpEffectiveHeight: Int, stakedAmt: Int, stakedAmtNEW: Int) = {
+  let remainingToWait = vpEffectiveHeight - height
+
+  if (remainingToWait <= 0) then height + quarantinePeriod else
+  let alreadyWaited = quarantinePeriod - remainingToWait
+
+  # TODO cal using big int
+  let kX8 = if (stakedAmtNEW != 0) then fraction(stakedAmt, MULT8, stakedAmtNEW) else vpEffectiveHeight
+  quarantinePeriod + height - fraction(alreadyWaited, kX8, MULT8)
+}
+
+func mergeStake(userAddress: Address, amountToAdd: Int) = {
+  let (isNewUser, stakedAmount, vpEffectiveHeight) = userAddress.getUserParamsOrUnit().valueOrElse((true, 0, 0))
+  let stakedAmountNEW = if (isNewUser) then amountToAdd else amountToAdd + stakedAmount
+
+  let quarantinePeriod = 1440 * 14 # TODO - move into state
+  let vpEffectiveHeightNEW = if (isNewUser)
+      then quarantinePeriod + height else mergeVotingPowerEffectiveHeight(quarantinePeriod, vpEffectiveHeight, stakedAmount, stakedAmountNEW)
+
+  (isNewUser, stakedAmount, vpEffectiveHeight, stakedAmountNEW, vpEffectiveHeightNEW)
+}
+
+func commonStake(userAddress: Address, i: Invocation) = {
+  let (stakedAssetId, minLockAmount) = getParamsOrFail()
+  if (i.payments.size() != 1) then throw("Invalid payments size") else
+  let payment = i.payments[0]
+  let amount = payment.amount
+
+  let invalidAssetMessage = "Invalid asset. " + stakedAssetId.toBase58String() + " is expected"
+  let assetId = payment.assetId.valueOrErrorMessage(invalidAssetMessage)
+  if (assetId != stakedAssetId) then throw(invalidAssetMessage) else
+
+  let userAddressStr = userAddress.toString()
+
+  let mergedData = mergeStake(userAddress, amount)
+  let isNewUser             = mergedData._1
+  let stakedAmount          = mergedData._2
+  let vpEffectiveHeight     = mergedData._3
+  let stakedAmountNEW       = mergedData._4
+  let vpEffectiveHeightNEW  = mergedData._5
+
+  if (stakedAmountNEW < minLockAmount) then throw("Min lock amount is " + minLockAmount.toString()) else
+
+  let (statsEntries, totalStaked, totalStakedNew) = StatsResult(amount, 1, if (isNewUser) then 1 else 0)
+
+  [
+    HistoryRecordEntry("stake", userAddress, i.transactionId, stakedAmount, vpEffectiveHeight, stakedAmountNEW, vpEffectiveHeightNEW)
+  ]
+  ++ RewardEntries(isNewUser, userAddressStr, stakedAmount)
+  ++ LockParamsEntry(userAddress, stakedAmountNEW, vpEffectiveHeightNEW)
+  ++ statsEntries
 }
 
 func commonClaim(userAddress: Address, i: Invocation) = {
@@ -292,51 +359,24 @@ func commonClaim(userAddress: Address, i: Invocation) = {
     :+ ClaimHistoryEntry(userAddress, i.transactionId, claimedAmtByAssetResult.drop(1))
 }
 
-# init halfLife with 259200
 @Callable(i)
-func constructor(neutrinoContractAddress: String, mathContractAddress: String, minLockAmount: Int, halfLife: Int, supportedRewardAssets: String) = {
+func constructor(minLockAmount: Int, supportedRewardAssets: String, stakedAssetId: String) = {
   if (i.caller != this) then throw("Permission denied") else
   [
-    StringEntry(keyNeutrinoContractAddress(), neutrinoContractAddress), # ignored
-    StringEntry(keyMathContractAddress(), mathContractAddress), # ignored
     IntegerEntry(keyMinLockAmount(), minLockAmount),
-    IntegerEntry(keyHalfLife(), halfLife),
-    StringEntry(keySupportedRewardAssets(), supportedRewardAssets)
+    StringEntry(keySupportedRewardAssets(), supportedRewardAssets),
+    StringEntry(keyStakedAssetId(), stakedAssetId)
   ]
 }
 
 @Callable(i)
 func stake() = {
-  let (bondAssetId, minLockAmount, halfLife) = getParamsOrFail()
-  if (i.payments.size() != 1) then throw("Invalid payments size") else
-  let payment = i.payments[0]
-  let amount = payment.amount
+  commonStake(i.caller, i)
+}
 
-  let invalidAssetMessage = "Invalid asset. " + bondAssetId.toBase58String() + " is expected"
-  let assetId = payment.assetId.valueOrErrorMessage(invalidAssetMessage)
-  if (assetId != bondAssetId) then throw(invalidAssetMessage) else
-
-  let userAddress = i.caller
-  let userAddressStr = i.caller.toString()
-#  if (userAddress.scriptHash().isDefined()) then throw("Address is scripted. Access denied") else
-
-  let (isNewUser, lockAmount, lockStartHeight) = userAddress.getUserParamsOrUnit().valueOrElse((true, 0, -1))
-
-  let mergedAmount = if (isNewUser) then amount else amount + lockAmount
-
-  let mergedStartHeight = if (isNewUser) then height else {
-    mathContract.invoke("mergeStakesREADONLY", [amount, height, lockAmount, lockStartHeight, halfLife], []).asInt()
-  }
-  if (mergedAmount < minLockAmount) then throw("Min lock amount is " + minLockAmount.toString()) else
-
-  let (statsEntries, totalStaked, totalStakedNew) = StatsResult(amount, 1, if (isNewUser) then 1 else 0)
-
-  [
-    HistoryRecordEntry("stake", userAddress, i.transactionId, lockAmount, lockStartHeight, mergedAmount, mergedStartHeight)
-  ]
-  ++ RewardEntries(isNewUser, userAddressStr, lockAmount)
-  ++ LockParamsEntry(userAddress, mergedAmount, mergedStartHeight)
-  ++ statsEntries
+@Callable(i)
+func stakeByOriginCaller() = {
+  commonStake(i.originCaller, i)
 }
 
 @Callable(i)
@@ -344,22 +384,21 @@ func unstake(amount: Int) = {
   if (i.payments.size() != 0) then throw("unstake doesn't require any payment") else
   let userAddress  = i.caller
   let userAddressStr = userAddress.toString()
-  let (bondAssetId, minLockAmount, halfLife) = getParamsOrFail()
-  let (isNewUser, lockAmount, lockStart) = userAddress.getUserParamsOrFail()
+  let (stakedAssetId, minLockAmount) = getParamsOrFail()
+  let (isNewUser, stakedAmount, vpEffectiveHeight) = userAddress.getUserParamsOrFail()
 
-  if (lockAmount <= 0) then throw("Nothing to unstake") else
-  if (amount > lockAmount) then throw("Requested " + amount.toString() + ", but staked only " + lockAmount.toString()) else
+  if (stakedAmount <= 0) then throw("Nothing to unstake") else
+  if (amount > stakedAmount) then throw("Requested " + amount.toString() + ", but staked only " + stakedAmount.toString()) else
+  let stakedAmountNEW = stakedAmount - amount
 
-  let comissionAmount = mathContract.invoke("getUnstakeComissionAmountREADONLY", [amount, lockStart, halfLife], []).asInt()
-  let (statsEntries, totalStaked, totalStakedNew) = StatsResult(-amount, if (amount == lockAmount) then -1 else 0, if (amount == lockAmount) then -1 else 0)
+  let (statsEntries, totalStaked, totalStakedNew) = StatsResult(-amount, if (amount == stakedAmount) then -1 else 0, if (amount == stakedAmount) then -1 else 0)
 
   [
-    ScriptTransfer(userAddress, amount - comissionAmount, bondAssetId),
-    ScriptTransfer(auctionContract, comissionAmount, bondAssetId),
-    HistoryRecordEntry("unstake", userAddress, i.transactionId, lockAmount, lockStart, lockAmount - amount, lockStart)
+    ScriptTransfer(userAddress, amount, stakedAssetId),
+    HistoryRecordEntry("unstake", userAddress, i.transactionId, stakedAmount, vpEffectiveHeight, stakedAmountNEW, vpEffectiveHeight)
   ]
-  ++ RewardEntries(false, userAddressStr, lockAmount)
-  ++ LockParamsEntry(userAddress, lockAmount - amount, lockStart)
+  ++ RewardEntries(false, userAddressStr, stakedAmount)
+  ++ LockParamsEntry(userAddress, stakedAmountNEW, vpEffectiveHeight)
   ++ statsEntries
 }
 
@@ -414,7 +453,6 @@ func claimRewardsByOriginCaller() = {
   commonClaim(i.originCaller, i)
 }
 
-# TODO need to rename into SYSREADONLY
 @Callable(i)
 func unclaimedRewardsREADONLY(userAddressStr: String) = {
   # function to create zero rewards result
@@ -443,52 +481,36 @@ func unclaimedRewardsREADONLY(userAddressStr: String) = {
   ([], unclaimedRewardStr.dropRight(1))
 }
 
-@Callable(i)
-func nsbtUnstakingSYSREADONLY(userAddressStrOrEmpty: String, unstakeAmt: Int) = {
-  let resultArray = if (userAddressStrOrEmpty == "") then [0, 0, 0, 0] else
-
-  let userAddress = userAddressStrOrEmpty.addressFromStringValue()
-  let (nsbtAssetId, minLockAmount, halfLife) = getParamsOrFail()
-  let (isNewUser, stakedAmount, lockStart) = userAddress.getUserParamsOrFail()
-  let stakedAmountNEW = stakedAmount - unstakeAmt
-  let comissionAmount = mathContract.invoke("getUnstakeComissionAmountREADONLY", [unstakeAmt, lockStart, halfLife], []).asInt()
-  let receiveAmount = unstakeAmt - comissionAmount
-  [stakedAmount, stakedAmountNEW, receiveAmount, comissionAmount]
-
-  ([], resultArray)
-}
-
 # Staking params
-# (userNsbtStakedAmount, totalNsbtStakedAmount, stakingStartHeight)
+# (gNsbtAmount, stakingStartHeight)
 @Callable(i)
-func nsbtStakingSYSREADONLY(userAddressStr: String, nsbtDiff: Int) = {
-# TODO modify returned value
-  let totalNsbtAmt = keyLockParamTotalAmount().getIntOrElse(0)
+func surfStakingSYSREADONLY(userAddressStrOrEmpty: String, surfDiff: Int) = {
+  let surfTotal = keyLockParamTotalAmount().getIntOrElse(0)
+  let gnsbtFromSurfTotal = surfToGnsbt(surfTotal)
 
-  if (userAddressStr == "") then ([], [0, totalNsbtAmt, 0]) else
-  let userAddress = userAddressStr.toAddressOrFail()
-  let (isNewUser, userNsbtAmt, stakingStart) = userAddress.getUserParamsOrUnit().valueOrElse((true, 0, 0))
-  ([], [userNsbtAmt, totalNsbtAmt, stakingStart])
+  if (userAddressStrOrEmpty == "") then ([], [0, surfTotal, 0, gnsbtFromSurfTotal, 0, height, height]) else
+
+  let userAddress = userAddressStrOrEmpty.toAddressOrFail()
+
+  let mergedData = mergeStake(userAddress, surfDiff)
+  let isNewUser             = mergedData._1
+  let stakedAmount          = mergedData._2
+  let vpEffectiveHeight     = mergedData._3
+  let stakedAmountNEW       = mergedData._4
+  let vpEffectiveHeightNEW  = mergedData._5
+
+  let surfUser = stakedAmount
+  let gnsbtFromSurfUser = surfToGnsbt(surfUser)
+
+  ([], [surfUser, surfTotal, gnsbtFromSurfUser, gnsbtFromSurfTotal, vpEffectiveHeight, vpEffectiveHeightNEW])
 }
 
-@Verifier(tx)
-func verify() = {
-    let pubKeyAdminsListStr = makeString([
-        "GJdLSaLiv5K7xuejac8mcRcHoyo3dPrESrvktG3a6MAR",
-        "EYwZmURd5KKaQRBjsVa6g8DPisFoS6SovRJtFiL5gMHU",
-        "DtmAfuDdCrHK8spdAeAYzq6MsZegeD9gnsrpuTRkCbVA",
-        "5WRXFSjwcTbNfKcJs8ZqXmSSWYsSVJUtMvMqZj5hH4Nc"
-    ], SEP)
+@Callable(i)
+func configSYSREADONLY() = {
+  let minLockAmt = getIntegerValue(keyMinLockAmount())
+  let gnsbtFromSurfCoeff = 300 * MULT6
+  let surfVotingPowerRestrictivePeriod = 1440 * 14
+  let brToStartSurfTransformation = 1150000
 
-    let pubKeyAdminsList = controlContract.getString("%s__multisig")
-          .valueOrElse(pubKeyAdminsListStr)
-          .split(SEP)
-
-    let count =
-        (if(sigVerify(tx.bodyBytes, tx.proofs[0], fromBase58String(pubKeyAdminsList[0]))) then 1 else 0) +
-        (if(sigVerify(tx.bodyBytes, tx.proofs[1], fromBase58String(pubKeyAdminsList[1]))) then 1 else 0) +
-        (if(sigVerify(tx.bodyBytes, tx.proofs[2], fromBase58String(pubKeyAdminsList[2]))) then 1 else 0) +
-        (if(sigVerify(tx.bodyBytes, tx.proofs[3], fromBase58String(pubKeyAdminsList[3]))) then 2 else 0)
-
-    count >= 3
+  ([], [minLockAmt, gnsbtFromSurfCoeff, surfVotingPowerRestrictivePeriod, brToStartSurfTransformation])
 }
