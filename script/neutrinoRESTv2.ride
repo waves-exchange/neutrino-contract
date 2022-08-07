@@ -197,14 +197,18 @@ func gnsbtInfoINTERNAL(userAddressStrOrEmpty: String, additionalNsbtToStakeOrZer
 
   let gnsbtFromNsbtTotal    = nsbtData[3].asInt()
   let gnsbtFromSurfTotal    = surfData[3].asInt()
+  let gnsbtFromSurfActiveTotal = 0
+  let gnsbtFromSurfFrozenTotal = gnsbtFromSurfTotal
+
   let gnsbtFromNsbtTotalNEW = gnsbtFromNsbtTotal + gnsbtFromNsbtDiff
   let gnsbtFromSurfTotalNEW = gnsbtFromSurfTotal + gnsbtFromSurfDiff
+  let gnsbtFromSurfFrozenTotalNEW = gnsbtFromSurfTotalNEW
 
   # TODO MOVE into gnsbtController
-  let votingPower       = fraction(gnsbtAmtFromNsbt,                          MULT6, gnsbtFromNsbtTotal + gnsbtFromSurfTotal)
-  let votingPowerNew    = fraction(gnsbtAmtFromNsbtNEW,                       MULT6, gnsbtFromNsbtTotalNEW + gnsbtFromSurfTotal)
-  let votingPowerMax    = fraction(gnsbtAmtFromNsbt + gnsbtAmtFromSurf,       MULT6, gnsbtFromNsbtTotal + gnsbtFromSurfTotal)
-  let votingPowerMaxNew = fraction(gnsbtAmtFromNsbtNEW + gnsbtAmtFromSurfNEW, MULT6, gnsbtFromNsbtTotalNEW + gnsbtFromSurfTotal)
+  let votingPower       = fraction(gnsbtAmtFromNsbt,                          MULT8, gnsbtFromNsbtTotal + gnsbtFromSurfActiveTotal)
+  let votingPowerNew    = fraction(gnsbtAmtFromNsbtNEW,                       MULT8, gnsbtFromNsbtTotalNEW + gnsbtFromSurfActiveTotal)
+  let votingPowerMax    = fraction(gnsbtAmtFromNsbt + gnsbtAmtFromSurf,       MULT8, gnsbtFromNsbtTotal + gnsbtFromSurfActiveTotal + gnsbtFromSurfFrozenTotal)
+  let votingPowerMaxNew = fraction(gnsbtAmtFromNsbtNEW + gnsbtAmtFromSurfNEW, MULT8, gnsbtFromNsbtTotalNEW + gnsbtFromSurfActiveTotal + gnsbtFromSurfFrozenTotalNEW)
   let votingPowerEta    = if (vpEffectiveHeight == 0) then height else vpEffectiveHeight
   let votingPowerEtaNew = if (vpEffectiveHeightNEW == 0) then height else vpEffectiveHeightNEW
 

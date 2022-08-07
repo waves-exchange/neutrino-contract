@@ -444,14 +444,25 @@ func unclaimedRewardsREADONLY(userAddressStr: String) = {
 }
 
 @Callable(i)
-func nsbtUnstakingSYSREADONLY(userAddressStrOrEmpty: String, unstakeAmt: Int) = {
+func nsbtUnstakingSYSREADONLY(userAddressStrOrEmpty: String, unstakeAmtP: Int) = {
   let resultArray = if (userAddressStrOrEmpty == "") then [0, 0, 0, 0] else
 
   let userAddress = userAddressStrOrEmpty.addressFromStringValue()
-  let (nsbtAssetId, minLockAmount, halfLife) = getParamsOrFail()
-  let (isNewUser, stakedAmount, lockStart) = userAddress.getUserParamsOrFail()
+
+  let cfgDATA = getParamsOrFail()
+  let nsbtAssetId   = cfgDATA._1
+  let minLockAmount = cfgDATA._2
+  let halfLife      = cfgDATA._3
+
+  let userDATA = userAddress.getUserParamsOrUnit().valueOrElse((true, 0, 0))
+  let isNewUser     = userDATA._1
+  let stakedAmount  = userDATA._2
+  let lockStart     = userDATA._3
+
+  let unstakeAmt = if (unstakeAmtP > stakedAmount) then stakedAmount else unstakeAmtP
   let stakedAmountNEW = stakedAmount - unstakeAmt
-  let comissionAmount = mathContract.invoke("getUnstakeComissionAmountREADONLY", [unstakeAmt, lockStart, halfLife], []).asInt()
+  let comissionAmount = if (unstakeAmt == 0) then 0 else
+      mathContract.invoke("getUnstakeComissionAmountREADONLY", [unstakeAmt, lockStart, halfLife], []).asInt()
   let receiveAmount = unstakeAmt - comissionAmount
   [stakedAmount, stakedAmountNEW, receiveAmount, comissionAmount]
 

@@ -131,12 +131,14 @@ func constructor(neutrinoAddress: String, nsbtLockAddress: String, swapAmountAPa
 @Callable(i)
 func calcSwapLimitREADONLY(gNsbtAmount: Int) = {
   # limit = a * gNsbtAmount^b
+  let limit = if (gNsbtAmount <= 0) then 0 else
   let limitParamA  = this.getIntOrFail(keySwapAmountAParam()).toBigInt() # A is scale8
   let limitParamB  = this.getIntOrFail(keySwapAmountBParam()).toBigInt() # B is scale16
   let gNsbtAmountScale16 = toX16(gNsbtAmount, MULT6) # scale6
   let limitPowPart = pow(gNsbtAmountScale16, 16, limitParamB, 16, 8, CEILING)
-  let limit = fraction(limitParamA, limitPowPart, MULTX10)
-  ([],  (limit.toInt()))
+  fraction(limitParamA, limitPowPart, MULTX10).toInt()
+
+  ([],  (limit))
 }
 
 # AUCTION MOON FACTOR
