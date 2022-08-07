@@ -247,9 +247,9 @@ func constructor(mathContractAddress: String, minWavesForNsbtBuy: Int, minNsbtSe
 
 # Note, to use Reissue script action, token must be Issued by dApp
 @Callable(i)
-func constructorV2(minWavesForSurfBuyKey: Int, minUsdnForSurfBuyKey: Int) = {
+func constructorV2(minWavesForSurfBuyKey: Int, minUsdnForSurfBuyKey: Int, description: String) = {
   if (i.caller != this) then throw("Permission denied") else
-  let issue = Issue("SURF", "Smart Utility Recapitalization Feature token", 0, 6, true, unit, 0)
+  let issue = Issue("SURF", description, 0, 6, true, unit, 0)
   let assetId = issue.calculateAssetId()
   [
     issue,

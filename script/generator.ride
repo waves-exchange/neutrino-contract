@@ -10,6 +10,7 @@
 # Script introduces incentive for the community to support the Neutrino infrastructure.
 # Any user (not only the node owner) can execute distributeMinerReward method
 # and receive 0.015 WAVES reward to the address passed as argument.
+# Please note that distributeMinerReward can be called with success result only if Node's balance is greater than 24 WAVES.
 #
 # Generators, do not worry! You will still receive your 5% to the specified address in your account state
 # (see constructor invocation above)
