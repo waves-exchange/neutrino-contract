@@ -321,10 +321,10 @@ func gnsbtInfoREADONLY(userAddressStrOpt: String, nsbtAmtDiff: Int) = {
   let nsbtData = nsbtStakingContract.invoke("nsbtStakingSYSREADONLY", [userAddressStrOpt, nsbtAmtDiff], []).asAnyList()
   # for unknown user or user without gNsbt (gnsbtAmt = gnsbtAmtNEW == 0) we return heights and timestamps -1
   let isEmptyNsbtBalance = gnsbtAmt == 0 && gnsbtAmtNEW == 0
-  let startHeight = if (isEmptyNsbtBalance) then -1 else nsbtData[2].asInt()
+  let startHeight = if (isEmptyNsbtBalance) then height else nsbtData[2].asInt()
   let startTimestamp = toTimestamp(startHeight)
   let halfLife = nsbtStakingContract.getIntOrFail(keyHalfLife());
-  let startHeightNew = if (isEmptyNsbtBalance) then -1 else
+  let startHeightNew = if (isEmptyNsbtBalance) then height else
   mathContract.invoke("mergeStakesREADONLY", [gnsbtAmt, startHeight, gnsbtAmtNEW, height, halfLife], []).asInt()
   let startTimestampNew = toTimestamp(startHeightNew)
 

@@ -114,6 +114,13 @@ func asInt(val: Any) = {
   }
 }
 
+func asSwapParamsSTRUCT(v: Any) = {
+  match v {
+    case struct: (Int, Int, Int, Int, Int) => struct
+    case _ => throw("fail to cast into Int")
+  }
+}
+
 func formatHistoryRecord(oldAmount: Int, oldStart: Int, newAmount: Int, newStart: Int) = {
   [
     "%d%d%d%d%d%d",
@@ -388,6 +395,12 @@ func unstake(amount: Int) = {
   let (stakedAssetId, minLockAmount) = getParamsOrFail()
   let (isNewUser, stakedAmount, vpEffectiveHeight) = userAddress.getUserParamsOrFail()
 
+  let swapParamsSTRUCT  = neutrinoContract.reentrantInvoke("swapParamsByUserSYSREADONLY", [userAddressStr, 0], []).asSwapParamsSTRUCT()
+  let swapLimitMax      = swapParamsSTRUCT._1
+  let swapLimitSpent    = swapParamsSTRUCT._2
+  let blcks2LmtReset    = swapParamsSTRUCT._3
+
+  if (swapLimitSpent > 0) then throw("You have already made a swap operation. Wait " + (height + blcks2LmtReset).toString() + " height to unstake") else
   if (stakedAmount <= 0) then throw("Nothing to unstake") else
   if (amount > stakedAmount) then throw("Requested " + amount.toString() + ", but staked only " + stakedAmount.toString()) else
   let stakedAmountNEW = stakedAmount - amount

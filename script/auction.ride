@@ -365,6 +365,7 @@ func buySurf(averagePriceWanted: Int, maxTolerancePerc: Int, autoStake: Boolean)
   if (i.payments.size() != 1) then throw("exactly 1 payment must be attached") else
   if (averagePriceWanted <= 0) then throw("averagePriceWanted should be positive") else
   if (maxTolerancePerc <= 0) then throw("maxTolerancePerc should be positive") else
+  if (isBlocked) then throw("contract is blocked by EMERGENCY SHUTDOWN actions until reactivation by emergency oracles") else
   let pmt = i.payments[0]
   let amt = pmt.amount
   let pmtAssetId = pmt.assetId.valueOrElse(WAVESID)
