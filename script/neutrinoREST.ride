@@ -13,6 +13,7 @@ let MULTX8     = 1_0000_0000.toBigInt()
 let MULT12     = 1_000_000_000_000
 let MULT18     = 1_000_000_000_000_000_000.toBigInt()
 let SEP        = "__"
+let BRPROTECTED = 100000 # if BR <= 10% then use SURF during swap USDN->WAVES
 
 # synthetic WAVES assetId
 let WAVESID = fromBase58String("WAVES")
@@ -59,8 +60,11 @@ func keyWavesOutFeePart() = "wavesOut_swap_feePart"
 func keyNeutrinoOutFeePart() = "neutrinoOut_swap_feePart"
 func keySwapAmountAParam() = "%s%s__config__swapAParam"
 func keySwapAmountBParam() = "%s%s__config__swapBParam"
+func keyUsdnSwapAmountAParam()  = "%s%s__config__usdnSwapAParam"
+func keyUsdnSwapAmountBParam()  = "%s%s__config__usdnSwapBParam"
 func keyNsbtLockContract() = "%s__nsbtLockContract" # ignored
 func keyMathContract() = "%s__mathContract" # ignored
+func brProtectedKEY()  = "min_BR_protection_level"
 
 func keyBalanceWavesLockInterval() = "balance_waves_lock_interval"
 func keyBalanceNeutrinoLockInterval() = "balance_neutrino_lock_interval"
@@ -117,8 +121,8 @@ func asTuple2Ints(val: Any) = {
 
 func asSwapParamsSTRUCT(val: Any) = {
   match val {
-    case struct: (Int,Int,Int,Int,Int) => struct
-    case _ => throw("fail to cast into Int")
+    case struct: (Int,Int,Int,Int,Int,Int,Int) => struct
+    case _ => throw("fail to cast into SwapParamsSTRUCT")
   }
 }
 
@@ -240,7 +244,7 @@ func neutrinoStatsREADONLY() = {
   let totalUsdnStaked        = rpdContract.getInteger(keyRpdContractBalanceKey(neutrinoAssetIdString)).valueOrElse(0)
 
   ([], makeString([
-          "%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d",
+          "%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d",
           currentPrice.toString(),          # 1
           neutrinoLockedBalance.toString(), # 2
           wavesLockedBalance.toString(),    # 3
@@ -257,11 +261,7 @@ func neutrinoStatsREADONLY() = {
           minWaves4NsbtBuy.toString(),      # 14
           minNsbtsell.toString(),           # 15
           minNsbtLockAmt.toString(),        # 16
-          maxWaves2BuySurf.toString(),      # 17
-          maxUsdn2BuySurf.toString(),       # 18
-          surfPriceInUsdn.toString(),       # 19
-          surfPriceInWaves.toString(),      # 20
-          totalUsdnStaked.toString()        # 21
+          totalUsdnStaked.toString()        # 17
         ], SEP))
 }
 
@@ -275,8 +275,12 @@ func swapInfoREADONLY(userAddressStrOpt: String) = {
   let usdnSwapDelayDuration  = neutrinoContract.getIntegerValue(keyBalanceNeutrinoLockInterval())
   let wavesSwapDelayDuration = neutrinoContract.getIntegerValue(keyBalanceWavesLockInterval())
 
-  let (swapLimitMaxUsdn, swapLimitSpentUsdn, blcks2LmtReset) = neutrinoContract.invoke("swapParamsByUserSYSREADONLY", [userAddressStrOpt, 0], []).asSwapParamsSTRUCT()
-  let swapLimitMaxWaves = convertNeutrinoToWaves(swapLimitMaxUsdn, currentPrice)
+  let swapParamsSTRUCT = neutrinoContract.invoke("swapParamsByUserSYSREADONLY", [userAddressStrOpt, 0], []).asSwapParamsSTRUCT()
+  let swapLimitMaxUsdn    = swapParamsSTRUCT._1
+  let swapLimitSpentUsdn  = swapParamsSTRUCT._2
+  let blcks2LmtReset      = swapParamsSTRUCT._3
+  let wavesSwapLimitMax   = swapParamsSTRUCT._6
+  let usdnSwapLimitMax    = swapParamsSTRUCT._7
 
   ([],
     makeString([
@@ -289,8 +293,8 @@ func swapInfoREADONLY(userAddressStrOpt: String) = {
           usdnSwapDelayDuration.toString(), # 6  usdn swap delay duration
           wavesSwapDelayDuration.toString(),# 7  waves swap delay duration
           blcks2LmtReset.toString(),        # 8
-          swapLimitMaxWaves.toString(),     # 9  max allowed swap limit based on gnsbt balance
-          swapLimitMaxUsdn.toString(),      # 10 max allowed swap limit based on gnsbt balance
+          wavesSwapLimitMax.toString(),     # 9  max allowed swap limit based on gnsbt balance
+          usdnSwapLimitMax.toString(),      # 10 max allowed swap limit based on gnsbt balance
           swapLimitSpentUsdn.toString()     # 11
           ], SEP))
 }
@@ -299,14 +303,19 @@ func swapInfoREADONLY(userAddressStrOpt: String) = {
 func gnsbtInfoREADONLY(userAddressStrOpt: String, nsbtAmtDiff: Int) = {
   let currentPrice = controlContract.getIntegerValue(keyPrice())
 
-  let (limitMaxUsdn, limitSpent, blcks2LmtReset, gnsbtAmt, gnsbtAmtTotal)
-      = neutrinoContract.invoke("swapParamsByUserSYSREADONLY", [userAddressStrOpt, 0], []).asSwapParamsSTRUCT()
+  let swapParams = neutrinoContract.invoke("swapParamsByUserSYSREADONLY", [userAddressStrOpt, 0], []).asSwapParamsSTRUCT()
+  let blcks2LmtReset    = swapParams._3
+  let gnsbtAmt          = swapParams._4
+  let gnsbtAmtTotal     = swapParams._5
+  let limitMaxWaves     = swapParams._6
+  let limitMaxUsdn      = swapParams._7
 
-  let (limitMaxUsdnNEW, limitSpentNEW, blcks2LmtResetNEW, gnsbtAmtNEW, gnsbtAmtTotalNEW)
-      = neutrinoContract.invoke("swapParamsByUserSYSREADONLY", [userAddressStrOpt, nsbtAmtDiff], []).asSwapParamsSTRUCT()
-
-  let limitMaxWaves = convertNeutrinoToWaves(limitMaxUsdn, currentPrice)
-  let limitMaxWavesNEW = convertNeutrinoToWaves(limitMaxUsdnNEW, currentPrice)
+  let swapParamsNEW = neutrinoContract.invoke("swapParamsByUserSYSREADONLY", [userAddressStrOpt, nsbtAmtDiff], []).asSwapParamsSTRUCT()
+  let blcks2LmtResetNEW = swapParamsNEW._3
+  let gnsbtAmtNEW       = swapParamsNEW._4
+  let gnsbtAmtTotalNEW  = swapParamsNEW._5
+  let limitMaxWavesNEW  = swapParamsNEW._6
+  let limitMaxUsdnNEW   = swapParamsNEW._7
 
   let gnsbtShare = if (gnsbtAmtTotal != 0) then fraction(gnsbtAmt * 100, MULT12, gnsbtAmtTotal) else 0
   let gnsbtShareNEW = if (gnsbtAmtTotalNEW != 0) then fraction(gnsbtAmtNEW * 100, MULT12, gnsbtAmtTotalNEW) else 0
@@ -354,10 +363,17 @@ func gnsbtInfoREADONLY(userAddressStrOpt: String, nsbtAmtDiff: Int) = {
 func neutrinoConfigREADONLY() = {
   let limitParamA      = mathContract.getIntegerValue(keySwapAmountAParam())
   let limitParamB      = mathContract.getIntegerValue(keySwapAmountBParam())
+  let usdnLimitParamA  = mathContract.getIntegerValue(keyUsdnSwapAmountAParam())
+  let usdnLimitParamB  = mathContract.getIntegerValue(keyUsdnSwapAmountBParam())
+
   let minWavesSwapAmt  = neutrinoContract.getIntegerValue(keyMinWavesSwapAmount())
   let minUsdnSwapAmt   = neutrinoContract.getIntegerValue(keyMinNeutrinoSwapAmount())
   let waves2UsdnFee    = neutrinoContract.getIntegerValue(keyWavesOutFeePart())
   let usdn2WavesFee    = neutrinoContract.getIntegerValue(keyNeutrinoOutFeePart())
+  let brProtected      = neutrinoContract.getInteger(brProtectedKEY()).valueOrElse(BRPROTECTED)
+  let usdnSwapDelay    = neutrinoContract.getIntegerValue(keyBalanceNeutrinoLockInterval())
+  let wavesSwapDelay   = neutrinoContract.getIntegerValue(keyBalanceWavesLockInterval())
+
   let minWaves4NsbtBuy = minWavesForNsbtBuy()
   let minNsbtsell      = minNsbtForSell()
   let minNsbtLockAmt   = nsbtStakingContract.getIntegerValue(keyMinLockAmount())
@@ -370,8 +386,9 @@ func neutrinoConfigREADONLY() = {
   let gnsbtFromSurfCoeff                = surfStakingCfg[1].asInt()
   let surfVotingPowerRestrictivePeriod  = surfStakingCfg[2].asInt()
   let brToStartSurfTransformation       = surfStakingCfg[3].asInt()
+  let shutdown                          = controlContract.getBoolean("is_blocked").valueOrElse(false)
 
-  ([], makeString(["%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d",
+  ([], makeString(["%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%b%d%d%d%d%d",
       limitParamA.toString(),                         # 1
       limitParamB.toString(),                         # 2
       minWavesSwapAmt.toString(),                     # 3
@@ -387,7 +404,13 @@ func neutrinoConfigREADONLY() = {
       minSurfStakeAmt.toString(),                     # 13
       gnsbtFromSurfCoeff.toString(),                  # 14
       surfVotingPowerRestrictivePeriod.toString(),    # 15
-      brToStartSurfTransformation.toString()          # 16
+      brToStartSurfTransformation.toString(),         # 16
+      shutdown.toString(),                            # 17
+      usdnLimitParamA.toString(),                     # 18
+      usdnLimitParamB.toString(),                     # 19
+      brProtected.toString(),                         # 20
+      wavesSwapDelay.toString(),                      # 21
+      usdnSwapDelay.toString()                        # 22
     ], SEP))
 }
 
@@ -414,12 +437,17 @@ func buySurfREADONLY(userAddressStrOpt: String, amount: Int, assetIdStr: String)
   let surfAmount = surfResult[bFuncIdxSurf].asInt()
   let gNsbtAmount = surfStakingContract.invoke("gnsbtFromSurfSYSREADONLY", [surfAmount], []).asInt()
 
-  let limitOld = neutrinoContract.invoke("swapParamsByUserSYSREADONLY", [userAddressStrOpt, 0], []).asSwapParamsSTRUCT()._1
-  let limitNew = neutrinoContract.invoke("swapParamsByUserSYSREADONLY", [userAddressStrOpt, gNsbtAmount], []).asSwapParamsSTRUCT()._1
+  let swapParams = neutrinoContract.invoke("swapParamsByUserSYSREADONLY", [userAddressStrOpt, 0], []).asSwapParamsSTRUCT()
+  let wavesLimit = swapParams._6
+  let usdnLimit = swapParams._7
+
+  let swapParamsNew = neutrinoContract.invoke("swapParamsByUserSYSREADONLY", [userAddressStrOpt, gNsbtAmount], []).asSwapParamsSTRUCT()
+  let wavesLimitNew = swapParamsNew._6
+  let usdnLimitNew = swapParamsNew._7
 
   let price = surfResult[bFuncIdxWavesPrice].asInt()
-  let additionalLimitUsdn = limitNew - limitOld
-  let additionalLimitWaves = fraction(additionalLimitUsdn, MULT8, price)
+  let additionalLimitUsdn = usdnLimitNew - usdnLimit
+  let additionalLimitWaves = wavesLimitNew - wavesLimit
   let br0 = surfResult[bFuncIdxBRStart].asInt()
   let br1 = surfResult[bFuncIdxBREnd].asInt()
   let priceSurf2Waves0 = fraction(br0, MULT6, price)

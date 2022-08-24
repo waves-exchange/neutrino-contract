@@ -48,7 +48,7 @@ func asInt(val: Any) = {
 func asBytes(val: Any) = {
   match val {
     case valByte: ByteVector => valByte
-    case _ => throw("fail to cast into Int")
+    case _ => throw("fail to cast into ByteVector")
   }
 }
 
@@ -395,7 +395,7 @@ func buySurf(averagePriceWanted: Int, maxTolerancePerc: Int, autoStake: Boolean)
     ] else [ScriptTransfer(neutrinoContract, amt - rest, neutrinoAssetId)]
   }
 
-  let surfAssetId = this.invoke("issueSurf", [surfAmount], []).asBytes()
+  let surfAssetId = this.invoke("issueSurf", [surfAmount, ""], []).asBytes()
   let surfAction = if (autoStake)
     then {
       strict stakingInv = surfStakingContract.invoke("stakeByOriginCaller", [], [AttachedPayment(surfAssetId, surfAmount)])
@@ -408,10 +408,15 @@ func buySurf(averagePriceWanted: Int, maxTolerancePerc: Int, autoStake: Boolean)
 }
 
 @Callable(i)
-func issueSurf(surfAmount: Int) = {
+func issueSurf(surfAmount: Int, targetAddress: String) = {
   let surfAssetId = getStringValue(SurfAssetIdKey).fromBase58String()
-  if (i.caller != this) then throw("issueSurf - permission denied") else
-  ([Reissue(surfAssetId, surfAmount, true)], surfAssetId)
+  if (i.caller == this) then 
+    ([Reissue(surfAssetId, surfAmount, true)], surfAssetId) else
+  if (i.caller == neutrinoContract) then
+    ([Reissue(surfAssetId, surfAmount, true), 
+      ScriptTransfer(addressFromStringValue(targetAddress), surfAmount, surfAssetId)
+    ], surfAssetId)
+  else throw("issueSurf - permission denied")
 }
 
 @Verifier(tx)

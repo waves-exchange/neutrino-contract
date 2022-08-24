@@ -45,9 +45,12 @@ let nMetricIdxMaxNsbtSupply = 10
 let nMetricIdxSurfSupply = 11
 
 #-------this keys---------
-func keyNeutrinoAddress()     = "%s%s__config__neutrinoAddress"
-func keySwapAmountAParam()    = "%s%s__config__swapAParam"
-func keySwapAmountBParam()    = "%s%s__config__swapBParam"
+func keyNeutrinoAddress()       = "%s%s__config__neutrinoAddress"
+func keySwapAmountAParam()      = "%s%s__config__swapAParam"
+func keySwapAmountBParam()      = "%s%s__config__swapBParam"
+func keyUsdnSwapAmountAParam()  = "%s%s__config__usdnSwapAParam"
+func keyUsdnSwapAmountBParam()  = "%s%s__config__usdnSwapBParam"
+
 #-------neutrino keys------
 func keyNeutrinoAssetId()            = "neutrino_asset_id"
 func keyNsbtAssetId()                = "bond_asset_id"
@@ -119,6 +122,18 @@ let neutrinoAssetId       = fromBase58String(neutrinoContract.getStringOrFail(ke
 let nsbtAssetId           = fromBase58String(neutrinoContract.getStringValue(keyNsbtAssetId()))
 let surfAssetId           = fromBase58String(auctionContract.getStringValue(keySurfAssetId()))
 
+# GLOBAL SYSTEM PARAMETERS
+let currentPrice = controlContract.getIntegerValue(keyPrice()) # The value from control.ride
+let neutrinoLockedBalance = neutrinoContract.getInteger(keyNeutrinoLockedBalance()).valueOrElse(0) #locked balance from USDN -> WAVES swap
+let wavesLockedBalance = neutrinoContract.getInteger(keyWavesLockedBalance()).valueOrElse(0)   #locked balance from WAVES -> USDN swap
+let reserve = wavesBalance(neutrinoContract).regular - wavesLockedBalance #waves reserves to cover USDN supply
+let reservesInUsdn = convertWavesToNeutrino(reserve, currentPrice)
+let neutrinoSupply = neutrinoLockedBalance
+    + assetInfo(neutrinoAssetId).value().quantity
+    - assetBalance(neutrinoContract, neutrinoAssetId)
+    - assetBalance(liquidationContract, neutrinoAssetId) # supply outside main sc or liquidation contract
+let BR = if (neutrinoSupply == 0) then 0 else fraction(reservesInUsdn, MULT6, neutrinoSupply)
+
 @Callable(i)
 func constructor(neutrinoAddress: String, nsbtLockAddress: String, swapAmountAParam: Int) = {
   if (i.caller != this) then throw("not authorized") else
@@ -130,15 +145,25 @@ func constructor(neutrinoAddress: String, nsbtLockAddress: String, swapAmountAPa
 
 @Callable(i)
 func calcSwapLimitREADONLY(gNsbtAmount: Int) = {
-  # limit = a * gNsbtAmount^b
-  let limit = if (gNsbtAmount <= 0) then 0 else
-  let limitParamA  = this.getIntOrFail(keySwapAmountAParam()).toBigInt() # A is scale8
-  let limitParamB  = this.getIntOrFail(keySwapAmountBParam()).toBigInt() # B is scale16
-  let gNsbtAmountScale16 = toX16(gNsbtAmount, MULT6) # scale6
-  let limitPowPart = pow(gNsbtAmountScale16, 16, limitParamB, 16, 8, CEILING)
-  fraction(limitParamA, limitPowPart, MULTX10).toInt()
+  # limitWaves = a * gNsbtAmount^b
+  let limitWavesInUsdn = if (gNsbtAmount <= 0) then 0 else {
+    let aParamX8 = this.getIntOrFail(keySwapAmountAParam()).toBigInt()
+    let bParamX16 = this.getIntOrFail(keySwapAmountBParam()).toBigInt()
+    let powPartX8 = pow(gNsbtAmount.toBigInt(), 6, bParamX16, 16, 8, CEILING)
+    fraction(aParamX8, powPartX8, MULTX10).toInt()
+  }
+  let limitWaves = convertNeutrinoToWaves(limitWavesInUsdn, currentPrice)
 
-  ([],  (limit))
+  # limitUsdn = BR * au * gNsbtAmount^bu
+  let limitUsdn = if (gNsbtAmount <= 0) then 0 else {
+    let aParamX8  = this.getIntOrFail(keyUsdnSwapAmountAParam()).toBigInt()
+    let bParamX16 = this.getIntOrFail(keyUsdnSwapAmountBParam()).toBigInt()
+    let brX6      = BR.toBigInt()
+    let powPartX8 = pow(gNsbtAmount.toBigInt(), 6, bParamX16, 16, 8, CEILING)
+    fraction(fraction(aParamX8, powPartX8, MULTX10), brX6, MULTX6).toInt()
+  }
+
+  ([],  [limitWavesInUsdn, limitWaves, limitUsdn]) # the first field is used for backward compatibility
 }
 
 # AUCTION MOON FACTOR
@@ -196,14 +221,11 @@ func curveFunctionREADONLY(wavesPayRaw: Int) = {
 @Callable(i)
 func surfFunctionREADONLY(amount: Int, assetId: ByteVector) = {
   if (amount < 0) then throw("amount should be positive") else
-  let neutrinoMetrics = this.invoke("calcNeutinoMetricsREADONLY", [], []).asAnyList()
-  let price = neutrinoMetrics[nMetricIdxPrice].asInt()
+  let price = currentPrice
   let priceBig = price.toBigInt()
-  let reserve = neutrinoMetrics[nMetricIdxReserve].asInt()
   let reserveBig = reserve.toBigInt()
-  let supply = neutrinoMetrics[nMetricIdxUsdnSupply].asInt()
+  let supply = neutrinoSupply
   let supplyBig = supply.toBigInt()
-  let BR = neutrinoMetrics[nMetricIdxBR].asInt()
   if (BR >= MULT6) then throw("BR = " + BR.toString() + ", cannot buy SURF") else
   let maxWavesPay = fraction(supply, MULT8, price) - reserve
   let maxUsdnPay = supply - fraction(reserve, price, MULT8)
@@ -254,17 +276,9 @@ func calcContractNsbtPriceSYSREADONLY(nsbtSupplyDELTA: Int) = {
 
 @Callable(i)
 func calcNeutinoMetricsREADONLY() = {
-  let currentPrice = controlContract.getIntegerValue(keyPrice()) # The value from control.ride
-  let neutrinoLockedBalance = neutrinoContract.getInteger(keyNeutrinoLockedBalance()).valueOrElse(0) #locked balance from USDN -> WAVES swap
-  let wavesLockedBalance = neutrinoContract.getInteger(keyWavesLockedBalance()).valueOrElse(0)   #locked balance from WAVES -> USDN swap
-  let reserve = wavesBalance(neutrinoContract).regular - wavesLockedBalance #waves reserves to cover USDN supply
-  let reservesInUsdn = convertWavesToNeutrino(reserve, currentPrice)
-  let neutrinoSupply = neutrinoLockedBalance + assetInfo(neutrinoAssetId).value().quantity - assetBalance(neutrinoContract, neutrinoAssetId)
-    - assetBalance(liquidationContract, neutrinoAssetId) # supply outside main sc or liquidation contract
   let surplus = reservesInUsdn - neutrinoSupply
   let deficit = neutrinoSupply - reservesInUsdn
   let surplusPercent = if (neutrinoSupply == 0) then 0 else fraction(surplus, MULT6, neutrinoSupply) * 100
-  let BR = if (neutrinoSupply == 0) then 0 else fraction(reservesInUsdn, MULT6, neutrinoSupply)
   let nsbtSupplyMAX =  assetInfo(nsbtAssetId).value().quantity
   let nsbtSupply = nsbtSupplyMAX - auctionContract.assetBalance(nsbtAssetId)
   let surfSupply = assetInfo(surfAssetId).value().quantity

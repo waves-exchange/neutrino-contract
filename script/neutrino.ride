@@ -51,7 +51,12 @@ func asInt(v: Any) = {
     case _ => throw("fail to cast into Int")
   }
 }
-
+func asBytes(val: Any) = {
+  match val {
+    case valByte: ByteVector => valByte
+    case _ => throw("fail to cast into ByteVector")
+  }
+}
 func asPayment(v: Any) = {
   match v {
     case p: AttachedPayment => p
@@ -61,8 +66,8 @@ func asPayment(v: Any) = {
 
 func asSwapParamsSTRUCT(v: Any) = {
   match v {
-    case struct: (Int, Int, Int, Int, Int) => struct
-    case _ => throw("fail to cast into Int")
+    case struct: (Int, Int, Int, Int, Int, Int, Int) => struct
+    case _ => throw("fail to cast into Tuple5 ints")
   }
 }
 
@@ -72,6 +77,7 @@ let WAVELET = 100000000
 let PAULI = 1000000
 let PRICELET = 1000000 # 10^6
 let DEFAULTSWAPFEE = 20000 # 0.02 * 1000000 or 2%
+let BRPROTECTED = 100000 # if BR <= 10% then use SURF during swap USDN->WAVES
 
 let IdxNetAmount = 0
 let IdxFeeAmount = 1
@@ -158,6 +164,7 @@ func balanceLockIntervalKEY(swapType: String)              = "balance_" + swapTy
 func nodeBalanceLockIntervalKEY()                          = "balance_node_lock_interval"
 func outFeePartKEY(swapType: String)                       = swapType + "Out_swap_feePart"
 func swapsTimeframeKEY()                                   = "swaps_timeframe"
+func brProtectedKEY()                                      = "min_BR_protection_level"
 
 #-------------------State Reading functions-------------------
 func minSwapAmountREAD(swapType: String) = this.getInteger(minSwapAmountKEY(swapType)).valueOrElse(0)
@@ -320,9 +327,9 @@ func swapDataFailOrREAD(userAddress: String, swapTxId: String) = {
     .split(SEP)
 }
 
-func applyFees(amountGross: Int, feePart: Int) = {
-  let feeAmount = fraction(amountGross, feePart, PAULI)
-  [amountGross - feeAmount, feeAmount, amountGross]
+func applyFees(amountOutGross: Int, inAmtToSURF: Int, feePart: Int) = {
+  let feeAmount = fraction(amountOutGross, feePart, PAULI)
+  [amountOutGross - feeAmount, feeAmount]
 }
 
 func abs(x: Int) = if (x < 0) then -x else x
@@ -383,8 +390,11 @@ func readNodeInfo(nodeIdx: Int) = {
 
 #-------------------MAIN LOGIC----------------------
 
-func commonSwap(swapType: String, pmtAmount: Int, userAddressStr: String, txId58: String, swapParamsByUserSYSREADONLY: (Int,Int,Int,Int,Int)) = {
-  let (swapLimitMax, swapLimitSpent, blcks2LmtReset) = swapParamsByUserSYSREADONLY
+func commonSwap(swapType: String, pmtAmount: Int, userAddressStr: String, txId58: String, swapParamsByUserSYSREADONLY: (Int,Int,Int,Int,Int,Int,Int)) = {
+  let swapLimitSpent    = swapParamsByUserSYSREADONLY._2
+  let blcks2LmtReset    = swapParamsByUserSYSREADONLY._3
+  let wavesSwapLimitMax = swapParamsByUserSYSREADONLY._6
+  let usdnSwapLimitMax  = swapParamsByUserSYSREADONLY._7
 
   let minSwapAmount         = minSwapAmountREAD(swapType)
   let totalLocked           = totalLockedREAD(swapType)
@@ -396,6 +406,7 @@ func commonSwap(swapType: String, pmtAmount: Int, userAddressStr: String, txId58
   let balanceLockMaxInterval = if (isSwapByNode) then nodeBalanceLockIntervalREAD() else balanceLockIntervalREAD(swapType)
   let selfUnlockHeight       = height + balanceLockMaxInterval
   let swapUsdnVolume         = if (swapType == "neutrino") then pmtAmount else pmtAmount.convertWavesToNeutrino(priceByIndex)
+  let swapLimitMax           = if (swapType == "neutrino") then usdnSwapLimitMax else wavesSwapLimitMax.convertWavesToNeutrino(priceByIndex)
 
   if (pmtAmount < minSwapAmount) then minSwapAmountFAIL(swapType, minSwapAmount) else
   if (!isSwapByNode && swapLimitSpent > 0) then throw("You have exceeded swap limit! Next allowed swap height is " + (height + blcks2LmtReset).toString()) else
@@ -417,7 +428,114 @@ func commonSwap(swapType: String, pmtAmount: Int, userAddressStr: String, txId58
 
 }
 
-func commonWithdraw(account : String, index: Int, swapTxId: String, withdrawTxId: String) = {
+#indices for calcNeutinoMetricsREADONLY result array
+let nMetricIdxPrice = 0
+let nMetricIdxUsdnLockedBalance = 1
+let nMetricIdxWavesLockedBalance = 2
+let nMetricIdxReserve = 3
+let nMetricIdxReserveInUsdn = 4
+let nMetricIdxUsdnSupply = 5
+let nMetricIdxSurplus = 6
+let nMetricIdxSurplusPercent = 7
+let nMetricIdxBR = 8 # BR with 6 decimals
+let nMetricIdxNsbtSupply = 9
+let nMetricIdxMaxNsbtSupply = 10
+let nMetricIdxSurfSupply = 11
+
+# surfFunctionREADONLY result array indices
+let bFuncIdxSurf = 0
+let bFuncIdxWaves = 1
+let bFuncIdxUsdn = 2
+let bFuncIdxReserveStart = 3
+let bFuncIdxSupplyStart = 4
+let bFuncIdxBRStart = 5
+let bFuncIdxReserveEnd = 6
+let bFuncIdxSupplyEnd = 7
+let bFuncIdxBREnd = 8
+let bFuncIdxRest = 9
+let bFuncIdxWavesPrice = 10
+
+func calcWithdrawW2U(wavesIn: Int, price: Int) = {
+  let outAmtGross = convertWavesToNeutrino(wavesIn, price)
+  (
+    outAmtGross,      # gross outAmount (fees are not applied yet)
+    neutrinoAssetId,  # outAssetId is USDN
+    0,                # part of inAmount that is converted into SURF to protect BR
+    unit,             # inAssetId is WAVES
+    0,                # amount to unlease
+    wavesIn,          # debug - part of inAmount that is swapped into out asset
+    0,                # debug - max allowed usdn amount to reach BR protection level
+    0,                # debug - part of inAmount that is used BEFORE reaching BR protection level
+    0                 # debug - part of inAmount that is used AFTER reaching BR protection level
+  )
+}
+
+func calcWithdrawU2W(usdnIn: Int, price: Int, br: Int, reservesInUsdn: Int, usdnSupply: Int) = {
+  let brProtected       = this.getInteger(brProtectedKEY()).valueOrElse(BRPROTECTED)
+
+  let maxAllowedUsdnBeforeMinBr = if (br <= brProtected) then 0 else {
+    fraction(reservesInUsdn - fraction(brProtected, usdnSupply, PAULI), PAULI, PAULI - brProtected)
+  }
+
+  let allowedUsdnBeforeMinBr =
+      if (usdnIn > maxAllowedUsdnBeforeMinBr) then maxAllowedUsdnBeforeMinBr else usdnIn
+
+  let allowedUsdnAfterMinBr =
+      if (usdnIn > maxAllowedUsdnBeforeMinBr) then fraction(usdnIn - maxAllowedUsdnBeforeMinBr, br, PAULI) else 0
+
+  let allowedUsdn = allowedUsdnBeforeMinBr + allowedUsdnAfterMinBr
+  let usdn2SURF = usdnIn - allowedUsdn
+
+  let outAmtGross = convertNeutrinoToWaves(allowedUsdn, price)
+  (
+    outAmtGross,                # gross outAmount (fees are not applied yet)
+    unit,                       # waves_id
+    usdn2SURF,                  # part of inAmount that is converted into SURF to protect BR
+    neutrinoAssetId,            # inAssetId is WAVES
+    outAmtGross,                # amount to unlease
+    allowedUsdn,                # debug - part of inAmount that is swapped into out asset
+    maxAllowedUsdnBeforeMinBr,  # debug - max allowed usdn amount to reach BR protection level
+    allowedUsdnBeforeMinBr,     # debug - part of inAmount that is used BEFORE reaching BR protection level
+    allowedUsdnAfterMinBr       # debug - part of inAmount that is used AFTER reaching BR protection level
+  )
+}
+
+func calcWithdraw(swapType: String, inAmount: Int, price: Int, neutrinoMetrics: List[Any]) = {
+  let outFeePart        = this.getInteger(outFeePartKEY(swapType)).valueOrElse(DEFAULTSWAPFEE)
+  if (outFeePart < 0 || outFeePart >= PAULI) then throw("invalid outFeePart config for " + swapType + " swap: outFeePart=" + outFeePart.toString()) else
+
+  let brProtected       = this.getInteger(brProtectedKEY()).valueOrElse(BRPROTECTED)
+
+  let BR                = neutrinoMetrics[nMetricIdxBR].asInt()
+  let reservesInUsdn    = neutrinoMetrics[nMetricIdxReserveInUsdn].asInt()
+  let usdnSupply        = neutrinoMetrics[nMetricIdxUsdnSupply].asInt()
+
+  let outDataTuple =
+    if (swapType == "waves")    then calcWithdrawW2U(inAmount, price) else
+    if (swapType == "neutrino") then calcWithdrawU2W(inAmount, price, BR, reservesInUsdn, usdnSupply)
+    else throw("Unsupported swap type " + swapType)
+
+  let outAmtGross       = outDataTuple._1
+  let outAssetId        = outDataTuple._2
+  let inAmtToSurfPart   = outDataTuple._3
+  let inAssetId         = outDataTuple._4
+  let unleaseAmt        = outDataTuple._5
+
+  let payoutsArray = applyFees(outAmtGross, inAmtToSurfPart, outFeePart)
+  let outNetAmt = payoutsArray[IdxNetAmount]
+  let outFeeAmt = payoutsArray[IdxFeeAmount]
+
+  let outSurfAmt = if (inAmtToSurfPart <= 0) then 0 else {
+    let surfResult = mathContract.invoke("surfFunctionREADONLY", [inAmtToSurfPart, inAssetId], []).asAnyList()
+    surfResult[bFuncIdxSurf].asInt()
+  }
+
+  # WARNING: if u modify then need to check RestV2
+  (outNetAmt, outAssetId, outSurfAmt, inAmtToSurfPart, unleaseAmt, outFeeAmt, outAmtGross)
+}
+
+# TODO move everything into withdraw - no need to keep separate function
+func commonWithdraw(account : String, index: Int, swapTxId: String, withdrawTxId: String, neutrinoMetrics: List[Any]) = {
     let userAddress = addressFromStringValue(account)
 
     let dataArray         = swapDataFailOrREAD(account, swapTxId)
@@ -437,36 +555,39 @@ func commonWithdraw(account : String, index: Int, swapTxId: String, withdrawTxId
     let prevIndexHeight = getHeightPriceByIndex(index-1)
     let priceByIndex = getPriceHistory(indexHeight)
 
-    let outAmountGrossTuple =
-        if (swapType == "waves")    then (convertWavesToNeutrino(inAmount, priceByIndex), neutrinoAssetId) else
-        if (swapType == "neutrino") then (convertNeutrinoToWaves(inAmount, priceByIndex), unit) else
-        throw("Unsupported swap type " + swapType)
-
-    let payoutsArray = applyFees(outAmountGrossTuple._1, outFeePart)
-    let outNetAmount = payoutsArray[IdxNetAmount]
-    let outFeeAmount = payoutsArray[IdxFeeAmount]
-
     if (isBlocked) then emergencyShutdownFAIL() else
     if (swapStatus != "PENDING") then throw("swap has been already processed") else
     if (unlockHeight > height) then throw("please wait for: " + toString(unlockHeight) + " block height to withdraw funds") else
     if (index > priceIndex
           || indexHeight < unlockHeight
           || (prevIndexHeight != 0 && unlockHeight <= prevIndexHeight)) then priceIndexFAIL(index, priceIndex, indexHeight, unlockHeight, prevIndexHeight) else
-    if (payoutsArray[IdxGrossAmount] <= 0) then throw("balance equals zero") else
-    if (outFeePart < 0 || outFeePart >= PAULI) then throw("invalid outFeePart config for " + swapType + " swap: outFeePart=" + outFeePart.toString()) else
 
-    let unleaseAmount = if (swapType == "neutrino" && outAmountGrossTuple._1 > 0) then outAmountGrossTuple._1 else 0
+    let withdrawTuple = calcWithdraw(swapType, inAmount, priceByIndex, neutrinoMetrics)
+    let outNetAmount    = withdrawTuple._1
+    let outAssetId      = withdrawTuple._2
+    let outSurfAmt      = withdrawTuple._3
+    let inAmtToSurfPart = withdrawTuple._4
+    let unleaseAmt      = withdrawTuple._5
+    let outFeeAmount    = withdrawTuple._6
+    let outAmtGross     = withdrawTuple._7
+
+    if (outAmtGross <= 0) then throw("balance equals zero") else
 
     let state = [
       IntegerEntry(totalLockedByUserKEY(swapType, account), totalLockedByUser - inAmount),
       IntegerEntry(totalLockedKEY(swapType), totalLocked - inAmount),
-      ScriptTransfer(userAddress, outNetAmount, outAmountGrossTuple._2),
+      ScriptTransfer(userAddress, outNetAmount, outAssetId),
       StringEntry(
         swapKEY(account, swapTxId),
         finishSwapDATA(dataArray, priceByIndex, outNetAmount, outFeeAmount, unlockHeight, index, withdrawTxId))
     ]
 
-    (state, AttachedPayment(outAmountGrossTuple._2, outFeeAmount), unleaseAmount)
+    strict surfCondition = if (outSurfAmt > 0) then {
+       strict issueResult = auctionContract.invoke("issueSurf", [outSurfAmt, account], [])
+       0
+    } else 0
+
+    (state, AttachedPayment(outAssetId, outFeeAmount), unleaseAmt)
 }
 
 #-------------------Callable----------------------
@@ -559,7 +680,10 @@ func withdraw(account: String, index: Int, swapTxId: String) = {
     let txId = i.transactionId.toBase58String()
     if (i.payments.size() != 0) then throw("no payments allowed") else
 
-    let commonTuple = commonWithdraw(account, index, swapTxId, txId)
+    let neutrinoMetrics = mathContract.invoke("calcNeutinoMetricsREADONLY", [], []).asAnyList()
+    let BR = neutrinoMetrics[nMetricIdxBR].asInt()
+
+    let commonTuple = commonWithdraw(account, index, swapTxId, txId, neutrinoMetrics)
     let state       = commonTuple._1
     let fee         = commonTuple._2
     let unleaseAmt  = commonTuple._3
@@ -569,7 +693,9 @@ func withdraw(account: String, index: Int, swapTxId: String) = {
     let gnsbtAmtTotal           = gnsbtData[1].asInt()
     let gnsbtAmtFromSurfTotal   = gnsbtData[3].asAnyList()[3].asInt()
 
-    let surfFeeAmt = if (gnsbtAmtTotal != 0) then fraction(fee.amount, gnsbtAmtFromSurfTotal, gnsbtAmtTotal) else 0
+    let surfFeeAmt1 = if (gnsbtAmtTotal != 0) then fraction(fee.amount, gnsbtAmtFromSurfTotal, gnsbtAmtTotal) else 0
+    let surfFeeAmt2 = if (gnsbtAmtTotal != 0) then fraction(fee.amount, PAULI - BR, PAULI) else 0
+    let surfFeeAmt = max([surfFeeAmt1, surfFeeAmt2])
     let nsbtFeeAmt = fee.amount - surfFeeAmt
 
     strict surfDeposit = if (surfFeeAmt > 0) then {
@@ -699,17 +825,26 @@ func swapParamsByUserSYSREADONLY(userAddressStr: String, gnsbtDiff: Int) = {
   let gnsbtAmt      = gnsbtData[0].asInt() + gnsbtDiff
   let gnsbtAmtTotal = gnsbtData[1].asInt() + gnsbtDiff
 
-  let swapLimitMax = mathContract.invoke("calcSwapLimitREADONLY", [gnsbtAmt], []).asInt()
+  let swapLimitData = mathContract.invoke("calcSwapLimitREADONLY", [gnsbtAmt], []).asAnyList()
+  let wavesSwapLimitInUsdnMax = swapLimitData[0].asInt()
+  let wavesSwapLimitMax       = swapLimitData[1].asInt()
+  let usdnSwapLimitMax        = swapLimitData[2].asInt()
 
   let lastSwapHeight = this.getInteger(keyUserLastSwapHeight(userAddressStr)).valueOrElse(0)
   let swapLimitTimelifeBlocks = swapsTimeframeREAD()
   let passedBlocksAfterLastSwap = height - lastSwapHeight
   let isSwapTimelifeNew = passedBlocksAfterLastSwap >= swapLimitTimelifeBlocks
-  let swapLimitSpent = if (isSwapTimelifeNew) then 0 else this.getInteger(keySwapUserSpentInPeriod(userAddressStr)).valueOrElse(0)
+  let swapLimitSpentInUsdn = if (isSwapTimelifeNew) then 0 else this.getInteger(keySwapUserSpentInPeriod(userAddressStr)).valueOrElse(0)
   let blcks2LmtReset = if (isSwapTimelifeNew) then 0 else swapLimitTimelifeBlocks - passedBlocksAfterLastSwap
 
   # WARNING if you change returned value - MUST have to change "asSwapParamsSTRUCT" function
-  ([], (swapLimitMax, swapLimitSpent, blcks2LmtReset, gnsbtAmt, gnsbtAmtTotal))
+  ([], (wavesSwapLimitInUsdnMax, swapLimitSpentInUsdn, blcks2LmtReset, gnsbtAmt, gnsbtAmtTotal, wavesSwapLimitMax, usdnSwapLimitMax))
+}
+
+@Callable(i)
+func calcWithdrawResultSYSREADONLY(swapType: String, inAmount: Int, price: Int) = {
+  let neutrinoMetrics = mathContract.invoke("calcNeutinoMetricsREADONLY", [], []).asAnyList()
+  ([], calcWithdraw(swapType, inAmount, price, neutrinoMetrics))
 }
 
 @Verifier(tx)
