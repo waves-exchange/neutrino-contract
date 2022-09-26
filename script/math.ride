@@ -65,6 +65,10 @@ func keyQuickSwapUserSpentInPeriod(userAddress: String) = ["%s%s", "quickSwapUse
 #------control keys-------
 func keyPrice() = "price"
 
+#--------rpd keys---------
+let RpdBalanceKey = "rpd_balance"
+func rpdUserBalanceKey(owner: String, assetId: String) = makeString([RpdBalanceKey, assetId, owner], "_")
+
 #-------------------Base functions----------------------
 func getStringOrFail(address: Address, key: String)  = address.getString(key).valueOrErrorMessage(makeString(["mandatory ", address.toString(), ".", key, " is not defined"], ""))
 func getIntOrFail(address: Address, key: String)     = address.getInteger(key).valueOrErrorMessage(makeString(["mandatory ", address.toString(), ".", key, " is not defined"], ""))
@@ -117,10 +121,24 @@ let controlCfg = controlContract.readControlCfgOrFail()
 let neutrinoContract = controlCfg.getContractAddressOrFail(IdxControlCfgNeutrinoDapp)
 let auctionContract = controlCfg.getContractAddressOrFail(IdxControlCfgAuctionDapp)
 let liquidationContract = controlCfg.getContractAddressOrFail(IdxControlCfgLiquidationDapp)
+let usdnStakingContract = controlCfg.getContractAddressOrFail(IdxControlCfgRpdDapp)
 
-let neutrinoAssetId       = fromBase58String(neutrinoContract.getStringOrFail(keyNeutrinoAssetId()))
+let neutrinoAssetIdStr    = neutrinoContract.getStringOrFail(keyNeutrinoAssetId())
+let neutrinoAssetId       = fromBase58String(neutrinoAssetIdStr)
 let nsbtAssetId           = fromBase58String(neutrinoContract.getStringValue(keyNsbtAssetId()))
 let surfAssetId           = fromBase58String(auctionContract.getStringValue(keySurfAssetId()))
+
+func calcUsdnOutOfMarketSupply() = {
+  let outOfMarketAddressList = controlContract.getString("%s%s__control__outOfMarketAddressList").valueOrElse("")
+  if (outOfMarketAddressList == "") then 0 else
+
+  func balancesSUM(outOfMarketSupply: Int, nextAddress: String) = {
+    outOfMarketSupply
+      + usdnStakingContract.getInteger(rpdUserBalanceKey(nextAddress, neutrinoAssetIdStr)).valueOrElse(0)
+      + assetBalance(nextAddress.addressFromStringValue(), neutrinoAssetId)
+  }
+  FOLD<4>(outOfMarketAddressList.split(SEP), 0, balancesSUM)
+}
 
 # GLOBAL SYSTEM PARAMETERS
 let currentPrice = controlContract.getIntegerValue(keyPrice()) # The value from control.ride
@@ -128,10 +146,12 @@ let neutrinoLockedBalance = neutrinoContract.getInteger(keyNeutrinoLockedBalance
 let wavesLockedBalance = neutrinoContract.getInteger(keyWavesLockedBalance()).valueOrElse(0)   #locked balance from WAVES -> USDN swap
 let reserve = wavesBalance(neutrinoContract).regular - wavesLockedBalance #waves reserves to cover USDN supply
 let reservesInUsdn = convertWavesToNeutrino(reserve, currentPrice)
-let neutrinoSupply = neutrinoLockedBalance
+let neutrinoOutOfMarketSupply = calcUsdnOutOfMarketSupply()
+let neutrinoTotalSupply = neutrinoLockedBalance
     + assetInfo(neutrinoAssetId).value().quantity
     - assetBalance(neutrinoContract, neutrinoAssetId)
     - assetBalance(liquidationContract, neutrinoAssetId) # supply outside main sc or liquidation contract
+let neutrinoSupply = neutrinoTotalSupply - neutrinoOutOfMarketSupply
 let BR = if (neutrinoSupply == 0) then 0 else fraction(reservesInUsdn, MULT6, neutrinoSupply)
 
 @Callable(i)
@@ -276,15 +296,12 @@ func calcContractNsbtPriceSYSREADONLY(nsbtSupplyDELTA: Int) = {
 
 @Callable(i)
 func calcNeutinoMetricsREADONLY() = {
-  let surplus = reservesInUsdn - neutrinoSupply
-  let deficit = neutrinoSupply - reservesInUsdn
-  let surplusPercent = if (neutrinoSupply == 0) then 0 else fraction(surplus, MULT6, neutrinoSupply) * 100
   let nsbtSupplyMAX =  assetInfo(nsbtAssetId).value().quantity
   let nsbtSupply = nsbtSupplyMAX - auctionContract.assetBalance(nsbtAssetId)
   let surfSupply = assetInfo(surfAssetId).value().quantity
 
   ([], [currentPrice, neutrinoLockedBalance, wavesLockedBalance, reserve, reservesInUsdn,
-    neutrinoSupply, surplus, surplusPercent, BR, nsbtSupply, nsbtSupplyMAX, surfSupply])
+    neutrinoSupply, neutrinoOutOfMarketSupply, neutrinoTotalSupply, BR, nsbtSupply, nsbtSupplyMAX, surfSupply])
 }
 
 @Callable(i)
