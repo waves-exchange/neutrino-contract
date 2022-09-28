@@ -324,8 +324,8 @@ func gnsbtInfoREADONLY(userAddressStrOpt: String, nsbtAmtDiff: Int) = {
 
   let nsbtAmt = gnsbtAmt
   let nsbtAmtNew = gnsbtAmtNEW
-  let nsbtAmtStakedTotal = gnsbtAmtTotal
-  let nsbtAmtStakedTotalNew = gnsbtAmtTotalNEW
+  let nsbtAmtStakedTotal = nsbtStakingContract.assetBalance(nsbtAssetId)
+  let nsbtAmtStakedTotalNew = nsbtAmtStakedTotal
 
   let nsbtData = nsbtStakingContract.invoke("nsbtStakingSYSREADONLY", [userAddressStrOpt, nsbtAmtDiff], []).asAnyList()
   # for unknown user or user without gNsbt (gnsbtAmt = gnsbtAmtNEW == 0) we return heights and timestamps -1
