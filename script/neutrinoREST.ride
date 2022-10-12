@@ -478,13 +478,13 @@ func buySurfREADONLY(userAddressStrOpt: String, amount: Int, assetIdStr: String)
 }
 
 @Callable(i)
-func walletInfoREADONLY(userAddressStr: String) = {
-  let addr = addressFromStringValue(userAddressStr)
-  let balance = addr.wavesBalance()
-  let usdnLocked = getLockedOnRpd(userAddressStr, neutrinoAssetIdString)
-  let nsbtLockedOld = getLockedOnRpd(userAddressStr, nsbtAssetIdStr)
+func walletInfoREADONLY(userAddressStrOpt: String) = {
+  let addr = addressFromString(userAddressStrOpt)
+  let balance = if (addr.isDefined()) then addr.value().wavesBalance() else BalanceDetails(0, 0, 0, 0)
+  let usdnLocked = getLockedOnRpd(userAddressStrOpt, neutrinoAssetIdString)
+  let nsbtLockedOld = getLockedOnRpd(userAddressStrOpt, nsbtAssetIdStr)
 
-  let gnsbtData = gnsbtControllerContract.invoke("gnsbtInfoSYSREADONLY", [userAddressStr, 0, 0], []).asAnyList()
+  let gnsbtData = gnsbtControllerContract.invoke("gnsbtInfoSYSREADONLY", [userAddressStrOpt, 0, 0], []).asAnyList()
 
   let nsbtData = gnsbtData[2].asAnyList()
   let nsbtUser            = nsbtData[0].asInt()
@@ -501,7 +501,7 @@ func walletInfoREADONLY(userAddressStr: String) = {
   let availableUsdnToClaimFromSurf  = 0 # STUB! usdn amount received during surf transformation and available to claim right now
   let alreadyClaimedUsdnFromSurf    = 0 # STUB! usdn amount received during surf transformation that has been already claimed by user
 
-  let gsnbtRestV2DATA = restV2Contract.invoke("gnsbtInfoINTERNAL", [userAddressStr, 0, 0], []).asAnyList()
+  let gsnbtRestV2DATA = restV2Contract.invoke("gnsbtInfoINTERNAL", [userAddressStrOpt, 0, 0], []).asAnyList()
   let votingPower     = gsnbtRestV2DATA[19].asInt()
   let votingPowerMax  = gsnbtRestV2DATA[21].asInt()
   let votingPowerEta  = gsnbtRestV2DATA[23].asInt()

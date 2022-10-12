@@ -43,6 +43,16 @@ func keyMinDistributeAmount()               = "%s%s__cfg__minDistributeAmount"
 # miningNode KEYs
 func keyBeneficiaryAddress()  = "%s%s__cfg__beneficiaryAddress"
 
+# indices to access nodes' data
+let nRegIdxTxAdd              = 1
+let nRegIdxHeightAdd          = 2
+let nRegIdxTimeAdd            = 3
+let nRegIdxDepoAmt            = 4
+let nRegIdxDepoAmtLeft        = 5
+let nRegIdxStatus             = 6
+let nRegIdxStatusChangeHeight = 7
+let nRegIdxStatusChangeTime   = 8
+
 func formatDepositAdd(txIdStr: String, depositAmount: Int, remainingDepositAmount: Int, status: String) = {
   ["%s%d%d%d%d%s%d%d",
       txIdStr,
@@ -59,11 +69,11 @@ func formatDepositAdd(txIdStr: String, depositAmount: Int, remainingDepositAmoun
 func formatDepositChangeStatus(origS: String, newStatus: String) = {
   let orig = origS.split(SEP)
   ["%s%d%d%d%d%s%d%d",
-      orig[1],
-      orig[2],
-      orig[3],
-      orig[4],
-      orig[5],
+      orig[nRegIdxTxAdd],
+      orig[nRegIdxHeightAdd],
+      orig[nRegIdxTimeAdd],
+      orig[nRegIdxDepoAmt],
+      orig[nRegIdxDepoAmtLeft],
       newStatus,
       lastBlock.height.toString(),    # status changed block
       lastBlock.timestamp.toString()  # status changed timestamp
@@ -128,6 +138,16 @@ func resolveBeneficiaries(minerAddress: Address, beneficiaryFromParam: Address) 
   let beneficiaryFromMinerState = minerAddress.getStringOrFail(keyBeneficiaryAddress()).addressFromStringValue()
 
   if (minerScriptHash == unit) then beneficiaryFromParam else beneficiaryFromMinerState
+}
+
+func readNodeDataAndValidateStatus(nodeAddr: String, expectedStatus: String) = {
+  let nodeDataOpt = getString(keyNodeRegistry(nodeAddr))
+  if (!nodeDataOpt.isDefined()) then throw("Unknown Node " + nodeAddr) else
+  let nodeDataStr = nodeDataOpt.value()
+  let nodeData = nodeDataStr.split(SEP)
+  let nodeStatus = if (nodeData.size() >= 9) then nodeData[nRegIdxStatus] else "PENDING"
+  if (nodeStatus != expectedStatus) then throw("Node " + nodeAddr + " status should be " + expectedStatus + ", but actually " + nodeStatus) else
+  nodeDataStr
 }
 
 @Callable(i)
@@ -223,22 +243,41 @@ func validateAndApproveLeasings(nListS: String) = {
 
   if (i.caller != neutrinoAddress) then throw("validateAndApproveLeasings not authorized") else
   if (nList.size() % 2 != 0) then throw("Only even number of nodes is allowed") else
-  if (nList.size() != expectedCount) then throw("Only " + expectedCount.toString() + " node's address cab be passed") else
+  if (nList.size() != expectedCount) then throw("Only " + expectedCount.toString() + " of nodes' addresses can be passed") else
 
   func forEachNodeChangeStatus(acc: List[StringEntry], i: Int) = {
     let nodeAddr = nList[i]
-    let nodeRegistryKEY = keyNodeRegistry(nodeAddr)
-    let nodeDataOpt = this.getString(nodeRegistryKEY)
-    if (!nodeDataOpt.isDefined()) then throw("invalid Node in list " + nodeAddr) else
-    let nodeData = nodeDataOpt.value().split(SEP)
-    let nodeStatus = nodeData[6]
-    if (nodeData.size() >= 9 && nodeStatus != "PENDING") then throw("node " + nodeAddr + " already has a final status " + nodeStatus) else
-    acc
-      :+ StringEntry(nodeRegistryKEY, formatDepositChangeStatus(nodeDataOpt.value(), "APPROVED"))
+    let nodeDataStr = readNodeDataAndValidateStatus(nodeAddr, "PENDING")
+    acc :+ StringEntry(keyNodeRegistry(nodeAddr), formatDepositChangeStatus(nodeDataStr, "APPROVED"))
   }
 
   let approvedNodesData = FOLD<8>(nIdxs, [], forEachNodeChangeStatus)
   (approvedNodesData, nil)
+}
+
+@Callable(i)
+func replaceApprovedNode(oldNodeAddrStr: String, newNodeAddrStr: String, groupNum: Int, penaltyAmount: Int) = {
+  let neutrinoContract = keyNeutrinoAddressStr().getAddressOrFail()
+  if (i.caller != neutrinoContract) then throw("permissions denied") else
+
+  let oldDataStr = readNodeDataAndValidateStatus(oldNodeAddrStr, "APPROVED")
+  let newDataStr = readNodeDataAndValidateStatus(newNodeAddrStr, "PENDING")
+
+  let approvedNodeListS = this.getStringOrFail(keyApprovedNodeList())
+  if (!approvedNodeListS.contains(oldNodeAddrStr)) then throw("approvedNodeList does not contain " + oldNodeAddrStr) else
+  let updatedNodeListS = approvedNodeListS.split(oldNodeAddrStr).makeString(newNodeAddrStr)
+
+  let oldNodeAddr = oldNodeAddrStr.addressFromStringValue()
+  let beneficiaryAddress = resolveBeneficiaries(oldNodeAddr, oldNodeAddr)
+  let depoAmount = oldDataStr.split(SEP)[nRegIdxDepoAmt].parseIntValue()
+
+  let actions = [
+    StringEntry(keyApprovedNodeList(), updatedNodeListS),
+    DeleteEntry(keyNodeRegistry(oldNodeAddrStr)),
+    StringEntry(keyNodeRegistry(newNodeAddrStr), formatDepositChangeStatus(newDataStr, "APPROVED"))
+  ]
+
+  (if (depoAmount > penaltyAmount) then actions :+ ScriptTransfer(beneficiaryAddress, depoAmount - penaltyAmount,  unit) else actions, unit)
 }
 
 @Callable(i)
@@ -255,10 +294,10 @@ func returnDeposit(nodeAddressStr: String) = {
   if (approvedNodeList.contains(nodeAddressStr)) then throw("Impossible to return deposit from approved Node, please contact support team") else
 
   let nodeData = nodeDataOpt.value().split(SEP)
-  let status = if (nodeData.size() >= 9) then nodeData[6] else "PENDING"
+  let status = if (nodeData.size() >= 9) then nodeData[nRegIdxStatus] else "PENDING"
   if (status != "PENDING") then throw("Application status is not PENDING!") else
 
-  let depoAmount = nodeData[4].parseIntValue()
+  let depoAmount = nodeData[nRegIdxDepoAmt].parseIntValue()
 
   let beneficiaryAddress = resolveBeneficiaries(nodeAddress, nodeAddress)
   [DeleteEntry(nodeRegistryKEY), ScriptTransfer(beneficiaryAddress, depoAmount,  unit)]

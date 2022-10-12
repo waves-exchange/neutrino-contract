@@ -111,6 +111,7 @@ let nsbtStakingContract = controlCfg.getContractAddressOrFail(IdxControlCfgNsbtS
 let surfStakingContract = controlCfg.getContractAddressOrFail(IdxControlCfgSurfStakingDapp)
 let gnsbtControllerContract = controlCfg.getContractAddressOrFail(IdxControlCfgGnsbtControllerDapp)
 let auctionContract = controlCfg.getContractAddressOrFail(IdxControlCfgAuctionDapp)
+let nodeRegistryContract = controlCfg.getContractAddressOrFail(IdxControlCfgNodeRegistryDapp)
 
 #-------------------Constructor-------------------------
 let NeutrinoAssetIdKey = "neutrino_asset_id"
@@ -248,6 +249,8 @@ let sIdxIndex                    = 13
 let sIdxWithdrawTxId             = 14
 let sIdxMinRand                  = 15
 let sIdxMaxRand                  = 16
+let sIdxOutSurfAmount            = 17
+let sIdxBR                       = 18
 
 func swapKEY(userAddress: String, txId: String) = {
   makeString(["%s%s", userAddress, txId], SEP)
@@ -256,8 +259,8 @@ func swapKEY(userAddress: String, txId: String) = {
 func strSwapDATA(swapType: String, status: String, inAmount: String, price: String, outNetAmount: String, outFeeAmount: String,
                  startHeight: String, startTimestamp: String, endHeight: String, endTimestamp: String,
                  selfUnlockHeight: String, randUnlockHeight: String, index: String, withdrawTxId: String,
-                 randMin: String, randMax: String) = {
-  makeString(["%s%s%d%d%d%d%d%d%d%d%d%d%d%s",
+                 randMin: String, randMax: String, outSurfAmt: String, br: String) = {
+  makeString(["%s%s%d%d%d%d%d%d%d%d%d%d%d%s%d%d%d%d",
       swapType,                     # 1
       status,                       # 2
       inAmount,                     # 3
@@ -273,7 +276,9 @@ func strSwapDATA(swapType: String, status: String, inAmount: String, price: Stri
       index,                        # 13
       withdrawTxId,                 # 14
       randMin,                      # 15
-      randMax                       # 16
+      randMax,                      # 16
+      outSurfAmt,                   # 17
+      br                            # 18
       ],
   SEP)
 }
@@ -295,11 +300,14 @@ func pendingSwapDATA(swapType: String, inAssetAmount: Int, selfUnlockHeight: Int
       "0",                            # 13
       "NULL",                         # 14
       "0",                            # 15
-      "0"                             # 16
+      "0",                            # 16
+      "0",                            # 17
+      "0"                             # 18
   )
 }
 
-func finishSwapDATA(dataArray: List[String], price: Int, outNetAmount: Int, outFeeAmount: Int, randUnlockHeight: Int, index: Int, withdrawTxId: String) = {
+func finishSwapDATA(dataArray: List[String], price: Int, outNetAmount: Int, outFeeAmount: Int, randUnlockHeight: Int,
+                    index: Int, withdrawTxId: String, outSurfAmt: Int, br: Int) = {
   strSwapDATA(
       dataArray[sIdxSwapType],        # 1
       "FINISHED",                     # 2
@@ -316,7 +324,9 @@ func finishSwapDATA(dataArray: List[String], price: Int, outNetAmount: Int, outF
       index.toString(),               # 13
       withdrawTxId,                   # 14
       dataArray[sIdxMinRand],         # 15
-      dataArray[sIdxMaxRand]          # 16
+      dataArray[sIdxMaxRand],         # 16
+      outSurfAmt.toString(),          # 17
+      br.toString()                   # 18
   )
 }
 
@@ -573,13 +583,14 @@ func commonWithdraw(account : String, index: Int, swapTxId: String, withdrawTxId
 
     if (outAmtGross <= 0) then throw("balance equals zero") else
 
+    let BR = neutrinoMetrics[nMetricIdxBR].asInt()
     let state = [
       IntegerEntry(totalLockedByUserKEY(swapType, account), totalLockedByUser - inAmount),
       IntegerEntry(totalLockedKEY(swapType), totalLocked - inAmount),
       ScriptTransfer(userAddress, outNetAmount, outAssetId),
       StringEntry(
         swapKEY(account, swapTxId),
-        finishSwapDATA(dataArray, priceByIndex, outNetAmount, outFeeAmount, unlockHeight, index, withdrawTxId))
+        finishSwapDATA(dataArray, priceByIndex, outNetAmount, outFeeAmount, unlockHeight, index, withdrawTxId, outSurfAmt, BR))
     ]
 
     strict surfCondition = if (outSurfAmt > 0) then {
@@ -845,6 +856,36 @@ func swapParamsByUserSYSREADONLY(userAddressStr: String, gnsbtDiff: Int) = {
 func calcWithdrawResultSYSREADONLY(swapType: String, inAmount: Int, price: Int) = {
   let neutrinoMetrics = mathContract.invoke("calcNeutinoMetricsREADONLY", [], []).asAnyList()
   ([], calcWithdraw(swapType, inAmount, price, neutrinoMetrics))
+}
+
+@Callable(i)
+func replaceCommunityNode(oldAddrStr: String, newAddrStr: String, groupNum: Int, penaltyAmount: Int) = {
+  let mngPubS = getString("%s%s__cfg__leasingManagerPub").valueOrElse("7AUMX54ukYMYvPmma7yoFf5NjZhs4Bu5nz3Ez9EV8sur")
+  let mngPub = mngPubS.fromBase58String()
+  if (i.callerPublicKey != mngPub) then throw("replaceCommunityNode not authorized") else
+
+  let groupKey = getLeaseGroupNodeListKey(groupNum)
+  let groupNodeListS = this.getStringOrFail(groupKey)
+  if (!groupNodeListS.contains(oldAddrStr)) then throw("Group " + groupNum.toString() + " does not contain address " + oldAddrStr) else
+
+  strict doReplace = nodeRegistryContract.invoke("replaceApprovedNode", [oldAddrStr, newAddrStr, groupNum, penaltyAmount], [])
+
+  let oldLeaseIdKey = getLeaseIdByAddressKey(oldAddrStr)
+  let oldLeaseAmtKey = getLeaseAmountByAddressKey(oldAddrStr)
+  let leaseAmt = getIntegerValue(oldLeaseAmtKey)
+  let newLeaseIdKey = getLeaseIdByAddressKey(oldAddrStr)
+  let newLeaseAmtKey = getLeaseAmountByAddressKey(oldAddrStr)
+  let newLease = Lease(newAddrStr.addressFromStringValue(), leaseAmt)
+  let updatedGroupNodeListS = groupNodeListS.split(oldAddrStr).makeString(newAddrStr)
+
+  ([LeaseCancel(getBinaryValue(oldLeaseIdKey)),
+    DeleteEntry(oldLeaseIdKey),
+    DeleteEntry(oldLeaseAmtKey),
+    StringEntry(groupKey, updatedGroupNodeListS),
+    newLease,
+    BinaryEntry(newLeaseIdKey, lcalc(newLease)),
+    IntegerEntry(newLeaseAmtKey, leaseAmt)
+  ], unit)
 }
 
 @Verifier(tx)

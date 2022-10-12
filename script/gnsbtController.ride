@@ -137,8 +137,9 @@ func gnsbtInfoSYSREADONLY(userAddressStrOrEmpty: String, nsbtDiff: Int, surfDiff
 
 @Callable(i)
 func claimRewards() = {
-  strict nsbtInv = nsbtStakingContract.invoke("claimRewardsByOriginCaller", [], [])
-  strict surfInv = surfStakingContract.invoke("claimRewardsByOriginCaller", [], [])
+  let nsbtInv = nsbtStakingContract.invoke("claimRewardsByOriginCaller", [], []).asInt()
+  let surfInv = surfStakingContract.invoke("claimRewardsByOriginCaller", [], []).asInt()
+  if (nsbtInv == 0 && surfInv == 0) then throw("Nothing to claim") else
   []
 }
 

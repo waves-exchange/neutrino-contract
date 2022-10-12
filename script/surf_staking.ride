@@ -16,6 +16,7 @@ let MULTX8 = MULT8.toBigInt()
 let MULTX18 = 1_000_000_000_000_000_000.toBigInt()
 let WAVESIDSTR = "WAVES"
 let WAVESID = fromBase58String(WAVESIDSTR)
+let DAYMILLIS = 86_400_000  #24 * 60 * 60 * 1000
 
 # data indices from controlConfig
 let IdxControlCfgNeutrinoDapp     = 1
@@ -67,6 +68,8 @@ func keyHistoryRecord(type: String, userAddress: Address, txId: ByteVector) = ["
 func keyLockParamTotalAmount()  = ["%s%s", "stats", "activeTotalLocked"].makeString(separator)
 func keyStatsLocksCount()       = ["%s%s", "stats", "locksCount"].makeString(separator)
 func keyStatsUsersCount()       = ["%s%s", "stats", "activeUsersCount"].makeString(separator)
+func keyStatsDepositAmtByDay(timestamp: Int) = ["%s%s%d", "stats", "depositAmtByDay", timestamp.toString()].makeString(separator)
+func keyStatsDepositAmtTotals() = ["%s%s%d", "stats", "depositAmtTotals"].makeString(separator)
 
 # Reward Payouts Distribution Keys
 func keyNextPeriod() = "%s__nextPeriod"
@@ -216,6 +219,68 @@ func calcReward(userAddress: String, assetId: String, stakedAmountX: BigInt, dep
   (rewardCachedPart + rewardDynamicPart, rewardCachedPart, rewardDynamicPart, rewardCachedPartKEY)
 }
 
+func toStartOfDay(timestamp: Int) = {
+  (timestamp / DAYMILLIS) * DAYMILLIS
+}
+
+# TODO MATH or Library candidate
+func findElementPosition(src: String, element: String, sep: String) = {
+  let elementStart = src.indexOf(element).valueOrErrorMessage("there is no substring " + element + " in " + src)
+
+  if (elementStart == 0) then 0 else
+  let left = src.take(elementStart)
+  left.split(sep).size() - 1
+}
+
+
+let DepositTotalsPREFIX = "%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d"
+
+func updateDepositTotals(currVal: String, idxToUpdate: Int, deltaAmt: Int) = {
+  let currArr = currVal.split(SEP)
+
+  func updDepTotByIdx(idx: Int) = {
+    if (idx != idxToUpdate) then currArr[idx] else (currArr[idx].parseIntValue() + deltaAmt).toString()
+  }
+
+  makeString([
+    DepositTotalsPREFIX,
+    updDepTotByIdx(1),
+    updDepTotByIdx(2),
+    updDepTotByIdx(3),
+    updDepTotByIdx(4),
+    updDepTotByIdx(5),
+    updDepTotByIdx(6),
+    updDepTotByIdx(7),
+    updDepTotByIdx(8),
+    updDepTotByIdx(9),
+    updDepTotByIdx(10),
+    updDepTotByIdx(11),
+    updDepTotByIdx(12),
+    updDepTotByIdx(13),
+    updDepTotByIdx(14),
+    updDepTotByIdx(15),
+    updDepTotByIdx(16),
+    updDepTotByIdx(17),
+    updDepTotByIdx(18),
+    updDepTotByIdx(19),
+    updDepTotByIdx(20)
+  ], SEP)
+}
+
+func DepositsTotalsEntries(depositAmount: Int, assetIdStr: String) = {
+  let startOfDay = toStartOfDay(lastBlock.timestamp)
+  let byDayKEY = keyStatsDepositAmtByDay(startOfDay)
+  let totalsKEY = keyStatsDepositAmtTotals()
+
+  let position    = findElementPosition(supportedAssetsStr, assetIdStr, "_")
+  let defaultDATA = DepositTotalsPREFIX + "__0__0__0__0__0__0__0__0__0__0__0__0__0__0__0__0__0__0__0__0"
+  let currTotalsDATA  = this.getString(totalsKEY).valueOrElse(defaultDATA)
+  let newTotalsDATA = updateDepositTotals(currTotalsDATA, position + 1, depositAmount)
+
+  [StringEntry(totalsKEY, newTotalsDATA),
+   StringEntry(byDayKEY, newTotalsDATA)]
+}
+
 func RewardEntries(isNewUser: Boolean, userAddress: String, stakedAmount: Int) = {
   let stakedAmountX = stakedAmount.toBigInt()
   let userRewardFromDepositNumKEY = keyUserRewardFromDepositNum(userAddress)
@@ -361,10 +426,10 @@ func commonClaim(userAddress: Address, i: Invocation) = {
   }
 
   let (transfers, claimedAmtByAssetResult) = FOLD<10>(supportedAssetsList, ([],""), forEachAssetCalcUnclaimedReward)
-  if (transfers.size() <= 0) then [] else
-  transfers
+  if (transfers.size() <= 0) then ([], 0) else
+  (transfers
     :+ IntegerEntry(userRewardFromDepositNumKEY, depositNumLast)
-    :+ ClaimHistoryEntry(userAddress, i.transactionId, claimedAmtByAssetResult.drop(1))
+    :+ ClaimHistoryEntry(userAddress, i.transactionId, claimedAmtByAssetResult.drop(1)), transfers.size())
 }
 
 @Callable(i)
@@ -454,6 +519,7 @@ func deposit() = {
 
   FOLD<10>(supportedAssetsList, [], refreshRewardPerNsbtSUM)
     :+ IntegerEntry(depositNumLastKEY, depositNumNew)
+    ++ DepositsTotalsEntries(amount, pmtAssetIdStr)
 }
 
 @Callable(i)
