@@ -220,7 +220,7 @@ func findElementPosition(src: String, element: String, sep: String) = {
 }
 
 
-let DepositTotalsPREFIX = "%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d"
+let DepositTotalsPREFIX = "%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d"
 
 func updateDepositTotals(currVal: String, idxToUpdate: Int, deltaAmt: Int) = {
   let currArr = currVal.split(SEP)
@@ -248,9 +248,7 @@ func updateDepositTotals(currVal: String, idxToUpdate: Int, deltaAmt: Int) = {
     updDepTotByIdx(15),
     updDepTotByIdx(16),
     updDepTotByIdx(17),
-    updDepTotByIdx(18),
-    updDepTotByIdx(19),
-    updDepTotByIdx(20)
+    updDepTotByIdx(18)
   ], SEP)
 }
 
@@ -260,7 +258,7 @@ func DepositsTotalsEntries(depositAmount: Int, assetIdStr: String) = {
   let totalsKEY = keyStatsDepositAmtTotals()
 
   let position    = findElementPosition(supportedAssetsStr, assetIdStr, "_")
-  let defaultDATA = DepositTotalsPREFIX + "__0__0__0__0__0__0__0__0__0__0__0__0__0__0__0__0__0__0__0__0"
+  let defaultDATA = DepositTotalsPREFIX + "__0__0__0__0__0__0__0__0__0__0__0__0__0__0__0__0__0__0"
   let currTotalsDATA  = this.getString(totalsKEY).valueOrElse(defaultDATA)
   let newTotalsDATA = updateDepositTotals(currTotalsDATA, position + 1, depositAmount)
 
@@ -312,7 +310,7 @@ func RewardEntries(isNewUser: Boolean, userAddress: String, stakedAmount: Int) =
   # 5 + 6 + 7 + 8
   if (depositNumLast  > -1 && depositNumUser >= -1) then {
     if (isNewUser) then [IntegerEntry(userRewardFromDepositNumKEY, depositNumLast)] else
-    FOLD<10>(supportedAssetsList, [], forEachAssetCacheUserReward)
+    FOLD<9>(supportedAssetsList, [], forEachAssetCacheUserReward)
           :+ IntegerEntry(userRewardFromDepositNumKEY, depositNumLast)
   } else throw("uncovered condition: depositNumLast=" + depositNumLast.toString() + " depositNumUser=" + depositNumUser.toString())
 }
@@ -349,7 +347,7 @@ func commonClaim(userAddress: Address, i: Invocation) = {
     , claimedAmtByAssetNew)
   }
 
-  let (transfers, claimedAmtByAssetResult) = FOLD<10>(supportedAssetsList, ([],""), forEachAssetCalcUnclaimedReward)
+  let (transfers, claimedAmtByAssetResult) = FOLD<9>(supportedAssetsList, ([],""), forEachAssetCalcUnclaimedReward)
   if (transfers.size() <= 0) then ([], 0) else
   (transfers
     :+ IntegerEntry(userRewardFromDepositNumKEY, depositNumLast)
@@ -464,7 +462,7 @@ func deposit() = {
         StringEntry(rewardPerNsbtSumNewKEY, sumLastStr)
   }
 
-  FOLD<10>(supportedAssetsList, [], refreshRewardPerNsbtSUM)
+  FOLD<9>(supportedAssetsList, [], refreshRewardPerNsbtSUM)
     :+ IntegerEntry(depositNumLastKEY, depositNumNew)
     ++ DepositsTotalsEntries(amount, pmtAssetIdStr)
 }
@@ -487,7 +485,7 @@ func unclaimedRewardsREADONLY(userAddressStr: String) = {
     accum + makeString([asset, "0", "0"], ":") + "_"
   }
 
-  let unclaimedRewardStr = if (userAddressStr == "") then FOLD<10>(supportedAssetsList, "", forEachAssetZeroReward) else {
+  let unclaimedRewardStr = if (userAddressStr == "") then FOLD<9>(supportedAssetsList, "", forEachAssetZeroReward) else {
     let userAddress = userAddressStr.addressFromStringValue()
     let (isNewUser, stakedAmount, stakingStart) = userAddress.getUserParamsOrUnit().valueOrElse((true, 0, 0))
 
@@ -502,7 +500,7 @@ func unclaimedRewardsREADONLY(userAddressStr: String) = {
       accum + makeString([asset, rewardTotal.toString(), claimed.toString()], ":") + "_"
     }
 
-    FOLD<10>(supportedAssetsList, "", forEachAssetCalcUnclaimedReward)
+    FOLD<9>(supportedAssetsList, "", forEachAssetCalcUnclaimedReward)
   }
 
   ([], unclaimedRewardStr.dropRight(1))
