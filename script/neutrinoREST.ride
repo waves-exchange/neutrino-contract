@@ -559,6 +559,19 @@ func unstakeComissionAmountByUserREADONLY(amount: Int, userAddress: String) = {
 }
 
 @Callable(i)
+func usdnStakingAprREADONLY(days: Int) = {
+  let wavesIncome = 6000*MULT8 # TODO hardocoded income - need to read it dynamically
+
+  let neutrinoMetrics = mathContract.invoke("calcNeutinoMetricsREADONLY",[],[]).asAnyList()
+  let currentPrice    = neutrinoMetrics[nMetricIdxPrice].asInt()
+  let totalUsdnStaked = rpdContract.getInteger(keyRpdContractBalanceKey(neutrinoAssetIdString)).valueOrElse(0)
+
+  let usdnIncome = fraction(wavesIncome, currentPrice, MULT8)
+  let apr = fraction(usdnIncome * MULT6, 365, totalUsdnStaked)
+  ([], [apr])
+}
+
+@Callable(i)
 func neutrinoStateREST() = {
 
   let neutrinoMetrics = mathContract.invoke("calcNeutinoMetricsREADONLY",[],[]).asAnyList()
