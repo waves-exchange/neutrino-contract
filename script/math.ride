@@ -137,7 +137,7 @@ func calcUsdnOutOfMarketSupply() = {
       + usdnStakingContract.getInteger(rpdUserBalanceKey(nextAddress, neutrinoAssetIdStr)).valueOrElse(0)
       + assetBalance(nextAddress.addressFromStringValue(), neutrinoAssetId)
   }
-  FOLD<4>(outOfMarketAddressList.split(SEP), 0, balancesSUM)
+  FOLD<5>(outOfMarketAddressList.split(SEP), 0, balancesSUM)
 }
 
 # GLOBAL SYSTEM PARAMETERS
