@@ -1,4 +1,4 @@
-{-# STDLIB_VERSION 5 #-}
+{-# STDLIB_VERSION 6 #-}
 {-# CONTENT_TYPE DAPP #-}
 {-# SCRIPT_TYPE ACCOUNT #-}
 
@@ -13,8 +13,8 @@ func getIntOrFail(key: String) = {
   this.getInteger(key).valueOrErrorMessage("Mandatory this." + key + " is not defined")
 }
 
-func getStrOrElse(key: String, defaultVal: String) = {
-  this.getString(key).valueOrElse(defaultVal)
+func getStrOrElse(address: Address, key: String, defaultVal: String) = {
+  address.getString(key).valueOrElse(defaultVal)
 }
 
 func getStringOrFail(address: Address, key: String) = {
@@ -23,6 +23,20 @@ func getStringOrFail(address: Address, key: String) = {
 
 func getAddressOrFail(key: String) = {
   this.getStringOrFail(key).addressFromString().valueOrErrorMessage("Fail to convert this." + key + " value into Address")
+}
+
+func asSwopfiResultSTRUCT(v: Any) = {
+  match v {
+    case struct: (Int, ByteVector) => struct
+    case _ => throw("fail to cast into Tuple5 ints")
+  }
+}
+
+func asInt(v: Any) = {
+  match v {
+    case i: Int => i
+    case _ => throw("fail to cast into Int")
+  }
 }
 
 func validateAddressOrFail(addressStr: String) = {
@@ -39,9 +53,43 @@ func keyMasterNodeAddressStr()              = "%s%s__cfg__mainNeutrinoNodeAddres
 func keyProtocolPartX6()                    = "%s%s__cfg__protocolPartX6"
 func keyBenificaryPartX6()                  = "%s%s__cfg__benificaryPartX6"
 func keyMinDistributeAmount()               = "%s%s__cfg__minDistributeAmount"
+func keySwopfiUsdtUsdnPoolAddress()         = "%s%s__cfg__swopfiUsdtUsdnPoolAddress"
+func keySavingsAddress()                    = "%s%s__cfg__savingsAddress"
 
 # miningNode KEYs
 func keyBeneficiaryAddress()  = "%s%s__cfg__beneficiaryAddress"
+
+# data indices from controlConfig
+let IdxControlCfgNeutrinoDapp     = 1
+let IdxControlCfgAuctionDapp      = 2
+let IdxControlCfgRpdDapp          = 3
+let IdxControlCfgMathDapp         = 4
+let IdxControlCfgLiquidationDapp  = 5
+let IdxControlCfgRestDapp         = 6
+let IdxControlCfgNodeRegistryDapp = 7
+let IdxControlCfgNsbtStakingDapp  = 8
+let IdxControlCfgMediatorDapp     = 9
+let IdxControlCfgSurfStakingDapp  = 10
+let IdxControlCfgGnsbtControllerDapp = 11
+let IdxControlCfgRestV2Dapp       = 12
+let IdxControlCfgGovernanceDapp   = 13
+
+func keyControlAddress()  = "%s%s__config__controlAddress"
+func keyControlCfg()      = "%s__controlConfig"
+func keyUsdnAssetId()     = "neutrino_asset_id"
+
+func readControlCfgOrFail(control: Address) = split_4C(control.getStringOrFail(keyControlCfg()), SEP)
+func getContractAddressOrFail(controlCfg: List[String], idx: Int) = controlCfg[idx].addressFromString()
+  .valueOrErrorMessage("Control cfg doesn't contain address at index " + idx.toString())
+
+# GLOBAL VARIABLES
+let controlContract = this.getString(keyControlAddress()).valueOrElse("3P5Bfd58PPfNvBM2Hy8QfbcDqMeNtzg7KfP")
+    .addressFromStringValue()
+let controlCfg            = controlContract.readControlCfgOrFail()
+let neutrinoContract      = controlCfg.getContractAddressOrFail(IdxControlCfgNeutrinoDapp)
+let usdnAssetIdStr        = neutrinoContract.getStrOrElse(keyUsdnAssetId(), "DG2xFkPdDwKUoBkzGAhQtLpSGzfXLiCYPEzeKH2Ad24p")
+let usdnAssetId           = usdnAssetIdStr.fromBase58String()
+
 
 # indices to access nodes' data
 let nRegIdxTxAdd              = 1
@@ -118,7 +166,7 @@ func dataRewardTotals(minedAmt: Int, beneficiaryAmt: Int, protocolAmt: Int, prot
 
 func RewardTotalsEntry(miner: Address, minedAmt: Int, beneficiaryAmt: Int, protocolAmt: Int, protocolAmtPart1: Int, protocolAmtPart2: Int) = {
   let nodeRewardsTotalsKEY = keyNodeRewardsTotals(miner.toString())
-  let nodeRewardsArray = nodeRewardsTotalsKEY.getStrOrElse(dataRewardTotals(0, 0, 0, 0, 0)).split(SEP)
+  let nodeRewardsArray = this.getStrOrElse(nodeRewardsTotalsKEY, dataRewardTotals(0, 0, 0, 0, 0)).split(SEP)
 
   let newMinedAmt         = nodeRewardsArray[1].parseIntValue() + minedAmt
   let newBeneficiaryAmt   = nodeRewardsArray[2].parseIntValue() + beneficiaryAmt
@@ -167,6 +215,15 @@ func constructor(depositAmount: Int, neutrinoAddressStr: String, masterNodeAddre
 }
 
 @Callable(i)
+func constructorV2(swopfiAddressStr: String, controlAddressStr: String, savingsAddressStr: String) = {
+  if (i.caller != this) then throw("permissions denied") else
+  [StringEntry(keySwopfiUsdtUsdnPoolAddress(), swopfiAddressStr.validateAddressOrFail()),
+  StringEntry(keyControlAddress(), controlAddressStr.validateAddressOrFail()),
+  StringEntry(keySavingsAddress(), savingsAddressStr.validateAddressOrFail())
+  ]
+}
+
+@Callable(i)
 func sumbitApplication() = {
   if (i.payments.size() != 1) then throw("exact 1 payment must be attached") else
   if (i.caller != i.originCaller) then throw("dapp to dapp calls are not allowed") else
@@ -181,7 +238,7 @@ func sumbitApplication() = {
 
   if (pmtAssetId != WAVESID) then throw("only Waves can be used for deposit") else
   if (deposit != expectedDepositAmount) then throw("exactly " + expectedDepositAmount.toString() + " Wavelets are expected") else
-  if (nodeRegistryKEY.getStrOrElse("") != "") then throw("your node already registered") else
+  if (this.getStrOrElse(nodeRegistryKEY, "") != "") then throw("your node already registered") else
 
   [StringEntry(nodeRegistryKEY, formatDepositAdd(txId, deposit, deposit, "PENDING"))]
 }
@@ -220,12 +277,21 @@ func distributeMinerReward(beneficiaryAddressStr: String) = {
 
   let beneficiaryAmt = fraction(minedAmt, beneficiaryPart, MULT6)
   let protocolAmt = minedAmt - beneficiaryAmt
-  let protocolAmt1 = protocolAmt / 2
+  let protocolAmt1 = 0
   let protocolAmt2 = protocolAmt - protocolAmt1
 
+  let savingsAddress = this.getStrOrElse(keySavingsAddress(), "3PC7DBimauyKytx8tXhKo5u2ECb6FsndYKH").addressFromStringValue()
+  let savingsAmt = savingsAddress.invoke("withdraw", [protocolAmt2], []).asInt()
+
+  let swopfiAddress = this.getStrOrElse(keySwopfiUsdtUsdnPoolAddress(), "3PHaNgomBkrvEL2QnuJarQVJa71wjw9qiqG").addressFromStringValue()
+  let swopfiResult    = swopfiAddress.invoke("exchange", [1], [AttachedPayment(unit, protocolAmt2 + savingsAmt)]).asSwopfiResultSTRUCT()
+  let receivedUsdnAmt = swopfiResult._1
+  let receivedAssetId = swopfiResult._2
+
+  if (usdnAssetId != receivedAssetId) then throw("invalid asset id received during swopfi exchange") else
+
   [ScriptTransfer(beneficiaryAddress,    beneficiaryAmt, unit),
-    ScriptTransfer(neutrinoAddress,     protocolAmt1,  unit),
-    ScriptTransfer(masterNodeAddress,   protocolAmt2,  unit),
+    ScriptTransfer(masterNodeAddress,   receivedUsdnAmt,  usdnAssetId),
     ScriptTransfer(txRewardReceiver,  callReward,    unit),
     RewardHistoryEntry(minerAddress, i.transactionId, minedAmt, beneficiaryAmt, protocolAmt, protocolAmt1, protocolAmt2),
     RewardTotalsEntry(minerAddress, minedAmt, beneficiaryAmt, protocolAmt, protocolAmt1, protocolAmt2)
@@ -257,7 +323,6 @@ func validateAndApproveLeasings(nListS: String) = {
 
 @Callable(i)
 func replaceApprovedNode(oldNodeAddrStr: String, newNodeAddrStr: String, groupNum: Int, penaltyAmount: Int) = {
-  let neutrinoContract = keyNeutrinoAddressStr().getAddressOrFail()
   if (i.caller != neutrinoContract) then throw("permissions denied") else
 
   let oldDataStr = readNodeDataAndValidateStatus(oldNodeAddrStr, "APPROVED")
