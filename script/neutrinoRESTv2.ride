@@ -19,6 +19,7 @@ let BRPROTECTED = 100000 # if BR <= 10% then use SURF during swap USDN->WAVES
 
 # synthetic WAVES assetId
 let WAVESID = fromBase58String("WAVES")
+let DAYMILLIS = 86_400_000  #24 * 60 * 60 * 1000
 
 #-------neutrino keys------
 func keyNeutrinoAssetId() = "neutrino_asset_id"
@@ -53,10 +54,19 @@ func keyMinLockAmount() = "%s__minLockAmount"
 func keyMinWavesForNsbtBuy() = "min_waves_nsbt_buy"
 func keyMinNsbtSell() = "min_nsbt_sell"
 
+#------- staking keys and api------
+func keyStatsDepositAmtByDay(timestamp: Int) = ["%s%s%d", "stats", "depositAmtByDay", timestamp.toString()].makeString(SEP)
+
+func toStartOfDay(timestamp: Int) = {
+  (timestamp / DAYMILLIS) * DAYMILLIS
+}
+
 #-------------------Base functions----------------------
 func getStringOrFail(address: Address, key: String) = address.getString(key).valueOrErrorMessage(makeString(["mandatory ", address.toString(), ".", key, " is not defined"], ""))
 func getIntOrFail(address: Address, key: String) = address.getInteger(key).valueOrErrorMessage(makeString(["mandatory ", address.toString(), ".", key, " is not defined"], ""))
 func getBoolOrFail(address: Address, key: String) = address.getBoolean(key).valueOrErrorMessage(makeString(["mandatory ", address.toString(), ".", key, " is not defined"], ""))
+func getIntOrElse(address: Address, key: String, defaultVal: Int) = address.getInteger(key).valueOrElse(defaultVal)
+func getStrOrElse(address: Address, key: String, defaultVal: String) = address.getString(key).valueOrElse(defaultVal)
 
 func convertNeutrinoToWaves(amount: Int, price: Int) = fraction(amount, MULT8, price)
 func convertWavesToNeutrino(amount: Int, price: Int) = fraction(amount, price, MULT8)
@@ -181,6 +191,38 @@ let nsbtAssetId = nsbtAssetIdStr.fromBase58String()
 let surfAssetIdStr = auctionContract.getStringValue(keySurfAssetId())
 let surfAssetId = surfAssetIdStr.fromBase58String()
 
+func readUsdnIncomeForDay(stakingAcc: Address, startOfDayTimestamp: Int, neutrinoMetrics: List[Any]) = {
+  let amtByDayKEY = keyStatsDepositAmtByDay(startOfDayTimestamp)
+  let incomeStr = stakingAcc.getStrOrElse(amtByDayKEY, "%s%s__0__0")
+  let incomeArray = incomeStr.split(SEP)
+  let wavesAmt = incomeArray[1].parseIntValue()
+  let usdnAmt = incomeArray[2].parseIntValue()
+
+  let currentPrice    = neutrinoMetrics[nMetricIdxPrice].asInt()
+  let wavesAsUsdnAmt = fraction(wavesAmt, currentPrice, MULT8)
+
+  wavesAsUsdnAmt + usdnAmt
+}
+
+func calcUsdnIncomeForPeriod(stakingAcc: Address, days: Int) = {
+  let neutrinoMetrics = mathContract.invoke("calcNeutinoMetricsREADONLY",[],[]).asAnyList()
+
+  let currStartOfDay = toStartOfDay(lastBlock.timestamp)
+  let startTimestamp = currStartOfDay - DAYMILLIS * (days + 1)
+  let endTimestamp = currStartOfDay - DAYMILLIS
+
+  let startUsdnAmt  = surfStakingContract.readUsdnIncomeForDay(startTimestamp, neutrinoMetrics)
+  let endUsdnAmt    = surfStakingContract.readUsdnIncomeForDay(endTimestamp, neutrinoMetrics)
+  endUsdnAmt - startUsdnAmt
+}
+
+func calcApr(stakingAcc: Address, periodInDays: Int, incomeForPeriod: Int, stakingAssetPriceToUsdnX6: Int) = {
+  let totalStaked = surfStakingContract.getIntOrElse("%s%s__stats__activeTotalLocked", 1)
+  let totalStakedInUsdn = fraction(totalStaked, stakingAssetPriceToUsdnX6, MULT6)
+
+  fraction(incomeForPeriod * MULT6, 365, totalStakedInUsdn * periodInDays)
+}
+
 # MATH CANDIDATE
 @Callable(i)
 func reverseSwapLimitREADONLY(lim: Int, isWavesSwap: Boolean) = {
@@ -191,7 +233,7 @@ func reverseSwapLimitREADONLY(lim: Int, isWavesSwap: Boolean) = {
   let gNsbt = if (lim <= 0) then 0 else
   let aParamX8 = mathContract.getIntOrFail(if (isWavesSwap) then keySwapAmountAParam() else keyUsdnSwapAmountAParam()).toBigInt()
   let bParamX16 = mathContract.getIntOrFail(if (isWavesSwap) then keySwapAmountBParam() else keyUsdnSwapAmountBParam()).toBigInt()
-  let limDivAX8 = if (isWavesSwap) then fraction(lim.toBigInt(), MULTX10, aParamX8) else 
+  let limDivAX8 = if (isWavesSwap) then fraction(lim.toBigInt(), MULTX10, aParamX8) else
     fraction(fraction(lim.toBigInt(), MULTX10, aParamX8), MULTX6, BR.toBigInt())
 
   let revBX16 = fraction(MULTX16, MULTX16, bParamX16)
@@ -439,4 +481,35 @@ func surfStakingAprREADONLY(days: Int) = {
 @Callable(i)
 func nsbtStakingAprREADONLY(days: Int) = {
   ([], "%d__90000")
+}
+
+@Callable(i)
+func usdnStakingAprTestREADONLY(days: Int) = {
+  let tmpDays = 1 # TODO temporary hardcoded till statistics accumulation
+  let neutrinoMetrics = mathContract.invoke("calcNeutinoMetricsREADONLY",[],[]).asAnyList()
+  let currentPrice    = neutrinoMetrics[nMetricIdxPrice].asInt()
+
+  let wavesIncome = 6000*MULT8 # TODO hardocoded income - need to read it dynamically
+  let incomeForPeriod = fraction(wavesIncome, currentPrice, MULT8)
+
+  let apr = rpdContract.calcApr(tmpDays, incomeForPeriod, MULT6)
+  ([], "%d__" + apr.toString())
+}
+
+@Callable(i)
+func surfStakingAprTestREADONLY(days: Int) = {
+  let tmpDays = 3 # TODO temporary hardcoded till statistics accumulation
+  let incomeForPeriod = surfStakingContract.calcUsdnIncomeForPeriod(tmpDays)
+  let surfPriceToUsdnX6 = 86400 # 0.086400 TODO temporary hardcoded - need redesign API
+  let apr = surfStakingContract.calcApr(tmpDays, incomeForPeriod, surfPriceToUsdnX6)
+  ([], "%d__" + apr.toString())
+}
+
+@Callable(i)
+func nsbtStakingAprTestREADONLY(days: Int) = {
+  let tmpDays = 3 # TODO temporary hardcoded till statistics accumulation
+  let nsbtPriceToUsdnX6 = 8000000 # 8.00 TODO temporary hardcoded - need redesign API
+  let incomeForPeriod = nsbtStakingContract.calcUsdnIncomeForPeriod(tmpDays)
+  let apr = nsbtStakingContract.calcApr(tmpDays, incomeForPeriod, nsbtPriceToUsdnX6)
+  ([], "%d__" + apr.toString())
 }
