@@ -470,21 +470,6 @@ func swapInfoREADONLY(userAddressStrOrEmpty: String, amount: Int, assetIdStr: St
 
 @Callable(i)
 func usdnStakingAprREADONLY(days: Int) = {
-  ([], "%d__60000")
-}
-
-@Callable(i)
-func surfStakingAprREADONLY(days: Int) = {
-  ([], "%d__70000")
-}
-
-@Callable(i)
-func nsbtStakingAprREADONLY(days: Int) = {
-  ([], "%d__90000")
-}
-
-@Callable(i)
-func usdnStakingAprTestREADONLY(days: Int) = {
   let tmpDays = 1 # TODO temporary hardcoded till statistics accumulation
   let neutrinoMetrics = mathContract.invoke("calcNeutinoMetricsREADONLY",[],[]).asAnyList()
   let currentPrice    = neutrinoMetrics[nMetricIdxPrice].asInt()
@@ -497,7 +482,7 @@ func usdnStakingAprTestREADONLY(days: Int) = {
 }
 
 @Callable(i)
-func surfStakingAprTestREADONLY(days: Int) = {
+func surfStakingAprREADONLY(days: Int) = {
   let tmpDays = 3 # TODO temporary hardcoded till statistics accumulation
   let incomeForPeriod = surfStakingContract.calcUsdnIncomeForPeriod(tmpDays)
   let surfPriceToUsdnX6 = 86400 # 0.086400 TODO temporary hardcoded - need redesign API
@@ -506,7 +491,7 @@ func surfStakingAprTestREADONLY(days: Int) = {
 }
 
 @Callable(i)
-func nsbtStakingAprTestREADONLY(days: Int) = {
+func nsbtStakingAprREADONLY(days: Int) = {
   let tmpDays = 3 # TODO temporary hardcoded till statistics accumulation
   let nsbtPriceToUsdnX6 = 8000000 # 8.00 TODO temporary hardcoded - need redesign API
   let incomeForPeriod = nsbtStakingContract.calcUsdnIncomeForPeriod(tmpDays)
