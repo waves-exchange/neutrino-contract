@@ -340,10 +340,12 @@ func gnsbtInfoREADONLY(userAddressStrOrEmpty: String, additionalNsbtToStakeOrZer
 @Callable(i)
 func rewardInfoREADONLY(userAddressStrOrEmpty: String) = {
   let rewardsData = gnsbtControllerContract.invoke("gnsbtRewardsSYSREADONLY", [userAddressStrOrEmpty], []).asAnyList()
+  let usdnRewards = rpdContract.invoke("unclaimedRewardsREADONLY", [userAddressStrOrEmpty], []).asString()
   ([], makeString([
-    "%s%s",
+    "%s%s%s",
     rewardsData[0].asString(), #1 nsbt
-    rewardsData[1].asString()  #2 surf
+    rewardsData[1].asString(), #2 surf
+    usdnRewards                #3 usdn
   ], SEP))
 }
 
@@ -422,4 +424,19 @@ func swapInfoREADONLY(userAddressStrOrEmpty: String, amount: Int, assetIdStr: St
     limitMaxUsdn.toString(),    #7
     inAmtToSurfPart.toString()  #8
   ], SEP))
+}
+
+@Callable(i)
+func usdnStakingAprREADONLY(days: Int) = {
+  ([], "%d__60000")
+}
+
+@Callable(i)
+func surfStakingAprREADONLY(days: Int) = {
+  ([], "%d__70000")
+}
+
+@Callable(i)
+func nsbtStakingAprREADONLY(days: Int) = {
+  ([], "%d__90000")
 }
