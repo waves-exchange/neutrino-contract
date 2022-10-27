@@ -211,13 +211,13 @@ func calcUsdnIncomeForPeriod(stakingAcc: Address, days: Int) = {
   let startTimestamp = currStartOfDay - DAYMILLIS * (days + 1)
   let endTimestamp = currStartOfDay - DAYMILLIS
 
-  let startUsdnAmt  = surfStakingContract.readUsdnIncomeForDay(startTimestamp, neutrinoMetrics)
-  let endUsdnAmt    = surfStakingContract.readUsdnIncomeForDay(endTimestamp, neutrinoMetrics)
+  let startUsdnAmt  = stakingAcc.readUsdnIncomeForDay(startTimestamp, neutrinoMetrics)
+  let endUsdnAmt    = stakingAcc.readUsdnIncomeForDay(endTimestamp, neutrinoMetrics)
   endUsdnAmt - startUsdnAmt
 }
 
 func calcApr(stakingAcc: Address, periodInDays: Int, incomeForPeriod: Int, stakingAssetPriceToUsdnX6: Int) = {
-  let totalStaked = surfStakingContract.getIntOrElse("%s%s__stats__activeTotalLocked", 1)
+  let totalStaked = stakingAcc.getIntOrElse("%s%s__stats__activeTotalLocked", 1)
   let totalStakedInUsdn = fraction(totalStaked, stakingAssetPriceToUsdnX6, MULT6)
 
   fraction(incomeForPeriod * MULT6, 365, totalStakedInUsdn * periodInDays)
