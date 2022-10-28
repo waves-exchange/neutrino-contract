@@ -491,10 +491,26 @@ func surfStakingAprREADONLY(days: Int) = {
 }
 
 @Callable(i)
+func surfStakingAprV2READONLY(days: Int, surfUsdnPriceX6: Int) = {
+  let tmpDays = 3 # TODO temporary hardcoded till statistics accumulation
+  let incomeForPeriod = surfStakingContract.calcUsdnIncomeForPeriod(tmpDays)
+  let apr = surfStakingContract.calcApr(tmpDays, incomeForPeriod, surfUsdnPriceX6)
+  ([], "%d__" + apr.toString())
+}
+
+@Callable(i)
 func nsbtStakingAprREADONLY(days: Int) = {
   let tmpDays = 3 # TODO temporary hardcoded till statistics accumulation
   let nsbtPriceToUsdnX6 = 8000000 # 8.00 TODO temporary hardcoded - need redesign API
   let incomeForPeriod = nsbtStakingContract.calcUsdnIncomeForPeriod(tmpDays)
   let apr = nsbtStakingContract.calcApr(tmpDays, incomeForPeriod, nsbtPriceToUsdnX6)
+  ([], "%d__" + apr.toString())
+}
+
+@Callable(i)
+func nsbtStakingAprV2READONLY(days: Int, nsbtUsdnPriceX6: Int) = {
+  let tmpDays = 3 # TODO temporary hardcoded till statistics accumulation
+  let incomeForPeriod = nsbtStakingContract.calcUsdnIncomeForPeriod(tmpDays)
+  let apr = nsbtStakingContract.calcApr(tmpDays, incomeForPeriod, nsbtUsdnPriceX6)
   ([], "%d__" + apr.toString())
 }
