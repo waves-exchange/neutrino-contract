@@ -245,6 +245,7 @@ func sumbitApplication() = {
 
 @Callable(i)
 func distributeMinerReward(beneficiaryAddressStr: String) = {
+  if (1 == 1) then throw("temporary disable") else
   let minDistributeAmount = this.getInteger(keyMinDistributeAmount()).valueOrElse(24 * MULT8)
   if (i.payments.size() != 1) then throw("exact 1 payment must be attached") else
   if (i.caller != i.originCaller) then throw("dapp to dapp calls are not allowed") else
