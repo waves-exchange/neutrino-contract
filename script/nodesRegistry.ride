@@ -25,10 +25,10 @@ func getAddressOrFail(key: String) = {
   this.getStringOrFail(key).addressFromString().valueOrErrorMessage("Fail to convert this." + key + " value into Address")
 }
 
-func asSwopfiResultSTRUCT(v: Any) = {
-  match v {
-    case struct: (Int, ByteVector) => struct
-    case _ => throw("fail to cast into Tuple5 ints")
+func asAnyList(val: Any) = {
+  match val {
+    case valAnyList: List[Any] => valAnyList
+    case _ => throw("fail to cast into List[Any]")
   }
 }
 
@@ -36,6 +36,13 @@ func asInt(v: Any) = {
   match v {
     case i: Int => i
     case _ => throw("fail to cast into Int")
+  }
+}
+
+func asByteVecot(v: Any) = {
+  match v {
+    case i: ByteVector => i
+    case _ => throw("fail to cast into ByteVector")
   }
 }
 
@@ -245,7 +252,6 @@ func sumbitApplication() = {
 
 @Callable(i)
 func distributeMinerReward(beneficiaryAddressStr: String) = {
-  if (1 == 1) then throw("temporary disable") else
   let minDistributeAmount = this.getInteger(keyMinDistributeAmount()).valueOrElse(24 * MULT8)
   if (i.payments.size() != 1) then throw("exact 1 payment must be attached") else
   if (i.caller != i.originCaller) then throw("dapp to dapp calls are not allowed") else
@@ -285,9 +291,9 @@ func distributeMinerReward(beneficiaryAddressStr: String) = {
   let savingsAmt = savingsAddress.invoke("withdraw", [protocolAmt2], []).asInt()
 
   let swopfiAddress = this.getStrOrElse(keySwopfiUsdtUsdnPoolAddress(), "3PHaNgomBkrvEL2QnuJarQVJa71wjw9qiqG").addressFromStringValue()
-  let swopfiResult    = swopfiAddress.invoke("exchange", [1], [AttachedPayment(unit, protocolAmt2 + savingsAmt)]).asSwopfiResultSTRUCT()
-  let receivedUsdnAmt = swopfiResult._1
-  let receivedAssetId = swopfiResult._2
+  let swopfiResult    = swopfiAddress.invoke("exchange", [1], [AttachedPayment(unit, protocolAmt2 + savingsAmt)]).asAnyList()
+  let receivedUsdnAmt = swopfiResult[0].asInt()
+  let receivedAssetId = swopfiResult[1].asByteVecot()
 
   if (usdnAssetId != receivedAssetId) then throw("invalid asset id received during swopfi exchange") else
 
