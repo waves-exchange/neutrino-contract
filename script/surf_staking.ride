@@ -17,6 +17,7 @@ let MULTX18 = 1_000_000_000_000_000_000.toBigInt()
 let WAVESIDSTR = "WAVES"
 let WAVESID = fromBase58String(WAVESIDSTR)
 let DAYMILLIS = 86_400_000  #24 * 60 * 60 * 1000
+let DEFAULTPERIOD = 1440 * 14 # two weeks (default voting pover maturity period)
 
 # data indices from controlConfig
 let IdxControlCfgNeutrinoDapp     = 1
@@ -29,7 +30,9 @@ let IdxControlCfgNodeRegistryDapp = 7
 let IdxControlCfgNsbtStakingDapp  = 8
 let IdxControlCfgMediatorDapp     = 9
 let IdxControlCfgSurfStakingDapp  = 10
-let IdxControlCfgGnsbtControllerDapp  = 11
+let IdxControlCfgGnsbtControllerDapp = 11
+let IdxControlCfgRestV2Dapp       = 12
+let IdxControlCfgGovernanceDapp   = 13
 
 func getStringOrFail(address: Address, key: String) = address.getString(key).valueOrErrorMessage("mandatory " + address.toString() + "." + key + " is not defined")
 
@@ -37,7 +40,7 @@ func keyControlAddress() = "%s%s__config__controlAddress"
 func keyControlCfg()     = "%s__controlConfig"
 func keyGnsbtFromSurfCoeff()  = "%s%s__cfg__gnsbtFromSurfCoeff"
 
-func readControlCfgOrFail(control: Address) = control.getStringOrFail(keyControlCfg()).split(SEP)
+func readControlCfgOrFail(control: Address) = split_4C(control.getStringOrFail(keyControlCfg()), SEP)
 func getContractAddressOrFail(controlCfg: List[String], idx: Int) = controlCfg[idx].addressFromString()
   .valueOrErrorMessage("Control cfg doesn't contain address at index " + idx.toString())
 
@@ -47,6 +50,7 @@ let controlCfg = controlContract.readControlCfgOrFail()
 let mathContract = controlCfg.getContractAddressOrFail(IdxControlCfgMathDapp)
 let neutrinoContract = controlCfg.getContractAddressOrFail(IdxControlCfgNeutrinoDapp)
 let auctionContract = controlCfg.getContractAddressOrFail(IdxControlCfgAuctionDapp)
+let govContract = controlCfg.getContractAddressOrFail(IdxControlCfgGovernanceDapp)
 
 let gnsbtFromSurfCoeff    = this.getInteger(keyGnsbtFromSurfCoeff()).valueOrElse(300)
 
@@ -69,22 +73,30 @@ func keyLockParamTotalAmount()  = ["%s%s", "stats", "activeTotalLocked"].makeStr
 func keyStatsLocksCount()       = ["%s%s", "stats", "locksCount"].makeString(separator)
 func keyStatsUsersCount()       = ["%s%s", "stats", "activeUsersCount"].makeString(separator)
 func keyStatsDepositAmtByDay(timestamp: Int) = ["%s%s%d", "stats", "depositAmtByDay", timestamp.toString()].makeString(separator)
-func keyStatsDepositAmtTotals() = ["%s%s%d", "stats", "depositAmtTotals"].makeString(separator)
-
-# Reward Payouts Distribution Keys
-func keyNextPeriod() = "%s__nextPeriod"
+func keyStatsDepositAmtTotals() = ["%s%s", "stats", "depositAmtTotals"].makeString(separator)
 
 # REWARDS DISTRIBUTION
 func keySupportedRewardAssets() = "supportedRewardAssets"
-func keyDepositNumLast() = ["%s%s%s", "dep", "lastNum"].makeString(separator)
-func keyUserRewardFromDepositNum(userAddress: String) = ["%s%s%s", "userRwdFromDepNum", userAddress].makeString(separator)
+func keyDepositNumLast() = ["%s%s", "dep", "lastNum"].makeString(separator)
+func keyUserRewardFromDepositNum(userAddress: String) = ["%s%s", "userRwdFromDepNum", userAddress].makeString(separator)
 func keyRewardPerNsbtSumAt(depositNum: Int, tkn: String) = ["%s%d", "rwdPerNsbtSumByDepNum", depositNum.toString(), tkn].makeString(separator)
 func keyReward(userAddress: String, tkn: String) = ["%s%s%s", "rwd", userAddress, tkn].makeString(separator)
 func keyClaimed(userAddress: String, tkn: String) = ["%s%s%s", "clm", userAddress, tkn].makeString(separator)
 # accumulated reward if nobody stakes NSBT int this key
 func keyNotDistributedReward(tkn: String) = ["%s%s", "notDistributed", tkn].makeString(separator)
 
-func toX18(origVal: Int, origMult: BigInt)          = fraction(origVal.toBigInt(), MULTX18, origMult)
+# voting power
+func keyVpPeriodDuration() = ["%s%s", "vp", "periodDuration"].makeString(separator)
+func keyLastTotalsPeriodProcessed() = ["%s%s", "vp", "lastTotalsPeriodProcessed"].makeString(separator)
+func keyLastUserPeriodProcessed(userAddress: String) = ["%s%s%s", "vp", "lastUserPeriodProcessed", userAddress].makeString(separator)
+func keyTotalMature() = ["%s%s", "vp", "totalMature"].makeString(separator)
+func keyTotalTeen() = ["%s%s", "vp", "totalTeen"].makeString(separator)
+func keyTotalKid() = ["%s%s", "vp", "totalKid"].makeString(separator)
+func keyUserMature(userAddress: String) = ["%s%s%s", "vp", "userMature", userAddress].makeString(separator)
+func keyUserTeen(userAddress: String) = ["%s%s%s", "vp", "userTeen", userAddress].makeString(separator)
+func keyUserKid(userAddress: String) = ["%s%s%s", "vp", "userKid", userAddress].makeString(separator)
+
+func toX18(origVal: Int, origMult: BigInt) = fraction(origVal.toBigInt(), MULTX18, origMult)
 
 func getIntOrZero(key: String) = {
   this.getInteger(key).valueOrElse(0)
@@ -339,31 +351,126 @@ func surfToGnsbt(surfAmt: Int) = {
   surfAmt / gnsbtFromSurfCoeff
 }
 
-# @param quarantinePeriod
-# @param vpEffectiveHeight - current voting power effective height
-# @param stakedAmt - current staked amount by user
-# @param stakedAmtNEW - new staked amount that will be accounted to user
-# @return NEW voting power effective height
-func mergeVotingPowerEffectiveHeight(quarantinePeriod: Int, vpEffectiveHeight: Int, stakedAmt: Int, stakedAmtNEW: Int) = {
-  let remainingToWait = vpEffectiveHeight - height
+func mergeStake(userAddress: Address, amountToAdd: Int, userTeen: Int, userKid: Int) = {
+  let (isNewUser, stakedAmount, vpEffectiveHeight) = userAddress.getUserParamsOrUnit().valueOrElse((true, 0, 0))
+  let stakedAmountNEW = if (isNewUser) then amountToAdd else amountToAdd + stakedAmount # surfAmount, not gNsbt
 
-  if (remainingToWait <= 0) then height + quarantinePeriod else
-  let alreadyWaited = quarantinePeriod - remainingToWait
+  let W2 = getIntOrElse(keyVpPeriodDuration(), DEFAULTPERIOD)
+  let period = height / W2
+  let vpEffectivePeriodNEW = if (userKid > 0) then (period + 2) else if (userTeen > 0) then (period + 1) else period
 
-  # TODO cal using big int
-  let kX8 = if (stakedAmtNEW != 0) then fraction(stakedAmt, MULT8, stakedAmtNEW) else vpEffectiveHeight
-  quarantinePeriod + height - fraction(alreadyWaited, kX8, MULT8)
+  (isNewUser, stakedAmount, vpEffectiveHeight, stakedAmountNEW, vpEffectivePeriodNEW * W2)
 }
 
-func mergeStake(userAddress: Address, amountToAdd: Int) = {
-  let (isNewUser, stakedAmount, vpEffectiveHeight) = userAddress.getUserParamsOrUnit().valueOrElse((true, 0, 0))
-  let stakedAmountNEW = if (isNewUser) then amountToAdd else amountToAdd + stakedAmount
+func updateTotals() = {
+  let period = height / getIntOrElse(keyVpPeriodDuration(), DEFAULTPERIOD)
+  if (period > getIntOrZero(keyLastTotalsPeriodProcessed())) then { # crossed quarantine period boundary
+    let totalMature = getInteger(keyTotalMature())
+      .valueOrElse(getIntOrZero(keyLockParamTotalAmount())) # initial migration from legacy
+    [IntegerEntry(keyTotalMature(), totalMature + getIntOrZero(keyTotalTeen())),
+    IntegerEntry(keyTotalTeen(), getIntOrZero(keyTotalKid())),
+    IntegerEntry(keyTotalKid(), 0),
+    IntegerEntry(keyLastTotalsPeriodProcessed(), period)]
+  } else []
+}
 
-  let quarantinePeriod = 1440 * 14 # TODO - move into state
-  let vpEffectiveHeightNEW = if (isNewUser)
-      then quarantinePeriod + height else mergeVotingPowerEffectiveHeight(quarantinePeriod, vpEffectiveHeight, stakedAmount, stakedAmountNEW)
+func onStake(userAddressStr: String, amountToAdd: Int) = {
+  if (amountToAdd < 0) then throw("amountToAdd should be >= 0") else
+  let W2 = getIntOrElse(keyVpPeriodDuration(), DEFAULTPERIOD)
+  let period = height / W2
+  let totalMature = getInteger(keyTotalMature())
+    .valueOrElse(getIntOrZero(keyLockParamTotalAmount())) # initial migration from legacy
+  let totalTeen = getIntOrZero(keyTotalTeen())
+  let totalKid = getIntOrZero(keyTotalKid())
+  let userMature = if (userAddressStr == "") then 0 else getInteger(keyUserMature(userAddressStr))
+    .valueOrElse(getIntOrZero(keyLockParamUserAmount(userAddressStr.addressFromStringValue()))) # initial migration from legacy
+  let userTeen = getIntOrZero(keyUserTeen(userAddressStr))
+  let userKid = getIntOrZero(keyUserKid(userAddressStr))
+  let tmp = if (period > getIntOrZero(keyLastUserPeriodProcessed(userAddressStr))) then 
+      (totalMature + userTeen, # new totalMature
+      totalTeen + (userKid - userTeen), # new totalTeen
+      totalKid - userKid, # new totalKid
+      userMature + userTeen, # new userMature
+      userKid, # new userTeen
+      0, # new userKid
+      [IntegerEntry(keyLastUserPeriodProcessed(userAddressStr), period)])
+    else 
+      (totalMature, totalTeen, totalKid, userMature, userTeen,  userKid, [])
+  
+  let totals = if (period > getIntOrZero(keyLastTotalsPeriodProcessed())) then # stake() called before deposit(), so process the totals here
+    ([IntegerEntry(keyTotalMature(), tmp._1 + tmp._2),
+    IntegerEntry(keyTotalTeen(), tmp._3),
+    IntegerEntry(keyTotalKid(), 0),
+    IntegerEntry(keyLastTotalsPeriodProcessed(), period)], tmp._1 + tmp._2, tmp._3, 0) else ([], totalMature, totalTeen, totalKid)
 
-  (isNewUser, stakedAmount, vpEffectiveHeight, stakedAmountNEW, vpEffectiveHeightNEW)
+  let newKid = fraction(amountToAdd, height % W2, W2) # split all new-staked gNSBT in proportion kid : amountToAdd = remainder : W2
+  let newTeen = amountToAdd - newKid
+  
+  (totals._1 :+ 
+    IntegerEntry(keyUserMature(userAddressStr), tmp._4) :+
+    IntegerEntry(keyUserTeen(userAddressStr), tmp._5 + newTeen) :+
+    IntegerEntry(keyUserKid(userAddressStr), tmp._6 + newKid)
+    ++ tmp._7, 
+    totals._2, # totalMature
+    totals._3, # totalTeen
+    totals._4, # totalKid
+    tmp._4,           # userMature
+    tmp._5 + newTeen, # userTeen
+    tmp._6 + newKid)  # userKid
+}
+
+let IdxNewDiff  = 0
+let IdxNewGnsbt = 1
+
+func userDecrease(gnsbt: Int, diff: Int) = {
+  if (gnsbt <= diff) then [diff - gnsbt, 0] else [0, gnsbt - diff] # returns newDiff, newGnsbt
+}
+
+func onUnstake(userAddressStr: String, amountToRemove: Int) = {
+  if (amountToRemove <= 0) then throw("amountToRemove should be > 0") else
+  let W2 = getIntOrElse(keyVpPeriodDuration(), DEFAULTPERIOD)
+  let period = height / W2
+  let totalMature = getInteger(keyTotalMature())
+    .valueOrElse(getIntOrZero(keyLockParamTotalAmount())) # initial migration from legacy
+  let totalTeen = getIntOrZero(keyTotalTeen())
+  let totalKid = getIntOrZero(keyTotalKid())
+  let userMature = if (userAddressStr == "") then 0 else getInteger(keyUserMature(userAddressStr))
+    .valueOrElse(getIntOrZero(keyLockParamUserAmount(userAddressStr.addressFromStringValue()))) # initial migration from legacy
+  let userTeen = getIntOrZero(keyUserTeen(userAddressStr))
+  let userKid = getIntOrZero(keyUserKid(userAddressStr))
+  let um = userDecrease(userMature, amountToRemove)
+  let ut = userDecrease(userTeen, um[IdxNewDiff])
+  let uk = userDecrease(userKid, ut[IdxNewDiff])
+  if (uk[IdxNewDiff] != 0) then throw("Should not happen") else
+
+  let tmp = if (period > getIntOrZero(keyLastUserPeriodProcessed(userAddressStr))) then 
+      (totalMature + ut[IdxNewGnsbt], # new totalMature
+      totalTeen + (uk[IdxNewGnsbt] - ut[IdxNewGnsbt]), # new totalTeen
+      totalKid - uk[IdxNewGnsbt], # new totalKid
+      um[IdxNewGnsbt] + ut[IdxNewGnsbt], # new userMature
+      uk[IdxNewGnsbt], # new userTeen
+      0, # new userKid
+      [IntegerEntry(keyLastUserPeriodProcessed(userAddressStr), period)])
+    else 
+      (totalMature, totalTeen, totalKid, um[IdxNewGnsbt], ut[IdxNewGnsbt], uk[IdxNewGnsbt], [])
+
+  let totals = if (period > getIntOrZero(keyLastTotalsPeriodProcessed())) then # unstake() called before deposit(), so process the totals here
+    ([IntegerEntry(keyTotalMature(), tmp._1 + tmp._2),
+    IntegerEntry(keyTotalTeen(), tmp._3),
+    IntegerEntry(keyTotalKid(), 0),
+    IntegerEntry(keyLastTotalsPeriodProcessed(), period)], tmp._1 + tmp._2, tmp._3, 0) else ([], totalMature, totalTeen, totalKid)
+
+  (totals._1 :+
+    IntegerEntry(keyUserMature(userAddressStr), tmp._4) :+
+    IntegerEntry(keyUserTeen(userAddressStr), tmp._5) :+
+    IntegerEntry(keyUserKid(userAddressStr), tmp._6)
+    ++ tmp._7,
+    totals._2, # totalMature
+    totals._3, # totalTeen
+    totals._4, # totalKid
+    tmp._4,    # userMature
+    tmp._5,    # userTeen
+    tmp._6)    # userKid
 }
 
 func commonStake(userAddress: Address, i: Invocation) = {
@@ -378,7 +485,9 @@ func commonStake(userAddress: Address, i: Invocation) = {
 
   let userAddressStr = userAddress.toString()
 
-  let mergedData = mergeStake(userAddress, amount)
+  let r = onStake(userAddressStr, amount)
+
+  let mergedData = mergeStake(userAddress, amount, r._6, r._7)
   let isNewUser             = mergedData._1
   let stakedAmount          = mergedData._2
   let vpEffectiveHeight     = mergedData._3
@@ -395,6 +504,7 @@ func commonStake(userAddress: Address, i: Invocation) = {
   ++ RewardEntries(isNewUser, userAddressStr, stakedAmount)
   ++ LockParamsEntry(userAddress, stakedAmountNEW, vpEffectiveHeightNEW)
   ++ statsEntries
+  ++ r._1 # onStake actions
 }
 
 func commonClaim(userAddress: Address, i: Invocation) = {
@@ -476,6 +586,7 @@ func unstake(amount: Int) = {
   ++ RewardEntries(false, userAddressStr, stakedAmount)
   ++ LockParamsEntry(userAddress, stakedAmountNEW, vpEffectiveHeight)
   ++ statsEntries
+  ++ onUnstake(userAddressStr, amount)._1
 }
 
 @Callable(i)
@@ -518,6 +629,7 @@ func deposit() = {
   FOLD<9>(supportedAssetsList, [], refreshRewardPerNsbtSUM)
     :+ IntegerEntry(depositNumLastKEY, depositNumNew)
     ++ DepositsTotalsEntries(amount, pmtAssetIdStr)
+    ++ updateTotals() # shift gNsbt maturity categories
 }
 
 @Callable(i)
@@ -558,19 +670,40 @@ func unclaimedRewardsREADONLY(userAddressStr: String) = {
   ([], unclaimedRewardStr.dropRight(1))
 }
 
-# Staking params
-# (gNsbtAmount, stakingStartHeight)
+# intended to be called by governanceContract.castVote(), but anyone anytime can safely call
+@Callable(i)
+func updateVotingPower(userAddressStr: String) = {
+  if (!addressFromString(userAddressStr).isDefined()) then throw("Invalid user address") else
+  let r = onStake(userAddressStr, 0)
+  (r._1,   # actions
+    [surfToGnsbt(r._2), # totalMature
+    surfToGnsbt(r._3),  # totalTeen
+    surfToGnsbt(r._4),  # totalKid
+    surfToGnsbt(r._5),  # userMature
+    surfToGnsbt(r._6),  # userTeen
+    surfToGnsbt(r._7)]  # userKid
+  )
+}
+
 @Callable(i)
 func surfStakingSYSREADONLY(userAddressStrOrEmpty: String, surfDiff: Int) = {
   let surfTotal = keyLockParamTotalAmount().getIntOrElse(0)
   let gnsbtFromSurfTotal = surfToGnsbt(surfTotal)
 
-  if (userAddressStrOrEmpty == "") then ([], [0, surfTotal, 0, gnsbtFromSurfTotal, 0, height, height]) else
+  let r = if (surfDiff >= 0) then onStake(userAddressStrOrEmpty, surfDiff) else onUnstake(userAddressStrOrEmpty, -surfDiff)
+  if (userAddressStrOrEmpty == "") then
+    ([], [0, surfTotal, 0, gnsbtFromSurfTotal, height, height, # keep legacy values
+    surfToGnsbt(r._2),  # totalMature
+    surfToGnsbt(r._3),  # totalTeen
+    surfToGnsbt(r._4),  # totalKid
+    surfToGnsbt(r._5),  # userMature
+    surfToGnsbt(r._6),  # userTeen
+    surfToGnsbt(r._7)]) # userKid
+  else
 
   let userAddress = userAddressStrOrEmpty.toAddressOrFail()
 
-  let mergedData = mergeStake(userAddress, surfDiff)
-  let isNewUser             = mergedData._1
+  let mergedData = mergeStake(userAddress, surfDiff, r._6, r._7)
   let stakedAmount          = mergedData._2
   let vpEffectiveHeight     = mergedData._3
   let stakedAmountNEW       = mergedData._4
@@ -579,7 +712,13 @@ func surfStakingSYSREADONLY(userAddressStrOrEmpty: String, surfDiff: Int) = {
   let surfUser = stakedAmount
   let gnsbtFromSurfUser = surfToGnsbt(surfUser)
 
-  ([], [surfUser, surfTotal, gnsbtFromSurfUser, gnsbtFromSurfTotal, vpEffectiveHeight, vpEffectiveHeightNEW])
+  ([], [surfUser, surfTotal, gnsbtFromSurfUser, gnsbtFromSurfTotal, vpEffectiveHeight, vpEffectiveHeightNEW, # keep legacy values
+    surfToGnsbt(r._2),  # totalMature
+    surfToGnsbt(r._3),  # totalTeen
+    surfToGnsbt(r._4),  # totalKid
+    surfToGnsbt(r._5),  # userMature
+    surfToGnsbt(r._6),  # userTeen
+    surfToGnsbt(r._7)]) # userKid
 }
 
 @Callable(i)
@@ -590,7 +729,7 @@ func gnsbtFromSurfSYSREADONLY(surfAmt: Int) = {
 @Callable(i)
 func configSYSREADONLY() = {
   let minLockAmt = getIntegerValue(keyMinLockAmount())
-  let surfVotingPowerRestrictivePeriod = 1440 * 14
+  let surfVotingPowerRestrictivePeriod = DEFAULTPERIOD
   let brToStartSurfTransformation = 1150000
 
   ([], [minLockAmt, gnsbtFromSurfCoeff * MULT6, surfVotingPowerRestrictivePeriod, brToStartSurfTransformation])

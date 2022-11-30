@@ -28,6 +28,8 @@ let IdxControlCfgRestDapp         = 6
 let IdxControlCfgNodeRegistryDapp = 7
 let IdxControlCfgNsbtStakingDapp  = 8
 let IdxControlCfgMediatorDapp     = 9
+# 10..12 are unused
+let IdxControlCfgGovernanceDapp   = 13
 
 func getStringOrFail(address: Address, key: String) = address.getString(key).valueOrErrorMessage("mandatory " + address.toString() + "." + key + " is not defined")
 
@@ -44,9 +46,13 @@ let controlCfg = controlContract.readControlCfgOrFail()
 let mathContract = controlCfg.getContractAddressOrFail(IdxControlCfgMathDapp)
 let neutrinoContract = controlCfg.getContractAddressOrFail(IdxControlCfgNeutrinoDapp)
 let auctionContract = controlCfg.getContractAddressOrFail(IdxControlCfgAuctionDapp)
+let govContract = controlCfg.getContractAddressOrFail(IdxControlCfgGovernanceDapp)
 
 # Neutrino Contract Keys
 func keyBondAsset() = "bond_asset_id"
+
+# Governance contract key
+func keyUserGnsbtReleaseTime(userAddr: String) = "%s%s_userGnsbtReleaseTime__" + userAddr
 
 # NSBT Lock Contract Keys
 func keyNeutrinoContractAddress() = "%s__neutrinoContractAddress"
@@ -411,6 +417,10 @@ func unstake(amount: Int) = {
 
   if (lockAmount <= 0) then throw("Nothing to unstake") else
   if (amount > lockAmount) then throw("Requested " + amount.toString() + ", but staked only " + lockAmount.toString()) else
+  # check if gNSBT are taking part in votings
+  let t = blockInfoByHeight(height).value().timestamp
+  let releaseTime = govContract.getInteger(keyUserGnsbtReleaseTime(userAddressStr)).valueOrElse(0)
+  if (t <= releaseTime) then throw("Your gNsbt are taking part in voting, cannot unstake until " + releaseTime.toString()) else
 
   let comissionAmount = mathContract.invoke("getUnstakeComissionAmountREADONLY", [amount, lockStart, halfLife], []).asInt()
   let (statsEntries, totalStaked, totalStakedNew) = StatsResult(-amount, if (amount == lockAmount) then -1 else 0, if (amount == lockAmount) then -1 else 0)
