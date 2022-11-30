@@ -73,11 +73,11 @@ func keyLockParamTotalAmount()  = ["%s%s", "stats", "activeTotalLocked"].makeStr
 func keyStatsLocksCount()       = ["%s%s", "stats", "locksCount"].makeString(separator)
 func keyStatsUsersCount()       = ["%s%s", "stats", "activeUsersCount"].makeString(separator)
 func keyStatsDepositAmtByDay(timestamp: Int) = ["%s%s%d", "stats", "depositAmtByDay", timestamp.toString()].makeString(separator)
-func keyStatsDepositAmtTotals() = ["%s%s", "stats", "depositAmtTotals"].makeString(separator)
+func keyStatsDepositAmtTotals() = ["%s%s%d", "stats", "depositAmtTotals"].makeString(separator)
 
 # REWARDS DISTRIBUTION
 func keySupportedRewardAssets() = "supportedRewardAssets"
-func keyDepositNumLast() = ["%s%s", "dep", "lastNum"].makeString(separator)
+func keyDepositNumLast() = ["%s%s%d", "dep", "lastNum"].makeString(separator)
 func keyUserRewardFromDepositNum(userAddress: String) = ["%s%s", "userRwdFromDepNum", userAddress].makeString(separator)
 func keyRewardPerNsbtSumAt(depositNum: Int, tkn: String) = ["%s%d", "rwdPerNsbtSumByDepNum", depositNum.toString(), tkn].makeString(separator)
 func keyReward(userAddress: String, tkn: String) = ["%s%s%s", "rwd", userAddress, tkn].makeString(separator)
