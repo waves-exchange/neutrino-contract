@@ -21,14 +21,19 @@ let IdxControlCfgRestDapp         = 6
 let IdxControlCfgNodeRegistryDapp = 7
 let IdxControlCfgNsbtStakingDapp  = 8
 let IdxControlCfgMediatorDapp     = 9
+let IdxControlCfgSurfStakingDapp  = 10
+let IdxControlCfgGnsbtControllerDapp = 11
+let IdxControlCfgRestV2Dapp       = 12
+let IdxControlCfgGovernanceDapp   = 13
 
 func keyControlConfig() = "%s__controlConfig"
 
 func dataControlCfg(neutrinoContract: String, auctionContract: String, rpdContract: String, mathContract: String,
                     liquidationContract: String, restContract: String, nodeRegistryContract: String, nsbtStakingContract: String,
-                    mediatorContract: String, surfStakingContract: String, gnsbtControllerContract: String, restV2Contract: String) = {
+                    mediatorContract: String, surfStakingContract: String, gnsbtControllerContract: String, restV2Contract: String,
+                    governanceContract: String) = {
   makeString(
-    ["%s%s%s%s%s%s%s%s%s%s%s%s",
+    ["%s%s%s%s%s%s%s%s%s%s%s%s%s",
     neutrinoContract,         #1
     auctionContract,          #2
     rpdContract,              #3
@@ -40,7 +45,8 @@ func dataControlCfg(neutrinoContract: String, auctionContract: String, rpdContra
     mediatorContract,         #9
     surfStakingContract,      #10
     gnsbtControllerContract,  #11
-    restV2Contract            #12
+    restV2Contract,           #12
+    governanceContract        #13
     ],
     SEP)
 }
@@ -89,6 +95,11 @@ let neutrinoAddress     = Address(base58'3PC9BfRwJWWiw9AREE2B3eWzCks3CYtg4yo')
 let liquidationAddress  = Address(base58'3P4PCxsJqMzQBALo8zANHtBDZRRquobHQp7')
 let neutrinoAsset       = base58'DG2xFkPdDwKUoBkzGAhQtLpSGzfXLiCYPEzeKH2Ad24p'
 let controlContract     = this
+func getStringOrFail(address: Address, key: String)  = address.getString(key).valueOrErrorMessage(makeString(["mandatory ", address.toString(), ".", key, " is not defined"], ""))
+func getContractAddressOrFail(controlCfg: List[String], idx: Int) = controlCfg[idx].addressFromString()
+  .valueOrErrorMessage("Control cfg doesn't contain address at index " + idx.toString())
+let controlCfg = split(this.getStringOrFail(keyControlConfig()), SEP)
+let governanceContract = controlCfg.getContractAddressOrFail(IdxControlCfgGovernanceDapp)
 
 #locked balance from USDN -> WAVES swap
 let neutrinoLockedBalance = getInteger(neutrinoAddress, "balance_lock_neutrino").valueOrElse(0)
@@ -188,13 +199,13 @@ func formattingPriceMsg(price: Int) = {
 func constructor(neutrinoContract: String, auctionContract: String, rpdContract: String, mathContract: String,
                     liquidationContract: String, restContract: String, nodeRegistryContract: String,
                     nsbtStakingContract: String, mediatorContract: String, surfStakingContract: String, gnsbtControllerContract: String,
-                    restV2Contract: String) = {
+                    restV2Contract: String, governanceContract: String) = {
    if (i.caller != this) then throw("permissions denied") else
 
    [StringEntry(keyControlConfig(), dataControlCfg(
         neutrinoContract, auctionContract, rpdContract, mathContract, liquidationContract,
         restContract, nodeRegistryContract, nsbtStakingContract, mediatorContract,
-        surfStakingContract, gnsbtControllerContract, restV2Contract
+        surfStakingContract, gnsbtControllerContract, restV2Contract, governanceContract
     ))]
 }
 
@@ -205,7 +216,8 @@ func constructor(neutrinoContract: String, auctionContract: String, rpdContract:
 func callEmergencyShutdown(reason: String) = {
     let AutoEmergencyOracleAddress = "3P7ihFVxBNbHK237TNdPxT1xHEu8pHexXTr"
     let callerAddress = toString(i.caller)
-    if (AutoEmergencyOracleAddress != callerAddress) then throw("caller must be one an emergency oracle") else
+    if (AutoEmergencyOracleAddress != callerAddress && governanceContract.toString() != callerAddress) then 
+        throw("caller must be one an emergency oracle or Governance contract") else
     [BooleanEntry("is_blocked", true),
       StringEntry("is_blocked_caller", callerAddress),
       StringEntry("is_blocked_reason", reason)]

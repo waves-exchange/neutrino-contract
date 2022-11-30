@@ -167,7 +167,7 @@ let bFuncIdxWavesPrice = 10
 func keyControlAddress() = "%s%s__config__controlAddress"
 func keyControlCfg()     = "%s__controlConfig"
 
-func readControlCfgOrFail(control: Address) = control.getStringOrFail(keyControlCfg()).split(SEP)
+func readControlCfgOrFail(control: Address) = split_4C(control.getStringOrFail(keyControlCfg()), SEP)
 func getContractAddressOrFail(controlCfg: List[String], idx: Int) = controlCfg[idx].addressFromString()
   .valueOrErrorMessage("Control cfg doesn't contain address at index " + idx.toString())
 
@@ -380,6 +380,21 @@ func gnsbtInfoREADONLY(userAddressStrOrEmpty: String, additionalNsbtToStakeOrZer
 }
 
 @Callable(i)
+func gnsbtEffectiveREADONLY(userAddressStrOrEmpty: String) = {
+  let gnsbtData = gnsbtControllerContract.invoke("gnsbtInfoSYSREADONLY", [userAddressStrOrEmpty, 0, 0], []).asAnyList()
+  let nsbtData = gnsbtData[2].asAnyList()
+  let userFromNsbt = nsbtData[2].asInt()
+  let totalFromNsbt = nsbtData[3].asInt()
+  let userMatureFromSurf = gnsbtData[9].asInt()
+  let totalMatureFromSurf = gnsbtData[6].asInt()
+  ([], makeString([
+    "%d%d",
+    (totalFromNsbt + totalMatureFromSurf).toString(), # 1 effective total gNsbt
+    (userFromNsbt + userMatureFromSurf).toString()    # 2 effective user gNsbt
+  ], SEP))
+}
+
+@Callable(i)
 func rewardInfoREADONLY(userAddressStrOrEmpty: String) = {
   let rewardsData = gnsbtControllerContract.invoke("gnsbtRewardsSYSREADONLY", [userAddressStrOrEmpty], []).asAnyList()
   let usdnRewards = rpdContract.invoke("unclaimedRewardsREADONLY", [userAddressStrOrEmpty], []).asString()
@@ -398,7 +413,7 @@ func mergeNsbtREADONLY(userAddressMandatory: String, newAmount: Int) = {
   let startHeight = if (amount0 <= 0) then -1 else nsbtData[2].asInt()
   let startTimestamp = toTimestamp(startHeight)
 
-  let startHeightNew = if newAmount <= 0 then startHeight else {
+  let startHeightNew = if newAmount <= 0 then startHeight else if (amount0 <= 0) then height else {
     let halfLife = nsbtStakingContract.getIntOrFail(keyHalfLife());
     mathContract.invoke("mergeStakesREADONLY", [amount0, startHeight, newAmount, height, halfLife], []).asInt()
   }

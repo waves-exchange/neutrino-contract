@@ -90,7 +90,7 @@ let IdxControlCfgGnsbtControllerDapp  = 11
 func keyControlAddress() = "%s%s__config__controlAddress"
 func keyControlCfg()     = "%s__controlConfig"
 
-func readControlCfgOrFail(control: Address) = control.getStringOrFail(keyControlCfg()).split(SEP)
+func readControlCfgOrFail(control: Address) = split_4C(control.getStringOrFail(keyControlCfg()), SEP)
 func getContractAddressOrFail(controlCfg: List[String], idx: Int) = controlCfg[idx].addressFromString()
   .valueOrErrorMessage("Control cfg doesn't contain address at index " + idx.toString())
 
@@ -106,6 +106,19 @@ let rpdContract = controlCfg.getContractAddressOrFail(IdxControlCfgRpdDapp)
 let nsbtStakingContract = controlCfg.getContractAddressOrFail(IdxControlCfgNsbtStakingDapp)
 let surfStakingContract = controlCfg.getContractAddressOrFail(IdxControlCfgSurfStakingDapp)
 
+# surfStaking indices
+let IdxSurfUser        = 0
+let IdxSurfTotal       = 1
+let IdxSurfGnsbtUser   = 2
+let IdxSurfGnsbtTotal  = 3
+let IdxSurfVpCurr      = 4
+let IdxSurfVpNew       = 5
+let IdxSurfTotalMature = 6
+let IdxSurfTotalTeen   = 7
+let IdxSurfTotalKid    = 8
+let IdxSurfUserMature  = 9
+let IdxSurfUserTeen    = 10
+let IdxSurfUserKid     = 11
 
 @Callable(i)
 func gnsbtInfoSYSREADONLY(userAddressStrOrEmpty: String, nsbtDiff: Int, surfDiff: Int) = {
@@ -116,12 +129,10 @@ func gnsbtInfoSYSREADONLY(userAddressStrOrEmpty: String, nsbtDiff: Int, surfDiff
   let gNsbtFromNsbtTotal  = nsbtTotal
 
   let surfData = surfStakingContract.invoke("surfStakingSYSREADONLY", [userAddressStrOrEmpty, surfDiff], []).asAnyList()
-  let surfUser              = surfData[0].asInt()
-  let surfTotal             = surfData[1].asInt()
-  let gNsbtFromSurfUser     = surfData[2].asInt()
-  let gNsbtFromSurfTotal    = surfData[3].asInt()
-  let vpEffectiveHeight     = surfData[4].asInt()
-  let vpEffectiveHeightNEW  = surfData[5].asInt()
+  let surfUser              = surfData[IdxSurfUser].asInt()
+  let surfTotal             = surfData[IdxSurfTotal].asInt()
+  let gNsbtFromSurfUser     = surfData[IdxSurfGnsbtUser].asInt()
+  let gNsbtFromSurfTotal    = surfData[IdxSurfGnsbtTotal].asInt()
 
   let gNsbtUser = gNsbtFromNsbtUser + gNsbtFromSurfUser
   let gNsbtTotal = gNsbtFromNsbtTotal + gNsbtFromSurfTotal
@@ -130,8 +141,14 @@ func gnsbtInfoSYSREADONLY(userAddressStrOrEmpty: String, nsbtDiff: Int, surfDiff
         gNsbtTotal,                                                     # 1
         [nsbtUser, nsbtTotal, gNsbtFromNsbtUser, gNsbtFromNsbtTotal],   # 2
         [surfUser, surfTotal, gNsbtFromSurfUser, gNsbtFromSurfTotal],   # 3
-        vpEffectiveHeight,                                              # 4
-        vpEffectiveHeightNEW                                            # 5
+        surfData[IdxSurfVpCurr].asInt(),                                # 4 legacy voting power height
+        surfData[IdxSurfVpNew].asInt(),                                 # 5 legacy voting power height
+        surfData[IdxSurfTotalMature].asInt(),                           # 6  totalMature gNsbt
+        surfData[IdxSurfTotalTeen].asInt(),                             # 7  totalTeen gNsbt
+        surfData[IdxSurfTotalKid].asInt(),                              # 8  totalKid gNsbt
+        surfData[IdxSurfUserMature].asInt(),                            # 9  userMature gNsbt
+        surfData[IdxSurfUserTeen].asInt(),                              # 10 userTeen gNsbt
+        surfData[IdxSurfUserKid].asInt()                                # 11 userKid gNsbt
     ])
 }
 

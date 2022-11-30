@@ -14,6 +14,8 @@ let MULT12     = 1_000_000_000_000
 let MULT18     = 1_000_000_000_000_000_000.toBigInt()
 let SEP        = "__"
 let BRPROTECTED = 100000 # if BR <= 10% then use SURF during swap USDN->WAVES
+let DEFAULTPAYMENT = 10_0000_0000
+let DEFAULTCREATIONGNSBT = 1000_000000
 
 # synthetic WAVES assetId
 let WAVESID = fromBase58String("WAVES")
@@ -68,6 +70,8 @@ func brProtectedKEY()  = "min_BR_protection_level"
 
 func keyBalanceWavesLockInterval() = "balance_waves_lock_interval"
 func keyBalanceNeutrinoLockInterval() = "balance_neutrino_lock_interval"
+func keyPaymentRequired() = "%s__paymentRequired"
+func keyGnsbtRequired() = "%s__gNsbtRequired"
 
 #------control keys-------
 func keyPrice() = "price"
@@ -150,6 +154,7 @@ let IdxControlCfgMediatorDapp     = 9
 let IdxControlCfgSurfStakingDapp  = 10
 let IdxControlCfgGnsbtControllerDapp  = 11
 let IdxControlCfgRestV2Dapp       = 12
+let IdxControlCfgGovernanceDapp   = 13
 
 func keyControlAddress() = "%s%s__config__controlAddress"
 func keyControlCfg()     = "%s__controlConfig"
@@ -171,6 +176,7 @@ let nsbtStakingContract = controlCfg.getContractAddressOrFail(IdxControlCfgNsbtS
 let surfStakingContract = controlCfg.getContractAddressOrFail(IdxControlCfgSurfStakingDapp)
 let gnsbtControllerContract = controlCfg.getContractAddressOrFail(IdxControlCfgGnsbtControllerDapp)
 let restV2Contract = controlCfg.getContractAddressOrFail(IdxControlCfgRestV2Dapp)
+let governanceContract = controlCfg.getContractAddressOrFail(IdxControlCfgGovernanceDapp)
 
 let neutrinoAssetIdString = neutrinoContract.getStringOrFail(keyNeutrinoAssetId())
 let neutrinoAssetId = fromBase58String(neutrinoAssetIdString)
@@ -387,8 +393,10 @@ func neutrinoConfigREADONLY() = {
   let surfVotingPowerRestrictivePeriod  = surfStakingCfg[2].asInt()
   let brToStartSurfTransformation       = surfStakingCfg[3].asInt()
   let shutdown                          = controlContract.getBoolean("is_blocked").valueOrElse(false)
+  let votingCreationCost = governanceContract.getInteger(keyPaymentRequired()).valueOrElse(DEFAULTPAYMENT)
+  let votingCreationGnsbtNeeded = governanceContract.getInteger(keyGnsbtRequired()).valueOrElse(DEFAULTCREATIONGNSBT)
 
-  ([], makeString(["%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%b%d%d%d%d%d",
+  ([], makeString(["%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%b%d%d%d%d%d%d%d",
       limitParamA.toString(),                         # 1
       limitParamB.toString(),                         # 2
       minWavesSwapAmt.toString(),                     # 3
@@ -410,7 +418,9 @@ func neutrinoConfigREADONLY() = {
       usdnLimitParamB.toString(),                     # 19
       brProtected.toString(),                         # 20
       wavesSwapDelay.toString(),                      # 21
-      usdnSwapDelay.toString()                        # 22
+      usdnSwapDelay.toString(),                       # 22
+      votingCreationCost.toString(),                  # 23
+      votingCreationGnsbtNeeded.toString()            # 24
     ], SEP))
 }
 
