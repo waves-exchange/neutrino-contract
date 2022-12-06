@@ -335,7 +335,7 @@ func replaceApprovedNode(oldNodeAddrStr: String, newNodeAddrStr: String, groupNu
 
   let approvedNodeListS = this.getStringOrFail(keyApprovedNodeList())
   if (!approvedNodeListS.contains(oldNodeAddrStr)) then throw("approvedNodeList does not contain " + oldNodeAddrStr) else
-  let updatedNodeListS = approvedNodeListS.split_4C(oldNodeAddrStr).makeString(newNodeAddrStr)
+  let updatedNodeListS = approvedNodeListS.split_4C(oldNodeAddrStr).makeString_2C(newNodeAddrStr)
 
   let oldNodeAddr = oldNodeAddrStr.addressFromStringValue()
   let beneficiaryAddress = resolveBeneficiaries(oldNodeAddr, oldNodeAddr)
