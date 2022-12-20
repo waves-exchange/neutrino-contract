@@ -220,6 +220,7 @@ func calcApr(stakingAcc: Address, periodInDays: Int, incomeForPeriod: Int, staki
   let totalStaked = stakingAcc.getIntOrElse("%s%s__stats__activeTotalLocked", 1)
   let totalStakedInUsdn = fraction(totalStaked, stakingAssetPriceToUsdnX6, MULT6)
 
+  if (incomeForPeriod < 0) then 0 else
   fraction(incomeForPeriod * MULT6, 365, totalStakedInUsdn * periodInDays)
 }
 
