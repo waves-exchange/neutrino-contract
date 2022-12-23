@@ -8,7 +8,7 @@ let SEP = "__"
 let LISTSEP = ":"
 let DEFAULTQUORUM = 500_000 # 0.5 * 10^6 = 50%
 let URLPATTERN = "https://forum.neutrino.at/"
-let MAXTITLE = 160
+let MAXTITLE = 250
 let MAXURL = 250
 let MAXVOTINGTIME = 1_209_600_000 # 2*7*24*60*60*1000ms
 let MULT6 = 1_000_000
@@ -16,6 +16,7 @@ let DEFAULTPAYMENT = 10_0000_0000
 let DEFAULTCREATIONGNSBT = 1000_000000
 let PASTMARGIN = 7200_000 # 2*60*60*1000ms
 let FUTUREMARGIN = 5400_000 # 1.5*60*60*1000ms
+let DEFAULTFIRSTPROPOSAL = 111
 
 # indices to access proposal data fields (static)
 let govIdxProposalTxId = 1
@@ -75,6 +76,7 @@ func keyQuorumRequiredPercent(type: String) = "%s%s__quorumRequired__" + type
 func keyPaymentRequired() = "%s__paymentRequired"
 func keyGnsbtRequired() = "%s__gNsbtRequired"
 func keyLastProposalId() = "%s__proposalId"
+func keyFirstProposalId() = "%s__firstProposalId"
 func keyLastUpdateVersion() = "%s__updateVersion"
 func keyProposalStatusDataById(proposalId: Int) = "%s%d__proposalStatusData__" + proposalId.toString()
 func keyProposalDataById(proposalId: Int) = "%s%d__proposalData__" + proposalId.toString()
@@ -281,7 +283,7 @@ func ExecutionHistory(updateVersion: Int, title: String, url: String, proposalId
 
 # gNsbtReqToInit=1000000, wavesReqToInit=200000000, quorumReqPercIdea=500000, quorumReqPercUpdate=500000
 @Callable(i)
-func constructor(controlAddr: String, gNsbtReqToInit: Int, wavesReqToInit: Int, quorumReqPercIdea: Int, quorumReqPercUpdate: Int) = {
+func constructorV1(controlAddr: String, gNsbtReqToInit: Int, wavesReqToInit: Int, quorumReqPercIdea: Int, quorumReqPercUpdate: Int) = {
     if (i.caller != this) then throw("Permission denied") else
     [StringEntry(keyControlAddress(), controlAddr),
     IntegerEntry(keyGnsbtRequired(), gNsbtReqToInit),
@@ -339,7 +341,7 @@ func castVote(proposalId: Int, choice: Int) = {
 
     let numVotersByProposalId = getIntOrElse(keyNumUniqueVotersByProposalId(proposalId), 0)
     let oldAverUniqueVoters6 = getIntOrElse(keyStatsAverUniqueVoters(), 0) # 6 decimals
-    let numProposals = getIntegerValue(keyLastProposalId())
+    let numProposals = getIntegerValue(keyLastProposalId()) - getInteger(keyFirstProposalId()).valueOrElse(DEFAULTFIRSTPROPOSAL) + 1
     let uniqueDiff = if (oldUserVotes == 0) then 1 else 0
     let newAverUniqueVoters6 = oldAverUniqueVoters6 + fraction(uniqueDiff, MULT6, numProposals)
 

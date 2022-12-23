@@ -386,31 +386,45 @@ func onStake(userAddressStr: String, amountToAdd: Int) = {
     .valueOrElse(getIntOrZero(keyLockParamUserAmount(userAddressStr.addressFromStringValue()))) # initial migration from legacy
   let userTeen = getIntOrZero(keyUserTeen(userAddressStr))
   let userKid = getIntOrZero(keyUserKid(userAddressStr))
-  let tmp = if (period > getIntOrZero(keyLastUserPeriodProcessed(userAddressStr))) then 
-      (totalMature + userTeen, # new totalMature
-      totalTeen + (userKid - userTeen), # new totalTeen
-      totalKid - userKid, # new totalKid
-      userMature + userTeen, # new userMature
-      userKid, # new userTeen
-      0, # new userKid
+  let lastUserPeriod = getIntOrZero(keyLastUserPeriodProcessed(userAddressStr))
+  let tmp = if (lastUserPeriod == 0 || period == lastUserPeriod + 1) then 
+      (totalMature + userTeen, # tempTotalMature
+      totalTeen + (userKid - userTeen), # tempTotalTeen (can become negative and this is normal)
+      totalKid - userKid, # tempTotalKid (can become negative and this is normal)
+      userMature + userTeen, # final userMature
+      userKid, # tempUserTeen (newTeen will be added later)
+      0, # tempUserKid (newKid will be added later)
+      [IntegerEntry(keyLastUserPeriodProcessed(userAddressStr), period)])
+    else if (period > lastUserPeriod + 1) then # for user it is possible to skip several periods, then his kids should mature immediately
+      (totalMature + userTeen + userKid, # tempTotalMature
+      totalTeen - userTeen, # tempTotalTeen (can become negative and this is normal)
+      totalKid - userKid, # tempTotalKid (can become negative and this is normal)
+      userMature + userTeen + userKid, # final userMature
+      0, # tempUserTeen (newTeen will be added later)
+      0, # tempUserKid (newKid will be added later)
       [IntegerEntry(keyLastUserPeriodProcessed(userAddressStr), period)])
     else 
       (totalMature, totalTeen, totalKid, userMature, userTeen,  userKid, [])
   
-  let totals = if (period > getIntOrZero(keyLastTotalsPeriodProcessed())) then # stake() called before deposit(), so process the totals here
-    ([IntegerEntry(keyTotalMature(), tmp._1 + tmp._2),
-    IntegerEntry(keyTotalTeen(), tmp._3),
-    IntegerEntry(keyTotalKid(), 0),
-    IntegerEntry(keyLastTotalsPeriodProcessed(), period)], tmp._1 + tmp._2, tmp._3, 0) else ([], totalMature, totalTeen, totalKid)
-
-  let newKid = fraction(amountToAdd, height % W2, W2) # split all new-staked gNSBT in proportion kid : amountToAdd = remainder : W2
+  # split all new-staked gNSBT in proportion kid : amountToAdd = remainder : W2
+  let newKid = fraction(amountToAdd, height % W2, W2) 
   let newTeen = amountToAdd - newKid
   
-  (totals._1 :+ 
-    IntegerEntry(keyUserMature(userAddressStr), tmp._4) :+
-    IntegerEntry(keyUserTeen(userAddressStr), tmp._5 + newTeen) :+
-    IntegerEntry(keyUserKid(userAddressStr), tmp._6 + newKid)
-    ++ tmp._7, 
+  let totals = if (period > getIntOrZero(keyLastTotalsPeriodProcessed())) then # stake() called before deposit(), so process the totals here
+    ([IntegerEntry(keyTotalMature(), tmp._1 + tmp._2), # tempTotalMature added with tempTotalTeen
+      IntegerEntry(keyTotalTeen(), tmp._3 + newTeen), # moved from tempTotalKid, added newTeen from stake
+      IntegerEntry(keyTotalKid(), newKid), # emptied tempTotalKid, added newKid from stake
+      IntegerEntry(keyLastTotalsPeriodProcessed(), period)], tmp._1 + tmp._2, tmp._3 + newTeen, newKid) # (actions, totalMature, totalTeen, totalKid)
+    else # don't switch totalsPeriod, but still should update totals
+    ([IntegerEntry(keyTotalMature(), tmp._1), # need to save totalMature, because it could be changed due to user's period shift
+      IntegerEntry(keyTotalTeen(), tmp._2 + newTeen),
+      IntegerEntry(keyTotalKid(), tmp._3 + newKid)], tmp._1, tmp._2 + newTeen, tmp._3 + newKid) # (actions, totalMature, totalTeen, totalKid)
+
+  (totals._1 # totals actions
+    :+ IntegerEntry(keyUserMature(userAddressStr), tmp._4) 
+    :+ IntegerEntry(keyUserTeen(userAddressStr), tmp._5 + newTeen) 
+    :+ IntegerEntry(keyUserKid(userAddressStr), tmp._6 + newKid)
+    ++ tmp._7, # user period action
     totals._2, # totalMature
     totals._3, # totalTeen
     totals._4, # totalKid
@@ -423,7 +437,7 @@ let IdxNewDiff  = 0
 let IdxNewGnsbt = 1
 
 func userDecrease(gnsbt: Int, diff: Int) = {
-  if (gnsbt <= diff) then [diff - gnsbt, 0] else [0, gnsbt - diff] # returns newDiff, newGnsbt
+  if (gnsbt <= diff) then [diff - gnsbt, 0] else [0, gnsbt - diff] # returns remainDiff, remainGnsbt
 }
 
 func onUnstake(userAddressStr: String, amountToRemove: Int) = {
@@ -442,29 +456,39 @@ func onUnstake(userAddressStr: String, amountToRemove: Int) = {
   let ut = userDecrease(userTeen, um[IdxNewDiff])
   let uk = userDecrease(userKid, ut[IdxNewDiff])
   if (uk[IdxNewDiff] != 0) then throw("Should not happen") else
-
+  # when user period switches, we should prepare corresponding totals change, so they will apply next totals period
   let tmp = if (period > getIntOrZero(keyLastUserPeriodProcessed(userAddressStr))) then 
-      (totalMature + ut[IdxNewGnsbt], # new totalMature
-      totalTeen + (uk[IdxNewGnsbt] - ut[IdxNewGnsbt]), # new totalTeen
-      totalKid - uk[IdxNewGnsbt], # new totalKid
+      (totalMature - userMature + um[IdxNewGnsbt] + ut[IdxNewGnsbt], # new totalMature
+      totalTeen - userTeen + uk[IdxNewGnsbt], # new totalTeen
+      totalKid - userKid, # new totalKid
       um[IdxNewGnsbt] + ut[IdxNewGnsbt], # new userMature
       uk[IdxNewGnsbt], # new userTeen
       0, # new userKid
       [IntegerEntry(keyLastUserPeriodProcessed(userAddressStr), period)])
     else 
-      (totalMature, totalTeen, totalKid, um[IdxNewGnsbt], ut[IdxNewGnsbt], uk[IdxNewGnsbt], [])
+      (totalMature - userMature + um[IdxNewGnsbt], 
+      totalTeen - userTeen + ut[IdxNewGnsbt], 
+      totalKid - userKid + uk[IdxNewGnsbt], 
+      um[IdxNewGnsbt], 
+      ut[IdxNewGnsbt], 
+      uk[IdxNewGnsbt], 
+      [])
 
   let totals = if (period > getIntOrZero(keyLastTotalsPeriodProcessed())) then # unstake() called before deposit(), so process the totals here
-    ([IntegerEntry(keyTotalMature(), tmp._1 + tmp._2),
-    IntegerEntry(keyTotalTeen(), tmp._3),
-    IntegerEntry(keyTotalKid(), 0),
-    IntegerEntry(keyLastTotalsPeriodProcessed(), period)], tmp._1 + tmp._2, tmp._3, 0) else ([], totalMature, totalTeen, totalKid)
+    ([IntegerEntry(keyTotalMature(), tmp._1 + tmp._2), # decreased by (userMature-um[IdxNewGnsbt])
+      IntegerEntry(keyTotalTeen(), tmp._3),
+      IntegerEntry(keyTotalKid(), 0), # should decrease by (userKid-uk[IdxNewGnsbt])
+      IntegerEntry(keyLastTotalsPeriodProcessed(), period)], tmp._1 + tmp._2, tmp._3, 0) 
+    else # don't switch totalsPeriod, but still should update totals
+    ([IntegerEntry(keyTotalMature(), tmp._1),
+      IntegerEntry(keyTotalTeen(), tmp._2),
+      IntegerEntry(keyTotalKid(), tmp._3)], tmp._1, tmp._2, tmp._3) # (actions, totalMature, totalTeen, totalKid)
 
-  (totals._1 :+
-    IntegerEntry(keyUserMature(userAddressStr), tmp._4) :+
-    IntegerEntry(keyUserTeen(userAddressStr), tmp._5) :+
-    IntegerEntry(keyUserKid(userAddressStr), tmp._6)
-    ++ tmp._7,
+  (totals._1 # totals actions
+    :+ IntegerEntry(keyUserMature(userAddressStr), tmp._4) 
+    :+ IntegerEntry(keyUserTeen(userAddressStr), tmp._5) 
+    :+ IntegerEntry(keyUserKid(userAddressStr), tmp._6)
+    ++ tmp._7, # user period action
     totals._2, # totalMature
     totals._3, # totalTeen
     totals._4, # totalKid
@@ -485,7 +509,7 @@ func commonStake(userAddress: Address, i: Invocation) = {
 
   let userAddressStr = userAddress.toString()
 
-  let r = onStake(userAddressStr, amount)
+  let r = onStake(userAddressStr, amount) # (actions, totalMature, totalTeen, totalKid, userMature, userTeen, userKid)
 
   let mergedData = mergeStake(userAddress, amount, r._6, r._7)
   let isNewUser             = mergedData._1
@@ -541,7 +565,7 @@ func commonClaim(userAddress: Address, i: Invocation) = {
 }
 
 @Callable(i)
-func constructor(minLockAmount: Int, supportedRewardAssets: String, stakedAssetId: String) = {
+func constructorV1(minLockAmount: Int, supportedRewardAssets: String, stakedAssetId: String) = {
   if (i.caller != this) then throw("Permission denied") else
   [
     IntegerEntry(keyMinLockAmount(), minLockAmount),
@@ -729,7 +753,7 @@ func gnsbtFromSurfSYSREADONLY(surfAmt: Int) = {
 @Callable(i)
 func configSYSREADONLY() = {
   let minLockAmt = getIntegerValue(keyMinLockAmount())
-  let surfVotingPowerRestrictivePeriod = DEFAULTPERIOD
+  let surfVotingPowerRestrictivePeriod = getIntOrElse(keyVpPeriodDuration(), DEFAULTPERIOD)
   let brToStartSurfTransformation = 1150000
 
   ([], [minLockAmt, gnsbtFromSurfCoeff * MULT6, surfVotingPowerRestrictivePeriod, brToStartSurfTransformation])
