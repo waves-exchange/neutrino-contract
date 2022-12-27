@@ -211,8 +211,11 @@ func calcUsdnIncomeForPeriod(stakingAcc: Address, days: Int) = {
   let startTimestamp = currStartOfDay - DAYMILLIS * (days + 1)
   let endTimestamp = currStartOfDay - DAYMILLIS
 
-  let startUsdnAmt  = stakingAcc.readUsdnIncomeForDay(startTimestamp, neutrinoMetrics)
+  let startUsdnAmtTMP  = stakingAcc.readUsdnIncomeForDay(startTimestamp, neutrinoMetrics)
   let endUsdnAmt    = stakingAcc.readUsdnIncomeForDay(endTimestamp, neutrinoMetrics)
+  # there is possibility of holes in stats accumulations, it means that swaps are rarely used and APR is about zero
+  let startUsdnAmt  = if (startUsdnAmtTMP == 0) then endUsdnAmt else startUsdnAmtTMP
+
   endUsdnAmt - startUsdnAmt
 }
 
