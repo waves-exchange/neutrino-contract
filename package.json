@@ -24,6 +24,6 @@
     "@waves/ts-lib-crypto": "^1.4.3",
     "@waves/waves-transactions": "^3.25.3",
     "axios": "^0.19.2",
-    "mocha": "^7.1.1"
+    "mocha": "^10.2.0"
   }
 }
