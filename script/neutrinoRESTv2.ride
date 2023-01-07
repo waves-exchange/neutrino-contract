@@ -108,7 +108,7 @@ func asSwapParamsSTRUCT(val: Any) = {
 
 func asWithdrawResultSTRUCT(val: Any) = {
   match val {
-    case struct: (Int,ByteVector|Unit,Int,Int,Int,Int,Int) => struct
+    case struct: (Int,ByteVector|Unit,Int,Int,Int,Int,Int,Int) => struct
     case _ => throw("fail to cast into WithdrawResult")
   }
 }
@@ -474,12 +474,13 @@ func swapInfoREADONLY(userAddressStrOrEmpty: String, amount: Int, assetIdStr: St
   let unleaseAmt      = withdrawTuple._5
   let outFeeAmount    = withdrawTuple._6
   let outAmtGross     = withdrawTuple._7
+  let withdrawPrice   = withdrawTuple._8
 
   ([], makeString(["%d%d%d%d%d%d%d%d",
     outNetAmount.toString(),    #1
     outSurfAmt.toString(),      #2
     outFeeAmount.toString(),    #3
-    price.toString(),           #4
+    withdrawPrice.toString(),   #4
     blcks2LmtReset.toString(),  #5
     limitMaxWaves.toString(),   #6
     limitMaxUsdn.toString(),    #7

@@ -43,6 +43,8 @@ let nMetricIdxBR = 8 # BR with 6 decimals
 let nMetricIdxNsbtSupply = 9
 let nMetricIdxMaxNsbtSupply = 10
 let nMetricIdxSurfSupply = 11
+let nMetricUsdnUsdtPeg = 12
+let nMetricCurrentPriceAdj = 13
 
 #-------this keys---------
 func keyNeutrinoAddress()       = "%s%s__config__neutrinoAddress"
@@ -50,6 +52,8 @@ func keySwapAmountAParam()      = "%s%s__config__swapAParam"
 func keySwapAmountBParam()      = "%s%s__config__swapBParam"
 func keyUsdnSwapAmountAParam()  = "%s%s__config__usdnSwapAParam"
 func keyUsdnSwapAmountBParam()  = "%s%s__config__usdnSwapBParam"
+func keyPriceAdjMinCoeff()      = "%s%s__priceAdj__minCoefficient"
+func keyPriceAdjArbRegulator()  = "%s%s__priceAdj__arbRegulator"
 
 #-------neutrino keys------
 func keyNeutrinoAssetId()            = "neutrino_asset_id"
@@ -96,17 +100,28 @@ func asString(val: Any) = {
     case _ => throw("fail to cast into String")
   }
 }
+func asPriceSTRUCT(v: Any) = {
+  match v {
+    case struct: (Int, Int, Int, Int) => struct
+    case _ => throw("fail to cast into PriceSTRUCT")
+  }
+}
 
 # data indices from controlConfig
-let IdxControlCfgNeutrinoDapp     = 1
-let IdxControlCfgAuctionDapp      = 2
-let IdxControlCfgRpdDapp          = 3
-let IdxControlCfgMathDapp         = 4
-let IdxControlCfgLiquidationDapp  = 5
-let IdxControlCfgRestDapp         = 6
-let IdxControlCfgNodeRegistryDapp = 7
-let IdxControlCfgNsbtStakingDapp  = 8
-let IdxControlCfgMediatorDapp     = 9
+let IdxControlCfgNeutrinoDapp         = 1
+let IdxControlCfgAuctionDapp          = 2
+let IdxControlCfgRpdDapp              = 3
+let IdxControlCfgMathDapp             = 4
+let IdxControlCfgLiquidationDapp      = 5
+let IdxControlCfgRestDapp             = 6
+let IdxControlCfgNodeRegistryDapp     = 7
+let IdxControlCfgNsbtStakingDapp      = 8
+let IdxControlCfgMediatorDapp         = 9
+let IdxControlCfgSurfStakingDapp      = 10
+let IdxControlCfgGnsbtControllerDapp  = 11
+let IdxControlCfgRestV2Dapp           = 12
+let IdxControlCfgGovernanceDapp       = 13
+let IdxControlCfgPegProviderDapp      = 14
 
 func keyControlAddress() = "%s%s__config__controlAddress"
 func keyControlCfg()     = "%s__controlConfig"
@@ -122,6 +137,7 @@ let neutrinoContract = controlCfg.getContractAddressOrFail(IdxControlCfgNeutrino
 let auctionContract = controlCfg.getContractAddressOrFail(IdxControlCfgAuctionDapp)
 let liquidationContract = controlCfg.getContractAddressOrFail(IdxControlCfgLiquidationDapp)
 let usdnStakingContract = controlCfg.getContractAddressOrFail(IdxControlCfgRpdDapp)
+let pegProviderContract = controlCfg.getContractAddressOrFail(IdxControlCfgPegProviderDapp)
 
 let neutrinoAssetIdStr    = neutrinoContract.getStringOrFail(keyNeutrinoAssetId())
 let neutrinoAssetId       = fromBase58String(neutrinoAssetIdStr)
@@ -140,12 +156,28 @@ func calcUsdnOutOfMarketSupply() = {
   FOLD<7>(outOfMarketAddressList.split(SEP), 0, balancesSUM)
 }
 
+func readCurrentAvgPeg() = {
+  pegProviderContract.invoke("price", [4], []).asPriceSTRUCT()._2
+}
+
+func adjustPrice(priceX6: Int, usdnUsdtPegX6: Int) = {
+  let minCoeffX6 = this.getInteger(keyPriceAdjMinCoeff()).valueOrElse(600_000)
+  let arbRegulatorX6 = this.getInteger(keyPriceAdjArbRegulator()).valueOrElse(150_000)
+
+  let maxPriceCoeffX6 = max([minCoeffX6, fraction(MULT6 + arbRegulatorX6, usdnUsdtPegX6, MULT6)])
+  let priceCoeffX6 = min([maxPriceCoeffX6, MULT6])
+
+  fraction(priceX6, MULT6, priceCoeffX6)
+}
+
 # GLOBAL SYSTEM PARAMETERS
 let currentPrice = controlContract.getIntegerValue(keyPrice()) # The value from control.ride
+let usdnUsdtPegX6 = readCurrentAvgPeg()
+let currentPriceAdj = adjustPrice(currentPrice, usdnUsdtPegX6)
 let neutrinoLockedBalance = neutrinoContract.getInteger(keyNeutrinoLockedBalance()).valueOrElse(0) #locked balance from USDN -> WAVES swap
 let wavesLockedBalance = neutrinoContract.getInteger(keyWavesLockedBalance()).valueOrElse(0)   #locked balance from WAVES -> USDN swap
 let reserve = wavesBalance(neutrinoContract).regular - wavesLockedBalance #waves reserves to cover USDN supply
-let reservesInUsdn = convertWavesToNeutrino(reserve, currentPrice)
+let reservesInUsdn = convertWavesToNeutrino(reserve, currentPriceAdj)
 let neutrinoOutOfMarketSupply = calcUsdnOutOfMarketSupply()
 let neutrinoTotalSupply = neutrinoLockedBalance
     + assetInfo(neutrinoAssetId).value().quantity
@@ -300,8 +332,22 @@ func calcNeutinoMetricsREADONLY() = {
   let nsbtSupply = nsbtSupplyMAX - auctionContract.assetBalance(nsbtAssetId)
   let surfSupply = assetInfo(surfAssetId).value().quantity
 
-  ([], [currentPrice, neutrinoLockedBalance, wavesLockedBalance, reserve, reservesInUsdn,
-    neutrinoSupply, neutrinoOutOfMarketSupply, neutrinoTotalSupply, BR, nsbtSupply, nsbtSupplyMAX, surfSupply])
+  ([], [
+    currentPrice,               # 0
+    neutrinoLockedBalance,      # 1
+    wavesLockedBalance,         # 2
+    reserve,                    # 3
+    reservesInUsdn,             # 4
+    neutrinoSupply,             # 5
+    neutrinoOutOfMarketSupply,  # 6
+    neutrinoTotalSupply,        # 7
+    BR,                         # 8
+    nsbtSupply,                 # 9
+    nsbtSupplyMAX,              # 10
+    surfSupply,                 # 11
+    usdnUsdtPegX6,              # 12
+    currentPriceAdj             # 13
+  ])
 }
 
 @Callable(i)

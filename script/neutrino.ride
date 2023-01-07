@@ -445,6 +445,8 @@ let nMetricIdxBR = 8 # BR with 6 decimals
 let nMetricIdxNsbtSupply = 9
 let nMetricIdxMaxNsbtSupply = 10
 let nMetricIdxSurfSupply = 11
+let nMetricUsdnUsdtPeg = 12
+let nMetricCurrentPriceAdj = 13
 
 # surfFunctionREADONLY result array indices
 let bFuncIdxSurf = 0
@@ -467,6 +469,7 @@ func calcWithdrawW2U(wavesIn: Int, price: Int) = {
     0,                # part of inAmount that is converted into SURF to protect BR
     unit,             # inAssetId is WAVES
     0,                # amount to unlease
+    price,            # withdraw price
     wavesIn,          # debug - part of inAmount that is swapped into out asset
     0,                # debug - max allowed usdn amount to reach BR protection level
     0,                # debug - part of inAmount that is used BEFORE reaching BR protection level
@@ -497,6 +500,7 @@ func calcWithdrawU2W(usdnIn: Int, price: Int, br: Int, reservesInUsdn: Int, usdn
     usdn2SURF,                  # part of inAmount that is converted into SURF to protect BR
     neutrinoAssetId,            # inAssetId is WAVES
     outAmtGross,                # amount to unlease
+    price,                      # withdraw price
     allowedUsdn,                # debug - part of inAmount that is swapped into out asset
     maxAllowedUsdnBeforeMinBr,  # debug - max allowed usdn amount to reach BR protection level
     allowedUsdnBeforeMinBr,     # debug - part of inAmount that is used BEFORE reaching BR protection level
@@ -513,10 +517,11 @@ func calcWithdraw(swapType: String, inAmount: Int, price: Int, neutrinoMetrics: 
   let BR                = neutrinoMetrics[nMetricIdxBR].asInt()
   let reservesInUsdn    = neutrinoMetrics[nMetricIdxReserveInUsdn].asInt()
   let usdnSupply        = neutrinoMetrics[nMetricIdxUsdnSupply].asInt()
+  let priceAdj          = neutrinoMetrics[nMetricCurrentPriceAdj].asInt()
 
   let outDataTuple =
     if (swapType == "waves")    then calcWithdrawW2U(inAmount, price) else
-    if (swapType == "neutrino") then calcWithdrawU2W(inAmount, price, BR, reservesInUsdn, usdnSupply)
+    if (swapType == "neutrino") then calcWithdrawU2W(inAmount, priceAdj, BR, reservesInUsdn, usdnSupply)
     else throw("Unsupported swap type " + swapType)
 
   let outAmtGross       = outDataTuple._1
@@ -524,6 +529,7 @@ func calcWithdraw(swapType: String, inAmount: Int, price: Int, neutrinoMetrics: 
   let inAmtToSurfPart   = outDataTuple._3
   let inAssetId         = outDataTuple._4
   let unleaseAmt        = outDataTuple._5
+  let withdrawPrice     = outDataTuple._6
 
   let payoutsArray = applyFees(outAmtGross, inAmtToSurfPart, outFeePart)
   let outNetAmt = payoutsArray[IdxNetAmount]
@@ -535,7 +541,8 @@ func calcWithdraw(swapType: String, inAmount: Int, price: Int, neutrinoMetrics: 
   }
 
   # WARNING: if u modify then need to check RestV2
-  (outNetAmt, outAssetId, outSurfAmt, inAmtToSurfPart, unleaseAmt, outFeeAmt, outAmtGross)
+  #   1         2           3             4               5           6         7             8
+  (outNetAmt, outAssetId, outSurfAmt, inAmtToSurfPart, unleaseAmt, outFeeAmt, outAmtGross, withdrawPrice)
 }
 
 # TODO move everything into withdraw - no need to keep separate function
@@ -574,6 +581,7 @@ func commonWithdraw(account : String, index: Int, swapTxId: String, withdrawTxId
     let unleaseAmt      = withdrawTuple._5
     let outFeeAmount    = withdrawTuple._6
     let outAmtGross     = withdrawTuple._7
+    let withdrawPrice   = withdrawTuple._8
 
     if (outAmtGross <= 0) then throw("balance equals zero") else
 
@@ -584,7 +592,7 @@ func commonWithdraw(account : String, index: Int, swapTxId: String, withdrawTxId
       ScriptTransfer(userAddress, outNetAmount, outAssetId),
       StringEntry(
         swapKEY(account, swapTxId),
-        finishSwapDATA(dataArray, priceByIndex, outNetAmount, outFeeAmount, unlockHeight, index, withdrawTxId, outSurfAmt, BR))
+        finishSwapDATA(dataArray, withdrawPrice, outNetAmount, outFeeAmount, unlockHeight, index, withdrawTxId, outSurfAmt, BR))
     ]
 
     strict surfCondition = if (outSurfAmt > 0) then {

@@ -282,24 +282,12 @@ func distributeMinerReward(beneficiaryAddressStr: String) = {
 
   let beneficiaryAmt = fraction(minedAmt, beneficiaryPart, MULT6)
   let protocolAmt = minedAmt - beneficiaryAmt
-  let protocolAmt1 = 0
-  let protocolAmt2 = protocolAmt - protocolAmt1
-
-  let savingsAddress = this.getStrOrElse(keySavingsAddress(), "3PC7DBimauyKytx8tXhKo5u2ECb6FsndYKH").addressFromStringValue()
-  let savingsAmt = savingsAddress.invoke("withdraw", [protocolAmt2], []).asInt()
-
-  let swopfiAddress = this.getStrOrElse(keySwopfiUsdtUsdnPoolAddress(), "3PHaNgomBkrvEL2QnuJarQVJa71wjw9qiqG").addressFromStringValue()
-  let swopfiResult    = swopfiAddress.invoke("exchange", [1], [AttachedPayment(unit, protocolAmt2 + savingsAmt)]).asAnyList()
-  let receivedUsdnAmt = swopfiResult[0].asInt()
-  let receivedAssetId = swopfiResult[1].asByteVecot()
-
-  if (usdnAssetId != receivedAssetId) then throw("invalid asset id received during swopfi exchange") else
 
   [ScriptTransfer(beneficiaryAddress,    beneficiaryAmt, unit),
-    ScriptTransfer(masterNodeAddress,   receivedUsdnAmt,  usdnAssetId),
+    ScriptTransfer(neutrinoContract,   protocolAmt,  unit),
     ScriptTransfer(txRewardReceiver,  callReward,    unit),
-    RewardHistoryEntry(minerAddress, i.transactionId, minedAmt, beneficiaryAmt, protocolAmt, protocolAmt1, protocolAmt2),
-    RewardTotalsEntry(minerAddress, minedAmt, beneficiaryAmt, protocolAmt, protocolAmt1, protocolAmt2)
+    RewardHistoryEntry(minerAddress, i.transactionId, minedAmt, beneficiaryAmt, protocolAmt, protocolAmt, 0),
+    RewardTotalsEntry(minerAddress, minedAmt, beneficiaryAmt, protocolAmt, protocolAmt, 0)
   ]
 }
 
