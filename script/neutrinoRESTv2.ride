@@ -494,7 +494,7 @@ func usdnStakingAprREADONLY(days: Int) = {
   let neutrinoMetrics = mathContract.invoke("calcNeutinoMetricsREADONLY",[],[]).asAnyList()
   let currentPrice    = neutrinoMetrics[nMetricIdxPrice].asInt()
 
-  let wavesIncome = 6000*MULT8 # TODO hardocoded income - need to read it dynamically
+  let wavesIncome = 0*MULT8 # TODO hardocoded income - need to read it dynamically
   let incomeForPeriod = fraction(wavesIncome, currentPrice, MULT8)
 
   let apr = rpdContract.calcApr(tmpDays, incomeForPeriod, MULT6)
