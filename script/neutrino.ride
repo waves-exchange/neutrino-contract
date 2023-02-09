@@ -899,8 +899,8 @@ func replaceCommunityNode(oldAddrStr: String, newAddrStr: String, groupNum: Int,
   let oldLeaseIdKey = getLeaseIdByAddressKey(oldAddrStr)
   let oldLeaseAmtKey = getLeaseAmountByAddressKey(oldAddrStr)
   let leaseAmt = getIntegerValue(oldLeaseAmtKey)
-  let newLeaseIdKey = getLeaseIdByAddressKey(oldAddrStr)
-  let newLeaseAmtKey = getLeaseAmountByAddressKey(oldAddrStr)
+  let newLeaseIdKey = getLeaseIdByAddressKey(newAddrStr)
+  let newLeaseAmtKey = getLeaseAmountByAddressKey(newAddrStr)
   let newLease = Lease(newAddrStr.addressFromStringValue(), leaseAmt)
   let updatedGroupNodeListS = groupNodeListS.split(oldAddrStr).makeString(newAddrStr)
 
