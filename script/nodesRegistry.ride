@@ -204,7 +204,7 @@ func readNodeDataAndValidateStatus(nodeAddr: String, expectedStatus: String) = {
 }
 
 @Callable(i)
-func constructor(depositAmount: Int, neutrinoAddressStr: String, masterNodeAddressStr: String, protocolPartX6: Int, benificaryPartX6: Int) = {
+func constructorV1(depositAmount: Int, neutrinoAddressStr: String, masterNodeAddressStr: String, protocolPartX6: Int, benificaryPartX6: Int) = {
   if (i.caller != this) then throw("permissions denied") else
   if (depositAmount < 0) then throw("depositAmount less then zero") else
   if (protocolPartX6 < 0) then throw("protocolPartX6 less then zero") else

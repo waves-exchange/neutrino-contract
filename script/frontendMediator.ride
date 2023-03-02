@@ -1,4 +1,4 @@
-{-# STDLIB_VERSION 5 #-}
+{-# STDLIB_VERSION 6 #-}
 {-# CONTENT_TYPE DAPP #-}
 {-# SCRIPT_TYPE ACCOUNT #-}
 
@@ -20,7 +20,7 @@ func getStringOrFail(address: Address, key: String) = address.getString(key).val
 func keyControlAddress() = "%s%s__config__controlAddress"
 func keyControlCfg()     = "%s__controlConfig"
 
-func readControlCfgOrFail(control: Address) = control.getStringOrFail(keyControlCfg()).split(SEP)
+func readControlCfgOrFail(control: Address) = split_4C(control.getStringOrFail(keyControlCfg()), SEP)
 func getContractAddressOrFail(controlCfg: List[String], idx: Int) = controlCfg[idx].addressFromString()
   .valueOrErrorMessage("Control cfg doesn't contain address at index " + idx.toString())
 
@@ -79,8 +79,38 @@ func genericV2READONLY(x: List[(String, String, List[Any])]) = {
   FOLD<10>(x, [], call)
 }
 
+# tuple items:
+# 1 - dApp address
+# 2 - operation type (invoke, binKey, strKey etc)
+# 3 - func or key name
+# 4 - params to pass into func (if operation type is "invoke")
+#
+# expr - [("3MyN19SDzDpXyEtabWvag2P5mkeFrdFVd4h", "strKey", "supportedRewardAssets", []), ("3Mxd5o7PwH76ZkN8zG4xwDLubEnbkaihKzi", "invoke", "buyNsbtREADONLY", [1000])]
+func genericV3READONLY(params: List[(String, String, String, List[Any])]) = {
+
+  func call(foldResult: List[Any], foldParams: (String, String, String, List[Any])) = {
+    let dApp = Address(fromBase58String(foldParams._1))
+    let operationType = foldParams._2
+    let funcOrKeyName = foldParams._3
+    let funcParams = foldParams._4
+    let operationResult =
+      if (operationType == "invoke") then dApp.invoke(funcOrKeyName, funcParams, [])
+      else {
+        if (operationType == "binKey") then dApp.getBinary(funcOrKeyName)
+        else if (operationType == "boolKey") then dApp.getBoolean(funcOrKeyName)
+        else if (operationType == "intKey") then dApp.getInteger(funcOrKeyName)
+        else if (operationType == "strKey") then dApp.getString(funcOrKeyName)
+        else throw("not supported operation type: " + operationType)
+      }
+
+    foldResult :+ operationResult
+  }
+
+  FOLD<10>(params, [], call)
+}
+
 @Callable(i)
-func constructor(controlAddress58: String, restAddress58: String) = {
+func constructorV1(controlAddress58: String, restAddress58: String) = {
   if (i.caller != this) then throw("not authorized") else
   [
       StringEntry(keyControlAddress(), controlAddress58),

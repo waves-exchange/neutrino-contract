@@ -48,7 +48,7 @@ let neutrinoDapp      = controlCfg.getContractAddressOrFail(IdxControlCfgNeutrin
 let nodeRegistryDapp  = controlCfg.getContractAddressOrFail(IdxControlCfgNodeRegistryDapp)
 
 @Callable(i)
-func constructor(controlAddressStr: String) = {
+func constructorV1(controlAddressStr: String) = {
   if (i.caller != this) then throw("permissions denied") else
   [StringEntry(keyControlAddress(), controlAddressStr.validateAddressOrFail())]
 }

@@ -455,7 +455,7 @@ func internalUnlock(stakingType: String, i: Invocation, unlockAmount: Int, asset
 ### LEGACY CODE -- END
 
 @Callable(i)
-func constructor(minLockAmount: Int, supportedRewardAssets: String, pStakedAssetId: String) = {
+func constructorV1(minLockAmount: Int, supportedRewardAssets: String, pStakedAssetId: String) = {
   if (i.caller != this) then throw("Permission denied") else
   [
     IntegerEntry(keyMinLockAmount(), minLockAmount),
