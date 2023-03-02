@@ -1,4 +1,4 @@
-{-# STDLIB_VERSION 5 #-}
+{-# STDLIB_VERSION 6 #-}
 {-# CONTENT_TYPE DAPP #-}
 {-# SCRIPT_TYPE ACCOUNT #-}
 
@@ -36,7 +36,7 @@ func getStringOrFail(address: Address, key: String) = address.getString(key).val
 func keyControlAddress() = "%s%s__config__controlAddress"
 func keyControlCfg()     = "%s__controlConfig"
 
-func readControlCfgOrFail(control: Address) = control.getStringOrFail(keyControlCfg()).split(SEP)
+func readControlCfgOrFail(control: Address) = split_4C(control.getStringOrFail(keyControlCfg()), SEP)
 func getContractAddressOrFail(controlCfg: List[String], idx: Int) = controlCfg[idx].addressFromString()
   .valueOrErrorMessage("Control cfg doesn't contain address at index " + idx.toString())
 
@@ -227,50 +227,8 @@ func findElementPosition(src: String, element: String, sep: String) = {
 
 
 let DepositTotalsPREFIX = "%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d"
+let defaultTotalsDATA = DepositTotalsPREFIX + "__0__0__0__0__0__0__0__0__0__0__0__0__0__0__0__0__0__0"
 
-func updateDepositTotals(currVal: String, idxToUpdate: Int, deltaAmt: Int) = {
-  let currArr = currVal.split(SEP)
-
-  func updDepTotByIdx(idx: Int) = {
-    if (idx != idxToUpdate) then currArr[idx] else (currArr[idx].parseIntValue() + deltaAmt).toString()
-  }
-
-  makeString([
-    DepositTotalsPREFIX,
-    updDepTotByIdx(1),
-    updDepTotByIdx(2),
-    updDepTotByIdx(3),
-    updDepTotByIdx(4),
-    updDepTotByIdx(5),
-    updDepTotByIdx(6),
-    updDepTotByIdx(7),
-    updDepTotByIdx(8),
-    updDepTotByIdx(9),
-    updDepTotByIdx(10),
-    updDepTotByIdx(11),
-    updDepTotByIdx(12),
-    updDepTotByIdx(13),
-    updDepTotByIdx(14),
-    updDepTotByIdx(15),
-    updDepTotByIdx(16),
-    updDepTotByIdx(17),
-    updDepTotByIdx(18)
-  ], SEP)
-}
-
-func DepositsTotalsEntries(depositAmount: Int, assetIdStr: String) = {
-  let startOfDay = toStartOfDay(lastBlock.timestamp)
-  let byDayKEY = keyStatsDepositAmtByDay(startOfDay)
-  let totalsKEY = keyStatsDepositAmtTotals()
-
-  let position    = findElementPosition(supportedAssetsStr, assetIdStr, "_")
-  let defaultDATA = DepositTotalsPREFIX + "__0__0__0__0__0__0__0__0__0__0__0__0__0__0__0__0__0__0"
-  let currTotalsDATA  = this.getString(totalsKEY).valueOrElse(defaultDATA)
-  let newTotalsDATA = updateDepositTotals(currTotalsDATA, position + 1, depositAmount)
-
-  [StringEntry(totalsKEY, newTotalsDATA),
-   StringEntry(byDayKEY, newTotalsDATA)]
-}
 
 func RewardEntries(isNewUser: Boolean, userAddress: String, stakedAmount: Int) = {
   let stakedAmountX = stakedAmount.toBigInt()
@@ -324,7 +282,7 @@ func RewardEntries(isNewUser: Boolean, userAddress: String, stakedAmount: Int) =
 func IncrementNotDistributedRewardEntry(tkn: String, amountInc: Int) = {
   let notDistributedRewardKEY = keyNotDistributedReward(tkn)
   let notDistributedReward = notDistributedRewardKEY.getIntOrElse(0)
-  [IntegerEntry(notDistributedRewardKEY, notDistributedReward + amountInc)]
+  IntegerEntry(notDistributedRewardKEY, notDistributedReward + amountInc)
 }
 
 func commonClaim(userAddress: Address, i: Invocation) = {
@@ -362,7 +320,7 @@ func commonClaim(userAddress: Address, i: Invocation) = {
 
 # init halfLife with 259200
 @Callable(i)
-func constructor(neutrinoContractAddress: String, mathContractAddress: String, minLockAmount: Int, halfLife: Int, supportedRewardAssets: String) = {
+func constructorV1(neutrinoContractAddress: String, mathContractAddress: String, minLockAmount: Int, halfLife: Int, supportedRewardAssets: String) = {
   if (i.caller != this) then throw("Permission denied") else
   [
     StringEntry(keyNeutrinoContractAddress(), neutrinoContractAddress), # ignored
@@ -437,44 +395,65 @@ func unstake(amount: Int) = {
 
 @Callable(i)
 func deposit() = {
-  if (i.payments.size() != 1) then throw("exact 1 payment is allowed only") else
-  let pmt = i.payments[0]
-  let amount = pmt.amount
-  let pmtAssetId = pmt.assetId.valueOrElse(WAVESID)
-  let pmtAssetIdStr = pmtAssetId.toBase58String()
-  let pmtMultX = if (pmtAssetId == WAVESID) then MULTX8 else MULTX6
-  let amountX = amount.toBigInt()
-
-  # read total staked
   let totalStaked = keyLockParamTotalAmount().getIntOrElse(0)
-  let totalStakedX = totalStaked.toBigInt()
-
   if (totalStaked < 0) then throw("TODO: case is not supported") else
-  # accumalate rewards if nobody stakes NSBT
-  if (totalStaked == 0) then IncrementNotDistributedRewardEntry(pmtAssetIdStr, amount) else
-
-  let rewardPerNsbtX18 = fraction(amountX, MULTX18, totalStakedX)
-
   let depositNumLastKEY = keyDepositNumLast()
   let depositNumLast = depositNumLastKEY.getIntOrElse(-1)
   let depositNumNew = depositNumLast + 1
 
-  if (!supportedAssetsStr.contains(pmtAssetIdStr)) then throw(supportedAssetsStr + " doesn't contain " + pmtAssetIdStr) else
+  let totalsKEY = keyStatsDepositAmtTotals()
+  let byDayKEY = keyStatsDepositAmtByDay(toStartOfDay(lastBlock.timestamp))
+  let currTotals = getString(totalsKEY).valueOrElse(defaultTotalsDATA).split(SEP) # 0th element is %d.. descriptor, see k + 1 below
+  let currByDay = getString(byDayKEY).valueOrElse(defaultTotalsDATA).split(SEP) # 0th element is %d.. descriptor, see k + 1 below
 
-  func refreshRewardPerNsbtSUM(accum: List[StringEntry], nextAsset: String) = {
-    let rewardPerNsbtSumNewKEY = keyRewardPerNsbtSumAt(depositNumNew, nextAsset)
-    let sumLastStr = keyRewardPerNsbtSumAt(depositNumLast, nextAsset).getStrOrElse("0")
+  func dep(acc: (List[IntegerEntry], List[String], List[BigInt], List[Int]), pmt: AttachedPayment) = {
+    let amount = pmt.amount
+    let pmtAssetIdStr = pmt.assetId.valueOrElse(WAVESID).toBase58String()
+    if (!supportedAssetsStr.contains(pmtAssetIdStr)) then throw(supportedAssetsStr + " doesn't contain " + pmtAssetIdStr) else
 
-    accum :+
-      if (nextAsset == pmtAssetIdStr) then
-        StringEntry(rewardPerNsbtSumNewKEY, (sumLastStr.parseBigIntValue() + rewardPerNsbtX18).toString())
-      else
-        StringEntry(rewardPerNsbtSumNewKEY, sumLastStr)
+    if (totalStaked == 0) then # accumalate rewards if nobody stakes NSBT
+      ( acc._1 :+ IncrementNotDistributedRewardEntry(pmtAssetIdStr, amount), 
+        acc._2 :+ pmtAssetIdStr, 
+        acc._3 :+ toBigInt(0),
+        acc._4 :+ amount ) # for totals and by day stats
+    else {
+      let rewardPerNsbtX18 = fraction(amount.toBigInt(), MULTX18, totalStaked.toBigInt())
+      ( acc._1, 
+        acc._2 :+ pmtAssetIdStr, 
+        acc._3 :+ rewardPerNsbtX18,
+        acc._4 :+ amount ) # for totals and by day stats
+    }
   }
+  let pmtsResult = FOLD<10>(i.payments, ([], [], [], []), dep)
 
-  FOLD<9>(supportedAssetsList, [], refreshRewardPerNsbtSUM)
-    :+ IntegerEntry(depositNumLastKEY, depositNumNew)
-    ++ DepositsTotalsEntries(amount, pmtAssetIdStr)
+  func refreshRewardUpdateTotals(accum: (List[StringEntry], String, String, Int), nextAsset: String) = {
+    let k = accum._4 # assets iterating index
+    let sumLastStr = keyRewardPerNsbtSumAt(depositNumLast, nextAsset).getStrOrElse("0")
+    let idx = indexOf(pmtsResult._2, nextAsset)
+    let sum = if (idx.isDefined()) then { # there was payment in such asset
+      let j = idx.value() # index of current allowed asset within payments
+      let statsDelta = pmtsResult._4[j]
+      ( (sumLastStr.parseBigIntValue() + pmtsResult._3[j]).toString(),
+        (currTotals[k + 1].parseIntValue() + statsDelta).toString(),
+        (currByDay[k + 1].parseIntValue() + statsDelta).toString() )
+    } else {
+      ( sumLastStr,
+        currTotals[k + 1],
+        currByDay[k + 1] )
+    }
+    ( accum._1 :+ StringEntry(keyRewardPerNsbtSumAt(depositNumNew, nextAsset), sum._1),
+      accum._2 + SEP + sum._2,
+      accum._3 + SEP + sum._3,
+      k + 1 )
+  }
+  let assetsResult = FOLD<9>(supportedAssetsList, ([], DepositTotalsPREFIX, DepositTotalsPREFIX, 0), refreshRewardUpdateTotals)
+    
+  ( pmtsResult._1
+  ++ assetsResult._1
+  :+ IntegerEntry(depositNumLastKEY, depositNumNew)
+  :+ StringEntry(totalsKEY, assetsResult._2)
+  :+ StringEntry(byDayKEY, assetsResult._3),
+    depositNumNew )
 }
 
 @Callable(i)
