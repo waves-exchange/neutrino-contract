@@ -13,6 +13,7 @@ let MULT12     = 1_000_000_000_000
 let MULTX16    = 1_0000_0000_0000_0000.toBigInt()
 let MULT18     = 1_000_000_000_000_000_000.toBigInt()
 let SEP        = "__"
+let LISTSEP = ":"
 let DEFAULTSWAPFEEN2W = 5000 # 0.005 * 1000000 or 0.5%
 let DEFAULTSWAPFEEW2N = 20000 # 0.02 * 1000000 or 2%
 let BRPROTECTED = 100000 # if BR <= 10% then use SURF during swap USDN->WAVES 
@@ -25,13 +26,6 @@ let DAYMILLIS = 86_400_000  #24 * 60 * 60 * 1000
 func keyNeutrinoAssetId() = "neutrino_asset_id"
 func keyNsbtAssetId() = "bond_asset_id" # nsbt
 func keySurfAssetId() = "surf_asset_id"
-func keyBalanceLocked() = "balance_lock_"
-func keyWavesLockedBalance() = keyBalanceLocked() + "waves"
-func keyNeutrinoLockedBalance() = keyBalanceLocked() + "neutrino"
-func keyMinWavesSwapAmount() = "min_waves_swap_amount"
-func keyMinNeutrinoSwapAmount() = "min_neutrino_swap_amount"
-func keyWavesOutFeePart() = "wavesOut_swap_feePart"
-func keyNeutrinoOutFeePart() = "neutrinoOut_swap_feePart"
 func keySwapAmountAParam() = "%s%s__config__swapAParam"
 func keySwapAmountBParam() = "%s%s__config__swapBParam"
 func keyUsdnSwapAmountAParam()  = "%s%s__config__usdnSwapAParam"
@@ -39,11 +33,15 @@ func keyUsdnSwapAmountBParam()  = "%s%s__config__usdnSwapBParam"
 func keyNsbtLockContract() = "%s__nsbtLockContract" # ignored
 func keyMathContract() = "%s__mathContract" # ignored
 
-func keyBalanceWavesLockInterval() = "balance_waves_lock_interval"
-func keyBalanceNeutrinoLockInterval() = "balance_neutrino_lock_interval"
+func basketAssetsKey()                       = "%s%s__common__basketAssets"
+func basketDKey()                            = "%s%s__common__basketD"
+func basketBKey()                            = "%s%s__common__basketB"
+func basketLogbDeltaKey()                    = "%s%s__common__basketLogbDelta"
+func basketWeightByAssetKey(assetId: String) = "%s%s%s__common__weightByAsset__" + assetId
 
 #------control keys-------
 func keyPrice() = "price"
+func keyPriceByAsset(assetId: String) = "%s%s%s__common__priceByAsset__" + assetId
 
 #-------- nsbt staking keys-----------
 func keyLockParamStartBlock(userAddress: String) = ["%s%s%s", "paramByUser", userAddress, "start"].makeString(SEP)
@@ -69,7 +67,7 @@ func getIntOrElse(address: Address, key: String, defaultVal: Int) = address.getI
 func getStrOrElse(address: Address, key: String, defaultVal: String) = address.getString(key).valueOrElse(defaultVal)
 
 func convertNeutrinoToWaves(amount: Int, price: Int) = fraction(amount, MULT8, price)
-func convertWavesToNeutrino(amount: Int, price: Int) = fraction(amount, price, MULT8)
+func convertTokenToUsd(amount: Int, price: Int) = fraction(amount, price, MULT8)
 
 func asAnyList(val: Any) = {
   match val {
@@ -108,7 +106,7 @@ func asSwapParamsSTRUCT(val: Any) = {
 
 func asWithdrawResultSTRUCT(val: Any) = {
   match val {
-    case struct: (Int,ByteVector|Unit,Int,Int,Int,Int,Int,Int) => struct
+    case struct: (Int,ByteVector|Unit,Int,Int,Int,Int,Int,Int,String) => struct
     case _ => throw("fail to cast into WithdrawResult")
   }
 }
@@ -137,6 +135,11 @@ let nMetricIdxBR = 8 # BR with 6 decimals
 let nMetricIdxNsbtSupply = 9
 let nMetricIdxMaxNsbtSupply = 10
 let nMetricIdxSurfSupply = 11
+let nMetricUsdnUsdtPeg = 12
+let nMetricCurrentPriceAdj = 13
+let nMetricBasketInfo = 14
+let nMetricWeightedPrice = 15
+let nMetricTotalReservesUsd = 16
 
 # data indices from controlConfig
 let IdxControlCfgNeutrinoDapp     = 1
@@ -229,16 +232,16 @@ func calcApr(stakingAcc: Address, periodInDays: Int, incomeForPeriod: Int, staki
 
 # MATH CANDIDATE
 @Callable(i)
-func reverseSwapLimitREADONLY(lim: Int, isWavesSwap: Boolean) = {
+func reverseSwapLimitREADONLY(lim: Int, isOutMulti: Boolean) = {
   let BR = mathContract.invoke("calcNeutinoMetricsREADONLY",[],[]).asAnyList()[nMetricIdxBR].asInt()
 
-  # waves 2 usdn swap: gNsbt = (lim/a)^1/b
-  # usdn 2 waves swap: gNsbt = (lim/au/BR)^1/bu
+  # token 2 xtn swap: gNsbt = (limTokenInUSD/a)^1/b
+  # xtn 2 multi swap: gNsbt = (limXtn/au/BR)^1/bu
   let gNsbt = if (lim <= 0) then 0 else
-  let aParamX8 = mathContract.getIntOrFail(if (isWavesSwap) then keySwapAmountAParam() else keyUsdnSwapAmountAParam()).toBigInt()
-  let bParamX16 = mathContract.getIntOrFail(if (isWavesSwap) then keySwapAmountBParam() else keyUsdnSwapAmountBParam()).toBigInt()
-  let limDivAX8 = if (isWavesSwap) then fraction(lim.toBigInt(), MULTX10, aParamX8) else
-    fraction(fraction(lim.toBigInt(), MULTX10, aParamX8), MULTX6, BR.toBigInt())
+  let aParamX8 = mathContract.getIntOrFail(if (isOutMulti) then keyUsdnSwapAmountAParam() else keySwapAmountAParam()).toBigInt()
+  let bParamX16 = mathContract.getIntOrFail(if (isOutMulti) then keyUsdnSwapAmountBParam() else keySwapAmountBParam()).toBigInt()
+  let limDivAX8 = if (isOutMulti) then fraction(fraction(lim.toBigInt(), MULTX10, aParamX8), MULTX6, BR.toBigInt())
+    else fraction(lim.toBigInt(), MULTX10, aParamX8) 
 
   let revBX16 = fraction(MULTX16, MULTX16, bParamX16)
   pow(limDivAX8, 8, revBX16, 16, 6, CEILING).toInt()
@@ -256,17 +259,17 @@ func gnsbtInfoINTERNAL(userAddressStrOrEmpty: String, additionalNsbtToStakeOrZer
   let gNsbtDiff = gnsbtFromNsbtDiff + gnsbtFromSurfDiff
 
   let swapParamsTuple = neutrinoContract.invoke("swapParamsByUserSYSREADONLY", [userAddressStrOrEmpty, 0], []).asSwapParamsSTRUCT()
+  let limitMaxTokenUsd  = swapParamsTuple._1
   let blcks2LmtReset    = swapParamsTuple._3
   let gnsbtAmt          = swapParamsTuple._4
   let gnsbtAmtTotal     = swapParamsTuple._5
-  let limitMaxWaves     = swapParamsTuple._6
   let limitMaxUsdn      = swapParamsTuple._7
 
   let swapParamsTupleNEW = neutrinoContract.invoke("swapParamsByUserSYSREADONLY", [userAddressStrOrEmpty, gNsbtDiff], []).asSwapParamsSTRUCT()
+  let limitMaxTokenUsdNEW = swapParamsTupleNEW._1
   let blcks2LmtResetNEW = swapParamsTupleNEW._3
   let gnsbtAmtNEW       = swapParamsTupleNEW._4
   let gnsbtAmtTotalNEW  = swapParamsTupleNEW._5
-  let limitMaxWavesNEW  = swapParamsTupleNEW._6
   let limitMaxUsdnNEW   = swapParamsTupleNEW._7
 
   let nsbtBalance           = if (userAddressStrOrEmpty != "") then assetBalance(userAddressOrThis, nsbtAssetId) else 0
@@ -331,9 +334,9 @@ func gnsbtInfoINTERNAL(userAddressStrOrEmpty: String, additionalNsbtToStakeOrZer
     gnsbtFromSurfTotalNEW, # 12
 
     limitMaxUsdn,          # 13
-    limitMaxWaves,         # 14
+    limitMaxTokenUsd,      # 14
     limitMaxUsdnNEW,       # 15
-    limitMaxWavesNEW,      # 16
+    limitMaxTokenUsdNEW,   # 16
     blcks2LmtReset,        # 17
     blcks2LmtResetNEW,     # 18
 
@@ -368,9 +371,9 @@ func gnsbtInfoREADONLY(userAddressStrOrEmpty: String, additionalNsbtToStakeOrZer
     gnsbtInfoDATA[12].asInt().toString(),
 
     gnsbtInfoDATA[13].asInt().toString(),
-    gnsbtInfoDATA[14].asInt().toString(),
+    gnsbtInfoDATA[14].asInt().toString(), # limitMaxTokenInUsd
     gnsbtInfoDATA[15].asInt().toString(),
-    gnsbtInfoDATA[16].asInt().toString(),
+    gnsbtInfoDATA[16].asInt().toString(), # limitMaxTokenInUsdNEW
     gnsbtInfoDATA[17].asInt().toString(),
     gnsbtInfoDATA[18].asInt().toString(),
 
@@ -418,7 +421,7 @@ func mergeNsbtREADONLY(userAddressMandatory: String, newAmount: Int) = {
   let startTimestamp = toTimestamp(startHeight)
 
   let startHeightNew = if newAmount <= 0 then startHeight else if (amount0 <= 0) then height else {
-    let halfLife = nsbtStakingContract.getIntOrFail(keyHalfLife());
+    let halfLife = nsbtStakingContract.getIntOrFail(keyHalfLife())
     mathContract.invoke("mergeStakesREADONLY", [amount0, startHeight, newAmount, height, halfLife], []).asInt()
   }
   let startTimestampNew = toTimestamp(startHeightNew)
@@ -431,16 +434,16 @@ func mergeNsbtREADONLY(userAddressMandatory: String, newAmount: Int) = {
     ], SEP))
 }
 
-# pass Usdn assetId string or "WAVES"
+# pass Usdn assetId string or any basket assetId (use "WAVES" as waves id)
 @Callable(i)
 func swapLimitCalculatorREADONLY(userAddressStrOpt: String, limitWanted: Int, assetIdStr: String) = {
   let gNsbtCurrent = if (userAddressStrOpt == "") then 0 else
     neutrinoContract.invoke("swapParamsByUserSYSREADONLY", [userAddressStrOpt, 0], []).asSwapParamsSTRUCT()._4.asInt()
 
-  let limitWantedUsdn = if (assetIdStr == "WAVES") then
-    convertWavesToNeutrino(limitWanted, controlContract.getIntegerValue(keyPrice())) else
-    limitWanted
-  let gNsbtNeeded = this.invoke("reverseSwapLimitREADONLY", [limitWantedUsdn, assetIdStr == "WAVES"], []).asInt()
+  let price = controlContract.getInteger(keyPriceByAsset(assetIdStr)).valueOrErrorMessage("No price for asset " + assetIdStr)
+  let isOutMulti = (assetIdStr == neutrinoAssetIdString)
+  let limitWantedUsdn = if (isOutMulti) then limitWanted else convertTokenToUsd(limitWanted, price)
+  let gNsbtNeeded = this.invoke("reverseSwapLimitREADONLY", [limitWantedUsdn, isOutMulti], []).asInt()
   let gNsbtDelta = gNsbtNeeded - gNsbtCurrent
   ([], makeString([
     "%s%s",
@@ -456,22 +459,21 @@ func swapInfoREADONLY(userAddressStrOrEmpty: String, amount: Int, assetIdStr: St
   let price = neutrinoMetrics[nMetricIdxPrice].asInt()
 
   let swapParamsTuple = neutrinoContract.invoke("swapParamsByUserSYSREADONLY", [userAddressStrOrEmpty, 0], []).asSwapParamsSTRUCT()
+  let limitMaxTokenInUsd = swapParamsTuple._1
   let blcks2LmtReset  = swapParamsTuple._3
-  let limitMaxWaves   = swapParamsTuple._6
   let limitMaxUsdn    = swapParamsTuple._7
 
   let assetId = assetIdStr.fromBase58String()
 
-  let swapType = if (assetId == WAVESID)    then "waves"
-      else if (assetId == neutrinoAssetId)  then "neutrino"
+  let basketAssets = neutrinoContract.getString(basketAssetsKey()).valueOrElse("WAVES") # WAVES__wxId__viresId__swopId__eggId__westId
+  let swapType = if (basketAssets.contains(assetIdStr)) then "outNeutrino"
+      else if (assetId == neutrinoAssetId) then "outMulti"
       else throw("Can't swap assetId=" + assetIdStr)
 
-  let withdrawTuple = neutrinoContract.invoke("calcWithdrawResultSYSREADONLY", [swapType, amount, price], []).asWithdrawResultSTRUCT()
+  let withdrawTuple = neutrinoContract.invoke("calcWithdrawResultSYSREADONLY", [swapType, amount, price, assetIdStr], []).asWithdrawResultSTRUCT()
   let outNetAmount    = withdrawTuple._1
-  let outAssetId      = withdrawTuple._2
   let outSurfAmt      = withdrawTuple._3
   let inAmtToSurfPart = withdrawTuple._4
-  let unleaseAmt      = withdrawTuple._5
   let outFeeAmount    = withdrawTuple._6
   let outAmtGross     = withdrawTuple._7
   let withdrawPrice   = withdrawTuple._8
@@ -482,10 +484,70 @@ func swapInfoREADONLY(userAddressStrOrEmpty: String, amount: Int, assetIdStr: St
     outFeeAmount.toString(),    #3
     withdrawPrice.toString(),   #4
     blcks2LmtReset.toString(),  #5
-    limitMaxWaves.toString(),   #6
+    limitMaxTokenInUsd.toString(), #6
     limitMaxUsdn.toString(),    #7
     inAmtToSurfPart.toString()  #8
   ], SEP))
+}
+
+@Callable(i)
+func swapInfoV2READONLY(userAddressStrOrEmpty: String, amount: Int, assetIdStr: String) = {
+  let neutrinoMetrics = mathContract.invoke("calcNeutinoMetricsREADONLY", [], []).asAnyList()
+  let price = neutrinoMetrics[nMetricIdxPrice].asInt()
+
+  let swapParamsTuple = neutrinoContract.invoke("swapParamsByUserSYSREADONLY", [userAddressStrOrEmpty, 0], []).asSwapParamsSTRUCT()
+  let limitMaxTokenInUsd = swapParamsTuple._1
+  let blcks2LmtReset  = swapParamsTuple._3
+  let limitMaxUsdn    = swapParamsTuple._7
+
+  let assetId = assetIdStr.fromBase58String()
+
+  let basketAssets = neutrinoContract.getString(basketAssetsKey()).valueOrElse("WAVES") # WAVES__wxId__viresId__swopId__eggId__westId
+  let swapType = if (basketAssets.contains(assetIdStr)) then "outNeutrino"
+      else if (assetId == neutrinoAssetId) then "outMulti"
+      else throw("Can't swap assetId=" + assetIdStr)
+
+  let withdrawTuple = neutrinoContract.invoke("calcWithdrawResultSYSREADONLY", [swapType, amount, price, assetIdStr], []).asWithdrawResultSTRUCT()
+
+  let outNeutrinoInfo = makeString([
+    neutrinoAssetIdString, 
+    withdrawTuple._8.toString(), # xtnPrice
+    withdrawTuple._1.toString(), # xtnNetAmount
+    withdrawTuple._6.toString(), # xtnFeeAmount
+    "1000000"                    # xtn share = 1.0
+  ], LISTSEP)
+  let withdrawBasket  = if (swapType == "outNeutrino") then outNeutrinoInfo else withdrawTuple._9 # assetId:price:netAmount:feeAmount:share_ ...
+
+  ([], makeString_2C(["%d%d%d%s",
+    blcks2LmtReset.toString(),     #1
+    limitMaxTokenInUsd.toString(), #2
+    limitMaxUsdn.toString(),       #3
+    withdrawBasket                 #4
+  ], SEP))
+}
+
+@Callable(i)
+func basketInfoREADONLY() = {
+  let neutrinoMetrics = mathContract.invoke("calcNeutinoMetricsREADONLY", [], []).asAnyList()
+  let basketInfo = neutrinoMetrics[nMetricBasketInfo].asString() # assetIdStr:share6:price6:reserve8_ ...
+  let basket = split_4C(basketInfo, "_")
+
+  func modify(acc: List[String], item: String) = {
+    let parts = item.split(LISTSEP)
+    let assetId = parts[0]
+    let dlog6 = neutrinoContract.getInteger(basketLogbDeltaKey()).valueOrErrorMessage("log(b, delta) key is undefined")
+    let D6 = neutrinoContract.getInteger(basketDKey()).valueOrErrorMessage("D key is undefined")
+    let b6 = neutrinoContract.getInteger(basketBKey()).valueOrErrorMessage("b key is undefined")
+    let w6 = neutrinoContract.getInteger(basketWeightByAssetKey(assetId)).valueOrErrorMessage("Target weight for asset " + assetId + " is undefined")
+    let p6 = dlog6 - w6 + parts[1].parseIntValue()
+    let d = D6 - pow(b6, 6, p6, 6, 6, HALFUP)
+    acc :+ makeString(parts :+ w6.toString() :+ d.toString(), LISTSEP)
+  }
+  let b = FOLD<10>(basket, [], modify)
+
+  ([], "%s__" 
+  + makeString_2C(b, "_") # assetIdStr:share6:price6:reserve8:targetWeight6:discount6_ ...
+  )
 }
 
 @Callable(i)
