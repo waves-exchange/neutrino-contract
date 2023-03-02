@@ -1,4 +1,4 @@
-{-# STDLIB_VERSION 4 #-}
+{-# STDLIB_VERSION 6 #-}
 {-# CONTENT_TYPE DAPP #-}
 {-# SCRIPT_TYPE ACCOUNT #-}
 #
@@ -25,15 +25,16 @@ let IdxControlCfgSurfStakingDapp  = 10
 let IdxControlCfgGnsbtControllerDapp = 11
 let IdxControlCfgRestV2Dapp       = 12
 let IdxControlCfgGovernanceDapp   = 13
+let IdxControlCfgPegProviderDapp  = 14
 
 func keyControlConfig() = "%s__controlConfig"
 
 func dataControlCfg(neutrinoContract: String, auctionContract: String, rpdContract: String, mathContract: String,
                     liquidationContract: String, restContract: String, nodeRegistryContract: String, nsbtStakingContract: String,
                     mediatorContract: String, surfStakingContract: String, gnsbtControllerContract: String, restV2Contract: String,
-                    governanceContract: String) = {
+                    governanceContract: String, doraContract: String) = {
   makeString(
-    ["%s%s%s%s%s%s%s%s%s%s%s%s%s",
+    ["%s%s%s%s%s%s%s%s%s%s%s%s%s%s",
     neutrinoContract,         #1
     auctionContract,          #2
     rpdContract,              #3
@@ -46,7 +47,8 @@ func dataControlCfg(neutrinoContract: String, auctionContract: String, rpdContra
     surfStakingContract,      #10
     gnsbtControllerContract,  #11
     restV2Contract,           #12
-    governanceContract        #13
+    governanceContract,       #13
+    doraContract              #14
     ],
     SEP)
 }
@@ -94,11 +96,15 @@ let pubKeyOraclesList = convertJsonArrayToList(pubKeyOracles)
 let neutrinoAddress     = Address(base58'3PC9BfRwJWWiw9AREE2B3eWzCks3CYtg4yo')
 let liquidationAddress  = Address(base58'3P4PCxsJqMzQBALo8zANHtBDZRRquobHQp7')
 let neutrinoAsset       = base58'DG2xFkPdDwKUoBkzGAhQtLpSGzfXLiCYPEzeKH2Ad24p'
+
+let wxIdStr             = "Atqv59EYzjFGuitKVnMRk6H8FukjoV3ktPorbEys25on"
+let wxId                = wxIdStr.fromBase58String()
+
 let controlContract     = this
 func getStringOrFail(address: Address, key: String)  = address.getString(key).valueOrErrorMessage(makeString(["mandatory ", address.toString(), ".", key, " is not defined"], ""))
 func getContractAddressOrFail(controlCfg: List[String], idx: Int) = controlCfg[idx].addressFromString()
   .valueOrErrorMessage("Control cfg doesn't contain address at index " + idx.toString())
-let controlCfg = split(this.getStringOrFail(keyControlConfig()), SEP)
+let controlCfg = split_4C(this.getStringOrFail(keyControlConfig()), SEP)
 let governanceContract = controlCfg.getContractAddressOrFail(IdxControlCfgGovernanceDapp)
 
 #locked balance from USDN -> WAVES swap
@@ -195,17 +201,74 @@ func formattingPriceMsg(price: Int) = {
     toBytes("WAVESNEUTRINOPREFIX" + "_" + toString(height) + "_" + toString(price))
 }
 
+func PriceEntry(newPrice: Int, assetIdStr: String, newPriceIndex: Int) = {
+  let heightStr = height.toString()
+  let newPriceIndexStr = newPriceIndex.toString()
+
+  let priceByAssetKEY  = [  "%s%s%s__common__priceByAsset",  assetIdStr].makeString(SEP)
+  let priceByHeightKEY = ["%s%s%s%d__common__priceByHeight", assetIdStr, heightStr].makeString(SEP)
+  let priceByIndexKEY  = ["%s%s%s%d__common__priceByIndex",  assetIdStr, newPriceIndexStr].makeString(SEP)
+
+  [
+  IntegerEntry(priceByAssetKEY, newPrice), # current price
+  IntegerEntry(priceByIndexKEY, newPrice), # price by index
+  IntegerEntry(priceByHeightKEY, newPrice) # price by height
+  ]
+}
+
+func finalizeWxUsdOnchain(wavesUsdPriceX6: Int) = {
+  let doraAddressStr = "3PKkojKdd6BBzTf1RXbQVfUDraNFXXHKzQF"
+  let doraAddress = doraAddressStr.addressFromStringValue()
+  let xtnUsdPriceX6 = doraAddress.getInteger("%s%s__price__USDN-USDT").valueOrErrorMessage("DORA doesn't contain USDN/USDT price")
+
+  let xtnId    = neutrinoAsset
+  let xtnIdStr = xtnId.toBase58String()
+
+  let wx_WxWaves_AddressStr = "3PFzaH2ghpwANHFgjeva83N1yxzErELx2eh"
+  let wx_WxWaves_Address  = wx_WxWaves_AddressStr.addressFromStringValue()
+  let wx_WxWaves_Weight   = 50000
+  let wx_WxWaves_WAVESx8  = wx_WxWaves_Address.wavesBalance().regular
+  let wx_WxWaves_WXx8     = wx_WxWaves_Address.assetBalance(wxId)
+  let wx_WxWaves_WxUsdPriceX6  = fraction(wx_WxWaves_WAVESx8, wavesUsdPriceX6, wx_WxWaves_WXx8)
+
+  let wx_WxXtn_AddressStr = "3PCENpEKe8atwELZ7oCSmcdEfcRuKTrUx99"
+  let wx_WxXtn_Address = wx_WxXtn_AddressStr.addressFromStringValue()
+  let wx_WxXtn_Weight = 50000
+  let wx_WxXtn_XTNx6  = wx_WxXtn_Address.assetBalance(xtnId)
+  let wx_WxXtn_WXx8   = wx_WxXtn_Address.assetBalance(wxId)
+  let wx_WxXtn_WxUsdPriceX6  = fraction(wx_WxXtn_XTNx6*100, xtnUsdPriceX6, wx_WxXtn_WXx8)
+
+  let swop_WxXtn_AddressStr = "3PKi4G3VX2k42ZSmNNrmvgdDH7JzRaUhY7R"
+  let swopRestDapp = "3P56jNQzECXnrWpnbbSJKw7Eooo6fkUaMPp".addressFromStringValue()
+  let swop_WxXtn_Weight = 5000
+  let swop_WxXtn_WxXtnPriceX6 = swopRestDapp.invoke("calcGetAmountCPMM", [swop_WxXtn_AddressStr, "3P88qk1KzF1BKjD7fC7LjNVAKM4ezff5WE6", wxIdStr, 1_00_000_000], []).exactAs[Int]
+  let swop_WxXtn_WxUsdPriceX6 = fraction(swop_WxXtn_WxXtnPriceX6, xtnUsdPriceX6, 1000_000)
+
+  let W = wx_WxWaves_Weight + wx_WxXtn_Weight + swop_WxXtn_Weight
+  let wxUsdPriceX6 =
+        fraction(wx_WxWaves_WxUsdPriceX6, wx_WxWaves_Weight,  W)
+      + fraction(wx_WxXtn_WxUsdPriceX6,   wx_WxXtn_Weight,    W)
+      + fraction(swop_WxXtn_WxUsdPriceX6, swop_WxXtn_Weight,  W)
+
+  let debug = "xtnUsdPriceX6=" + xtnUsdPriceX6.toString()
+          + " wx_WxWaves_WxUsdPriceX6=" + wx_WxWaves_WxUsdPriceX6.toString()
+          + " wx_WxXtn_WxUsdPriceX6=" + wx_WxXtn_WxUsdPriceX6.toString()
+          + " swop_WxXtn_WxUsdPriceX6=" + swop_WxXtn_WxUsdPriceX6.toString()
+
+  (wxUsdPriceX6, debug)
+}
+
 @Callable(i)
-func constructor(neutrinoContract: String, auctionContract: String, rpdContract: String, mathContract: String,
+func constructorV1(neutrinoContract: String, auctionContract: String, rpdContract: String, mathContract: String,
                     liquidationContract: String, restContract: String, nodeRegistryContract: String,
                     nsbtStakingContract: String, mediatorContract: String, surfStakingContract: String, gnsbtControllerContract: String,
-                    restV2Contract: String, governanceContract: String) = {
+                    restV2Contract: String, governanceContract: String, doraContract: String) = {
    if (i.caller != this) then throw("permissions denied") else
 
    [StringEntry(keyControlConfig(), dataControlCfg(
         neutrinoContract, auctionContract, rpdContract, mathContract, liquidationContract,
         restContract, nodeRegistryContract, nsbtStakingContract, mediatorContract,
-        surfStakingContract, gnsbtControllerContract, restV2Contract, governanceContract
+        surfStakingContract, gnsbtControllerContract, restV2Contract, governanceContract, doraContract
     ))]
 }
 
@@ -216,7 +279,7 @@ func constructor(neutrinoContract: String, auctionContract: String, rpdContract:
 func callEmergencyShutdown(reason: String) = {
     let AutoEmergencyOracleAddress = "3P7ihFVxBNbHK237TNdPxT1xHEu8pHexXTr"
     let callerAddress = toString(i.caller)
-    if (AutoEmergencyOracleAddress != callerAddress && governanceContract.toString() != callerAddress) then 
+    if (AutoEmergencyOracleAddress != callerAddress && governanceContract.toString() != callerAddress) then
         throw("caller must be one an emergency oracle or Governance contract") else
     [BooleanEntry("is_blocked", true),
       StringEntry("is_blocked_caller", callerAddress),
@@ -264,6 +327,10 @@ func finalizeCurrentPrice(price1: Int, sign1: ByteVector, price2: Int, sign2: By
 
     let newPrice = priceSum/priceProvidingCount
 
+    let wxUsdTuple = finalizeWxUsdOnchain(newPrice)
+    let newWxUsdPrice = wxUsdTuple._1
+    let wxDebug       = wxUsdTuple._2
+
     if(newPrice >= (price + price*percentPriceOffset/100) || newPrice <= (price - price*percentPriceOffset/100)) then {
         let reason = "automatic emergency shutdown because of large price variability"
         [BooleanEntry("is_blocked", true),
@@ -272,14 +339,22 @@ func finalizeCurrentPrice(price1: Int, sign1: ByteVector, price2: Int, sign2: By
           IntegerEntry("black_swarm_price" + "_" + toString(height), newPrice)]
     } else {
         let newPriceIndex = priceIndex + 1
-        [IntegerEntry("price", newPrice),
-          IntegerEntry("price_" + toString(height), newPrice),
-          IntegerEntry("price_index", newPriceIndex),
-          IntegerEntry("price_index_" + toString(newPriceIndex), height),
+        [ IntegerEntry("price", newPrice),                                  # price - current price
+          IntegerEntry("price_" + toString(height), newPrice),              # priceByHeight - if you know height you can find price
+          IntegerEntry("price_index_" + toString(newPriceIndex), height),   # heightByIndex - if you know index you can find price's height
+          IntegerEntry("price_index", newPriceIndex),                       # index sequence
+
+          # new additional information
+          IntegerEntry("indexByHeight_" + toString(height), newPriceIndex), # indexByHeight - if you know height you can find index
+          IntegerEntry("priceByIndex_" + toString(newPriceIndex), newPrice),# priceByIndex - if you know index you can find price
+
           IntegerEntry("deficit_" + toString(height), deficit),
           IntegerEntry("neutrinoSupply_" + toString(height), neutrinoSupply),
           IntegerEntry("deficit_percent_" + toString(height), if (neutrinoSupply != 0) then deficit * 100 / neutrinoSupply else 0)
         ]
+        ++ PriceEntry(newPrice, "WAVES", newPriceIndex)
+        ++ PriceEntry(newWxUsdPrice, wxIdStr, newPriceIndex)
+        :+ StringEntry("debug_wxUsdCalc", wxDebug)
     }
 }
 
