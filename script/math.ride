@@ -264,9 +264,8 @@ func calcSwapLimitREADONLY(gNsbtAmount: Int) = {
   let limitUsdn = if (gNsbtAmount <= 0) then 0 else {
     let aParamX8  = this.getIntOrFail(keyUsdnSwapAmountAParam()).toBigInt()
     let bParamX16 = this.getIntOrFail(keyUsdnSwapAmountBParam()).toBigInt()
-    let brX6      = BR.toBigInt()
     let powPartX8 = pow(gNsbtAmount.toBigInt(), 6, bParamX16, 16, 8, CEILING)
-    fraction(fraction(aParamX8, powPartX8, MULTX10), brX6, MULTX6).toInt()
+    fraction(aParamX8, powPartX8, MULTX10).toInt()
   }
 
   ([],  [limitBasketTokenInUsd, 0, limitUsdn]) # second field is ignored, as we need each token price to convert from usd limit to token limit
