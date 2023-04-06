@@ -377,8 +377,8 @@ func neutrinoConfigREADONLY() = {
 
   let minWavesSwapAmt  = neutrinoContract.getIntegerValue(keyMinWavesSwapAmount())
   let minUsdnSwapAmt   = neutrinoContract.getIntegerValue(keyMinNeutrinoSwapAmount())
-  let waves2UsdnFee    = neutrinoContract.getIntegerValue(keyWavesOutFeePart())
-  let usdn2WavesFee    = neutrinoContract.getIntegerValue(keyNeutrinoOutFeePart())
+  let waves2UsdnFee    = neutrinoContract.getIntegerValue(keyNeutrinoOutFeePart())
+  let usdn2WavesFee    = neutrinoContract.getIntegerValue(keyWavesOutFeePart())
   let brProtected      = neutrinoContract.getInteger(brProtectedKEY()).valueOrElse(BRPROTECTED)
   let usdnSwapDelay    = neutrinoContract.getIntegerValue(keyBalanceNeutrinoLockInterval())
   let wavesSwapDelay   = neutrinoContract.getIntegerValue(keyBalanceWavesLockInterval())
