@@ -39,6 +39,7 @@ let govStatusIdxTotalVotes = 4
 let govStatusIdxScApplied  = 5
 let govStatusIdxScTime     = 6
 let govStatusIdxIsCanceled = 7
+let govStatusIdxImplStatus = 8
 
 func getStringOrFail(address: Address, key: String) = address.getString(key)
     .valueOrErrorMessage(makeString(["mandatory ", address.toString(), ".", key, " is not defined"], ""))
@@ -71,6 +72,7 @@ let controlContract = this.getString(keyControlAddress()).valueOrElse("3P5Bfd58P
 let controlCfg = controlContract.readControlCfgOrFail()
 let neutrinoContract = controlCfg.getContractAddressOrFail(IdxControlCfgNeutrinoDapp)
 let gnsbtControllerContract = controlCfg.getContractAddressOrFail(IdxControlCfgGnsbtControllerDapp)
+let surfStakingContract = controlCfg.getContractAddressOrFail(IdxControlCfgSurfStakingDapp)
 
 func keyQuorumRequiredPercent(type: String) = "%s%s__quorumRequired__" + type
 func keyPaymentRequired() = "%s__paymentRequired"
@@ -109,15 +111,16 @@ func asInt(v: Any) = {
 }
 
 func statusData(isVotingValid: Boolean, winOption: Int, winOptionVotes: Int, totalVotes: Int, 
-    areScriptsApplied: Boolean, scriptsTimestamp: Int, canceledByTeam: Boolean) = {
-    makeString(["%b%d%d%d%b%d%b",
+    areScriptsApplied: Boolean, scriptsTimestamp: Int, canceledByTeam: Boolean, implStatus: String) = {
+    makeString(["%b%d%d%d%b%d%b%s",
       isVotingValid.toString(),     # 1 true|false
       winOption.toString(),         # 2 Int
       winOptionVotes.toString(),    # 3 Int
       totalVotes.toString(),        # 4 Int
       areScriptsApplied.toString(), # 5 true|false
       scriptsTimestamp.toString(),  # 6 Long
-      canceledByTeam.toString()     # 7 true|false
+      canceledByTeam.toString(),    # 7 true|false
+      implStatus                    # 8 ACTIVE|OUTDATED
       ], SEP)
 }
 
@@ -156,6 +159,9 @@ let IdxEffTotal = 0
 let IdxEffUser  = 1
 
 func getEffectiveGnsbt(userAddrStrOrEmpty: String) = {
+  strict upd = if (addressFromString(userAddrStrOrEmpty).isDefined())
+    then surfStakingContract.invoke("updateVotingPower", [userAddrStrOrEmpty], [])
+    else unit
   let gnsbtData = gnsbtControllerContract.invoke("gnsbtInfoSYSREADONLY", [userAddrStrOrEmpty, 0, 0], []).asAnyList()
   let nsbtData = gnsbtData[2].asAnyList()
   let userFromNsbt = nsbtData[2].asInt()
@@ -208,7 +214,7 @@ func initiateVoting(payment: AttachedPayment, proposalTxId: String, type: String
     ([
         IntegerEntry(keyLastProposalId(), proposalId),
         IntegerEntry(keyProposalIdByTopicId(topicId), proposalId),
-        StringEntry(keyProposalStatusDataById(proposalId), statusData(false, 0, 0, 0, false, 0, false)),
+        StringEntry(keyProposalStatusDataById(proposalId), statusData(false, 0, 0, 0, false, votingEndTime, false, "ACTIVE")),
         StringEntry(keyProposalDataById(proposalId), 
           proposalData(proposalTxId, type, author, forumLink.toBytes().toBase58String(), title.toBytes().toBase58String(), 
             proposalTime, votingStartTime, votingEndTime, txIds, quorumInGnsbt, optionsStr)),
@@ -242,26 +248,28 @@ func calcWinOption(proposalId: Int, optionsList: List[String], isPrevOptional: B
 }
 
 func updateStatusData(oldData: List[String], isValid: Boolean, newWinOpt: (Int, Int), newTotalVotes: Int) = {
-    makeString(["%b%d%d%d%b%d%b",
+    makeString(["%b%d%d%d%b%d%b%s",
       isValid.toString(),
       newWinOpt._1.toString(), # winning option index
       newWinOpt._2.toString(), # winning option votes
       newTotalVotes.toString(),
       oldData[govStatusIdxScApplied],
       oldData[govStatusIdxScTime],
-      oldData[govStatusIdxIsCanceled]
+      oldData[govStatusIdxIsCanceled],
+      oldData[govStatusIdxImplStatus]
       ], SEP)
 }
 
 func statusApplyScript(oldData: List[String]) = {
-    makeString(["%b%d%d%d%b%d%b",
+    makeString(["%b%d%d%d%b%d%b%s",
       oldData[govStatusIdxIsValid],
       oldData[govStatusIdxWinOpt],
       oldData[govStatusIdxWinVotes],
       oldData[govStatusIdxTotalVotes],
       "true",
       oldData[govStatusIdxScTime],
-      oldData[govStatusIdxIsCanceled]
+      oldData[govStatusIdxIsCanceled],
+      oldData[govStatusIdxImplStatus]
       ], SEP)
 }
 
@@ -435,4 +443,22 @@ func finishApply() = {
         IntegerEntry(keyLastUpdateVersion(), version),
         StringEntry(keyProposalStatusDataById(proposalId), statusApplyScript(dynamicData)),
         ExecutionHistory(version, propData[govIdxTitle], propData[govIdxUrl], proposalId)], ignored)
+}
+
+@Callable(i)
+func changeImplStatus(proposalId: Int, newStatus: String) = {
+  if (i.caller != this) then throw("not authorized") else
+  if (newStatus != "ACTIVE" && newStatus != "OUTDATED") then throw("Unknown implementation status") else
+  let dynamicData = this.getStringOrFail(keyProposalStatusDataById(proposalId)).split(SEP)
+  let updated = makeString(["%b%d%d%d%b%d%b%s",
+    dynamicData[govStatusIdxIsValid],
+    dynamicData[govStatusIdxWinOpt],
+    dynamicData[govStatusIdxWinVotes],
+    dynamicData[govStatusIdxTotalVotes],
+    dynamicData[govStatusIdxScApplied],
+    dynamicData[govStatusIdxScTime],
+    dynamicData[govStatusIdxIsCanceled],
+    newStatus
+    ], SEP)
+  ([StringEntry(keyProposalStatusDataById(proposalId), updated)], unit)
 }

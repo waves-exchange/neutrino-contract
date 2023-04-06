@@ -260,7 +260,7 @@ func calcSwapLimitREADONLY(gNsbtAmount: Int) = {
     fraction(aParamX8, powPartX8, MULTX10).toInt()
   }
 
-  # limitXTN = BR * au * gNsbtAmount^bu (burn neutrino)
+  # limitXTN = au * gNsbtAmount^bu (burn neutrino)
   let limitUsdn = if (gNsbtAmount <= 0) then 0 else {
     let aParamX8  = this.getIntOrFail(keyUsdnSwapAmountAParam()).toBigInt()
     let bParamX16 = this.getIntOrFail(keyUsdnSwapAmountBParam()).toBigInt()

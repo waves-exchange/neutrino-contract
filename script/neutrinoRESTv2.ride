@@ -55,6 +55,9 @@ func keyMinNsbtSell() = "min_nsbt_sell"
 #------- staking keys and api------
 func keyStatsDepositAmtByDay(timestamp: Int) = ["%s%s%d", "stats", "depositAmtByDay", timestamp.toString()].makeString(SEP)
 
+#------- math keys-------
+func keySupportedRewardAssets() = "supportedRewardAssets"
+
 func toStartOfDay(timestamp: Int) = {
   (timestamp / DAYMILLIS) * DAYMILLIS
 }
@@ -194,17 +197,25 @@ let nsbtAssetId = nsbtAssetIdStr.fromBase58String()
 let surfAssetIdStr = auctionContract.getStringValue(keySurfAssetId())
 let surfAssetId = surfAssetIdStr.fromBase58String()
 
-func readUsdnIncomeForDay(stakingAcc: Address, startOfDayTimestamp: Int, neutrinoMetrics: List[Any]) = {
+func readUsdnIncomeByDay(stakingAcc: Address, startOfDayTimestamp: Int, xtnPrice: Int) = {
   let amtByDayKEY = keyStatsDepositAmtByDay(startOfDayTimestamp)
-  let incomeStr = stakingAcc.getStrOrElse(amtByDayKEY, "%s%s__0__0")
+  let incomeStr = stakingAcc.getStrOrElse(amtByDayKEY, "%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d__0__0__0__0__0__0__0__0__0__0__0__0__0__0__0__0__0__0")
   let incomeArray = incomeStr.split(SEP)
-  let wavesAmt = incomeArray[1].parseIntValue()
-  let usdnAmt = incomeArray[2].parseIntValue()
+  let supportedAssets = mathContract.getStrOrElse(keySupportedRewardAssets(), "").split("_")
 
-  let currentPrice    = neutrinoMetrics[nMetricIdxPrice].asInt()
-  let wavesAsUsdnAmt = fraction(wavesAmt, currentPrice, MULT8)
-
-  wavesAsUsdnAmt + usdnAmt
+  func incomeAdder(acc: Int, i: Int) = {
+    let assetId = supportedAssets[i]
+    let income = incomeArray[i+1].parseIntValue()
+    if (assetId == neutrinoAssetIdString) then {
+      acc + income
+    } else { # other assets have 8 decimals
+      let pr6 = controlContract.getInteger(keyPriceByAsset(assetId)).value()
+      let assetInUsdAmt = fraction(income, pr6, MULT8)
+      acc + fraction(assetInUsdAmt, MULT6, xtnPrice)
+    }
+  }
+  # TODO: refactor it, so incomeStr will contain assetIds itself
+  FOLD<10>([0, 1, 2], 0, incomeAdder)
 }
 
 func calcUsdnIncomeForPeriod(stakingAcc: Address, days: Int) = {
@@ -213,9 +224,9 @@ func calcUsdnIncomeForPeriod(stakingAcc: Address, days: Int) = {
   let currStartOfDay = toStartOfDay(lastBlock.timestamp)
   let startTimestamp = currStartOfDay - DAYMILLIS * (days + 1)
   let endTimestamp = currStartOfDay - DAYMILLIS
-
-  let startUsdnAmtTMP  = stakingAcc.readUsdnIncomeForDay(startTimestamp, neutrinoMetrics)
-  let endUsdnAmt    = stakingAcc.readUsdnIncomeForDay(endTimestamp, neutrinoMetrics)
+  let xtnPrice = neutrinoMetrics[nMetricWeightedPrice].asInt()
+  let startUsdnAmtTMP  = stakingAcc.readUsdnIncomeByDay(startTimestamp, xtnPrice)
+  let endUsdnAmt    = stakingAcc.readUsdnIncomeByDay(endTimestamp, xtnPrice)
   # there is possibility of holes in stats accumulations, it means that swaps are rarely used and APR is about zero
   let startUsdnAmt  = if (startUsdnAmtTMP == 0) then endUsdnAmt else startUsdnAmtTMP
 

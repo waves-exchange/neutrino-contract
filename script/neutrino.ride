@@ -77,6 +77,8 @@ let LISTSEP = ":"
 let MULT8 = 1_0000_0000
 let MULT6 = 1_000_000
 let DEFAULTSWAPFEE = 20000 # 0.02 * 1000000 or 2%
+let DEFAULTBURNFEE = 5000 # xtn to basket (burn) default protocol fee, 0.005 or 0.5%
+let DEFAULTMAXFEE = 150000 # 0.15 or 15%
 let BRPROTECTED = 100000 # if BR <= 10% then use SURF during swap USDN->WAVES
 let WAVESID = base58'WAVES'
 
@@ -147,8 +149,9 @@ func MinTokenSwapAmountKey(assetId: String) = "min_outNeutrino_swap_amount_" + a
 let MinNeutrinoSwapAmountKey = "min_outMulti_swap_amount"
 let LegacyMinNeutrinoSwapAmountKey = "min_neutrino_swap_amount"
 let NodeOracleProviderPubKeyKey = "node_oracle_provider"
-let NeutrinoOutFeePartKey = "neutrinoOut_swap_feePart" # LEGACY: fee/discount is calculated dynamically
-let WavesOutFeePartKey = "wavesOut_swap_feePart" # LEGACY: fee/discount is calculated dynamically
+let NeutrinoOutFeePartKey = "neutrinoOut_swap_feePart" # master protocol fee, on top of (1 + d)
+let WavesOutFeePartKey = "wavesOut_swap_feePart" # legacy protocol fee, used as default value for BasketOutFeePartKey
+let BasketOutFeePartKey = "multiOut_swap_feePart" # Protocol fee (after deduction of k*D, to pay gNSBT stakers)
 
 #------Common----------------
 
@@ -195,8 +198,10 @@ func basketBKey()                                          = "%s%s__common__bask
 func basketLogbDeltaKey()                                  = "%s%s__common__basketLogbDelta"
 func basketWeightByAssetKey(assetId: String)               = "%s%s%s__common__weightByAsset__" + assetId
 func keyPriceByAsset(assetId: String)                      = "%s%s%s__common__priceByAsset__" + assetId
+func maxFeeKey()                                           = "%s%s__common__maxAllowedFee"
 
 #-------------------State Reading functions-------------------
+func multiOutFeeREAD() = getInteger(BasketOutFeePartKey).valueOrElse(getInteger(WavesOutFeePartKey).valueOrElse(DEFAULTBURNFEE))
 func minSwapAmountREAD(swapType: String, assetId: String) = {
   if (swapType == "outMulti") then getInteger(MinNeutrinoSwapAmountKey).valueOrElse(getNumberByKey(LegacyMinNeutrinoSwapAmountKey))
   else getNumberByKey(MinTokenSwapAmountKey(assetId))
@@ -235,15 +240,21 @@ func convertBasketItemToNeutrino(inAmount: Int, inAsset: String, basketInfoStr: 
   let pp6 = pow(b6, 6, p6, 6, 6, HALFUP)
   # initially there is no supply and no reserve, so we assume xntPrice = 1
   let outAmountGross = fraction(inAmount, it[2].parseIntValue(), if (neutrinoPrice == 0) then MULT8 else neutrinoPrice * 100)
-  let multiplier = MULT6 + d6 - pp6
-  let netAmount = fraction(outAmountGross, multiplier, MULT6)
-  let feeAmount = if (netAmount >= outAmountGross) then 0 else outAmountGross - netAmount
-  [outAmountGross, netAmount, feeAmount] # it is normal if netAmount > outAmountGross due to discount
+  let multiplier = MULT6 + d6 - pp6 # can be 1+D .. 1 .. 0 .. -inf
+  if (multiplier <= 0) then throw("Non-positive multiplier = " + multiplier.toString()) else
+  # condition "multiplier > (1 - maxAllowedFee)" is checked during swap stage only
+  let discounted = fraction(outAmountGross, multiplier, MULT6)
+  let masterFee = getInteger(NeutrinoOutFeePartKey).valueOrElse(DEFAULTSWAPFEE)
+  let feeAmount = fraction(discounted, masterFee, MULT6)
+  [discounted, discounted - feeAmount, feeAmount, multiplier] # [grossAmount, netAmount, feeAmount, multiplier]
 }
 
 # Up to 10 assets
 func convertNeutrinoToBasket(amount: Int, basketInfoStr: String, neutrinoSupply: Int) = {
   let basketInfo = split_4C(basketInfoStr, "_")
+  let k6 = getInteger(basketKKey()).value()
+  let d6 = getInteger(basketDKey()).value()
+  let outPart = MULT6 - fraction(k6, d6, MULT6) # for outMulti swaps, k*D part stays in reserves, and (1 - k*D) after applying fee goes to user
   # basket item: assetIdStr:share6:price6:reserve8
   func conv(acc: (List[(String, Int, Int, Int)], Int, Int), item: String) = {
     let parts = item.split(LISTSEP)
@@ -252,7 +263,7 @@ func convertNeutrinoToBasket(amount: Int, basketInfoStr: String, neutrinoSupply:
     let price = parts[2].parseIntValue()
     let reserv = parts[3].parseIntValue()
     if (neutrinoSupply == 0) then throw("Attempt to burn neutrino at zero supply") else
-    let outAmount = fraction(amount, reserv, neutrinoSupply) # gross amount
+    let outAmount = fraction(fraction(amount, reserv, neutrinoSupply), outPart, MULT6) # amount * (1 - k*D)
     let wavesTuple = if (assetId == "WAVES") then (outAmount, price) else (acc._2, acc._3)
     (acc._1 :+ (assetId, outAmount, price, share), wavesTuple._1, wavesTuple._2)
   }
@@ -415,9 +426,7 @@ func applyFees(amountOutGross: Int, inAmtToSURF: Int, feePart: Int) = {
 
 # basket out: List[(assetId, outAmount, price, share)]
 func applyFeesBasket(basketOut: List[(String, Int, Int, Int)]) = {
-  let k6 = getInteger(basketKKey()).value()
-  let d6 = getInteger(basketDKey()).value()
-  let feePart = fraction(k6, d6, MULT6)
+  let feePart = multiOutFeeREAD()
   func feeApplier(acc: List[String], item: (String, Int, Int, Int)) = {
     let feeAmount = fraction(item._2, feePart, MULT6)
     acc :+ makeString([
@@ -512,15 +521,15 @@ func commonSwap(swapType: String, pmtAmount: Int, inAsset: String, userAddressSt
   if (!isSwapByNode && swapLimitSpent > 0) then throw("You have exceeded swap limit! Next allowed swap height is " + (height + blcks2LmtReset).toString()) else
   if (!isSwapByNode && swapUsdnVolume > swapLimitMax) then throw("You have exceeded your swap limit! Requested: "+ toString(swapUsdnVolume) + ", available: " + toString(swapLimitMax)) else
   if (isBlocked) then emergencyShutdownFAIL() else  # see control.ride
-  
+
   # during the high disproportion of basket tokens, it is possible that (1 + D - b^(dlog - w[i] + x[i])) goes negative
   # we should prevent such swaps
   let neutrinoMetrics = mathContract.invoke("calcNeutinoMetricsREADONLY", [], []).asAnyList()
   let basketInfo = neutrinoMetrics[nMetricBasketInfo].asString() # assetIdStr:share6:price6:reserve8_ ...
   let weightedPrice = neutrinoMetrics[nMetricWeightedPrice].asInt()
-  let out = convertBasketItemToNeutrino(pmtAmount, inAsset, basketInfo, weightedPrice) # [outGrossAmount, netAmount, feeAmount]
-  if (swapType == "outNeutrino" && out[1] <= 0) then throw("Net amount is non-positive, cannot swap. (gross, net, fee) = ("
-    + out[0].toString() + ", " + out[1].toString() + ", " + out[2].toString() + ")") else
+  let out = convertBasketItemToNeutrino(pmtAmount, inAsset, basketInfo, weightedPrice) # [outGrossAmount, netAmount, feeAmount, multiplier]
+  let maxFee = getInteger(maxFeeKey()).valueOrElse(DEFAULTMAXFEE)
+  if (swapType == "outNeutrino" && out[3] < (MULT6 - maxFee)) then throw("Max allowed fee exceeded, multiplier = " + out[3].toString()) else
 
   let leasePart = if (swapType == "outNeutrino" && inAsset == "WAVES") then prepareUnleaseAndLease(0) else []
 
@@ -550,7 +559,7 @@ let bFuncIdxWavesPrice = 10
 
 # basket token to neutrino
 func calcWithdrawT2U(inAmount: Int, inAsset: String, basketInfo: String, weightedPrice: Int) = {
-  let outAmt = convertBasketItemToNeutrino(inAmount, inAsset, basketInfo, weightedPrice) # [outAmountGross, netAmount, feeAmount]
+  let outAmt = convertBasketItemToNeutrino(inAmount, inAsset, basketInfo, weightedPrice) # [outAmountGross, netAmount, feeAmount, multiplier]
   (
     outAmt[0],        # gross outAmount (fees are not applied yet)
     neutrinoAssetId,  # outAssetId is USDN
@@ -608,7 +617,7 @@ func calcWithdraw(swapType: String, inAmount: Int, price: Int, neutrinoMetrics: 
   let outNetAmt = if (swapType == "outNeutrino") then netFeeData[0] else 0
   let outFeeAmt = if (swapType == "outNeutrino") then netFeeData[1] else 0
 
-  let outSurfAmt = if (inAmtToSurfPart <= 0) then 0 else 
+  let outSurfAmt = if (inAmtToSurfPart <= 0) then 0 else
     mathContract.invoke("surfFunctionREADONLY", [inAmtToSurfPart, inAssetId], []).asAnyList()[bFuncIdxSurf].asInt()
 
   let withdrawBasket = if (swapType == "outMulti") then applyFeesBasket(basketData) else "" # assetId:price:netAmount:feeAmount:share_ ...
@@ -851,7 +860,7 @@ func withdraw(account: String, index: Int, swapTxId: String) = {
         let netAmount = it[2].parseIntValue()
         let feeAmount = it[3].parseIntValue()
         let fees = divideFees(feeAmount)
-        ( acc._1 :+ ScriptTransfer(userAddress, netAmount, assetId), 
+        ( acc._1 :+ ScriptTransfer(userAddress, netAmount, assetId),
           acc._2 :+ AttachedPayment(assetId, fees[0]), # payments list for surf_staking contract
           acc._3 :+ AttachedPayment(assetId, fees[1]), # payments list for nsbt_staking contract
           acc._4 + fees[0], # total fees for surf_staking contract

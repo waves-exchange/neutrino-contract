@@ -248,6 +248,23 @@ func findElementPosition(src: String, element: String, sep: String) = {
 let DepositTotalsPREFIX = "%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d"
 let defaultTotalsDATA = DepositTotalsPREFIX + "__0__0__0__0__0__0__0__0__0__0__0__0__0__0__0__0__0__0"
 
+# add some "0"s to the list (starting with descriptor), so its size will be 18+1
+func padList(in: List[String]) = {
+  let currSize = in.size() - 1 # don't count descriptor
+  func listPadder(acc: List[String], idx: Int) = {
+    if (idx < currSize) then acc else acc :+ "0"
+  }
+  FOLD<18>([0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17], in, listPadder)
+}
+
+# add some "__0" to the string with descriptor prefix, so it will contains 18 "__" separators
+func padString(in: String) = {
+  let currSize = split_4C(in, SEP).size() - 1 # don't count descriptor
+  func strPadder(acc: String, idx: Int) = {
+    if (idx < currSize) then acc else acc + "__0"
+  }
+  FOLD<18>([0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17], in, strPadder)
+}
 
 func RewardEntries(isNewUser: Boolean, userAddress: String, stakedAmount: Int) = {
   let stakedAmountX = stakedAmount.toBigInt()
@@ -557,8 +574,9 @@ func deposit() = {
 
   let totalsKEY = keyStatsDepositAmtTotals()
   let byDayKEY = keyStatsDepositAmtByDay(toStartOfDay(lastBlock.timestamp))
-  let currTotals = getString(totalsKEY).valueOrElse(defaultTotalsDATA).split(SEP) # 0th element is %d.. descriptor, see k + 1 below
-  let currByDay = getString(byDayKEY).valueOrElse(defaultTotalsDATA).split(SEP) # 0th element is %d.. descriptor, see k + 1 below
+  # currTotals can have different amount of tokens, due to adding/removing basket tokens
+  # (the same for currByDay) - so we should keep array sizes the same
+  let currTotals = padList(getString(totalsKEY).valueOrElse(defaultTotalsDATA).split(SEP)) # 0th element is %d.. descriptor, see k + 1 below
 
   func dep(acc: (List[IntegerEntry], List[String], List[BigInt], List[Int]), pmt: AttachedPayment) = {
     let amount = pmt.amount
@@ -566,48 +584,45 @@ func deposit() = {
     if (!supportedAssetsStr.contains(pmtAssetIdStr)) then throw(supportedAssetsStr + " doesn't contain " + pmtAssetIdStr) else
 
     if (totalStaked == 0) then # accumalate rewards if nobody stakes SURF
-      ( acc._1 :+ IncrementNotDistributedRewardEntry(pmtAssetIdStr, amount), 
-        acc._2 :+ pmtAssetIdStr, 
+      ( acc._1 :+ IncrementNotDistributedRewardEntry(pmtAssetIdStr, amount),
+        acc._2 :+ pmtAssetIdStr,
         acc._3 :+ toBigInt(0),
         acc._4 :+ amount ) # for totals and by day stats
     else {
       let rewardPerNsbtX18 = fraction(amount.toBigInt(), MULTX18, totalStaked.toBigInt())
-      ( acc._1, 
-        acc._2 :+ pmtAssetIdStr, 
+      ( acc._1,
+        acc._2 :+ pmtAssetIdStr,
         acc._3 :+ rewardPerNsbtX18,
         acc._4 :+ amount ) # for totals and by day stats
     }
   }
   let pmtsResult = FOLD<10>(i.payments, ([], [], [], []), dep)
 
-  func refreshRewardUpdateTotals(accum: (List[StringEntry], String, String, Int), nextAsset: String) = {
-    let k = accum._4 # assets iterating index
+  func refreshRewardUpdateTotals(accum: (List[StringEntry], String, Int), nextAsset: String) = {
+    let k = accum._3 # assets iterating index
     let sumLastStr = keyRewardPerNsbtSumAt(depositNumLast, nextAsset).getStrOrElse("0")
     let idx = indexOf(pmtsResult._2, nextAsset)
     let sum = if (idx.isDefined()) then { # there was payment in such asset
       let j = idx.value() # index of current allowed asset within payments
       let statsDelta = pmtsResult._4[j]
       ( (sumLastStr.parseBigIntValue() + pmtsResult._3[j]).toString(),
-        (currTotals[k + 1].parseIntValue() + statsDelta).toString(),
-        (currByDay[k + 1].parseIntValue() + statsDelta).toString() )
+        (currTotals[k + 1].parseIntValue() + statsDelta).toString() )
     } else {
       ( sumLastStr,
-        currTotals[k + 1],
-        currByDay[k + 1] )
+        currTotals[k + 1] )
     }
     ( accum._1 :+ StringEntry(keyRewardPerNsbtSumAt(depositNumNew, nextAsset), sum._1),
       accum._2 + SEP + sum._2,
-      accum._3 + SEP + sum._3,
       k + 1 )
   }
-  let assetsResult = FOLD<9>(supportedAssetsList, ([], DepositTotalsPREFIX, DepositTotalsPREFIX, 0), refreshRewardUpdateTotals)
-    
-  ( pmtsResult._1 
+  let assetsResult = FOLD<9>(supportedAssetsList, ([], DepositTotalsPREFIX, 0), refreshRewardUpdateTotals)
+  let totals = padString(assetsResult._2)
+  ( pmtsResult._1
   ++ assetsResult._1
   ++ updateTotals() # shift gNsbt maturity categories
   :+ IntegerEntry(depositNumLastKEY, depositNumNew)
-  :+ StringEntry(totalsKEY, assetsResult._2)
-  :+ StringEntry(byDayKEY, assetsResult._3),
+  :+ StringEntry(totalsKEY, totals)
+  :+ StringEntry(byDayKEY, totals),
     depositNumNew )
 }
 
