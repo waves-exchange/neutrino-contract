@@ -291,7 +291,7 @@ func distributeMinerReward(beneficiaryAddressStr: String) = {
   let wxAssetIdStr = "Atqv59EYzjFGuitKVnMRk6H8FukjoV3ktPorbEys25on";
 
   let wxSwapAddress = this.getStrOrElse(keyWxSwapAddress(), "3P68zNiufsu1viZpu1aY3cdahRRKcvV5N93").addressFromStringValue()
-  strict swapResult = wxSwapAddress.invoke("swap", [1, wxAssetIdStr, neutrinoContract.toString()], [AttachedPayment(unit, buyBackAmt)])
+  strict swapResult = wxSwapAddress.invoke("swap", [1, wxAssetIdStr, neutrinoContract.toString()], [AttachedPayment(unit, savingsAmt)])
 
   [ScriptTransfer(beneficiaryAddress,    beneficiaryAmt, unit),
     ScriptTransfer(neutrinoContract,   protocolAmt,  unit),
