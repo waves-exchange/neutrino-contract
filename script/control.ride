@@ -224,11 +224,14 @@ func finalizeWxUsdOnchain(wavesUsdPriceX6: Int) = {
   let xtnId    = neutrinoAsset
   let xtnIdStr = xtnId.toBase58String()
 
-  let wx_WxWaves_AddressStr = "3PFzaH2ghpwANHFgjeva83N1yxzErELx2eh"
-  let wx_WxWaves_Address  = wx_WxWaves_AddressStr.addressFromStringValue()
+  let wx_WxWaves_lp = "BiSzFe8nSL78oZaebfoin5vBZ5Pze6d7kaeijLqr5xZe"
+  let wx_restAddressStr = "3P8MoPnsaurofk1VyhsdAFkeQ6ijpJYXCpW"
+  let wx_restDapp = wx_restAddressStr.addressFromStringValue()
+  let wxRestResult = wx_restDapp.invoke("poolStatsREADONLY", [wx_WxWaves_lp], []).exactAs[String].split("__")
+
   let wx_WxWaves_Weight   = 50000
-  let wx_WxWaves_WAVESx8  = wx_WxWaves_Address.wavesBalance().regular
-  let wx_WxWaves_WXx8     = wx_WxWaves_Address.assetBalance(wxId)
+  let wx_WxWaves_WAVESx8  = wxRestResult[2].parseIntValue()
+  let wx_WxWaves_WXx8     = wxRestResult[1].parseIntValue()
   let wx_WxWaves_WxUsdPriceX6  = fraction(wx_WxWaves_WAVESx8, wavesUsdPriceX6, wx_WxWaves_WXx8)
 
   let wx_WxXtn_AddressStr = "3PCENpEKe8atwELZ7oCSmcdEfcRuKTrUx99"
