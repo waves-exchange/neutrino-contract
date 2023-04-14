@@ -8,6 +8,20 @@ let revisionNum = ""
 
 let SEP = "__"
 
+# Common lib
+func asString(v: Any) = {
+  match v {
+    case s: String => s
+    case _ => throw("fail to cast into String")
+  }
+}
+func asInt(v: Any) = {
+  match v {
+    case i: Int => i
+    case _ => throw("fail to cast into Int")
+  }
+}
+
 #------------------------
 # CONTRACT FUNCTIONS
 #------------------------
@@ -227,7 +241,7 @@ func finalizeWxUsdOnchain(wavesUsdPriceX6: Int) = {
   let wx_WxWaves_lp = "BiSzFe8nSL78oZaebfoin5vBZ5Pze6d7kaeijLqr5xZe"
   let wx_restAddressStr = "3P8MoPnsaurofk1VyhsdAFkeQ6ijpJYXCpW"
   let wx_restDapp = wx_restAddressStr.addressFromStringValue()
-  let wxRestResult = wx_restDapp.invoke("poolStatsREADONLY", [wx_WxWaves_lp], []).exactAs[String].split("__")
+  let wxRestResult = wx_restDapp.invoke("poolStatsREADONLY", [wx_WxWaves_lp], []).asString().split("__")
 
   let wx_WxWaves_Weight   = 50000
   let wx_WxWaves_WAVESx8  = wxRestResult[2].parseIntValue()
@@ -244,7 +258,7 @@ func finalizeWxUsdOnchain(wavesUsdPriceX6: Int) = {
   let swop_WxXtn_AddressStr = "3PKi4G3VX2k42ZSmNNrmvgdDH7JzRaUhY7R"
   let swopRestDapp = "3P56jNQzECXnrWpnbbSJKw7Eooo6fkUaMPp".addressFromStringValue()
   let swop_WxXtn_Weight = 5000
-  let swop_WxXtn_WxXtnPriceX6 = swopRestDapp.invoke("calcGetAmountCPMM", [swop_WxXtn_AddressStr, "3P88qk1KzF1BKjD7fC7LjNVAKM4ezff5WE6", wxIdStr, 1_00_000_000], []).exactAs[Int]
+  let swop_WxXtn_WxXtnPriceX6 = swopRestDapp.invoke("calcGetAmountCPMM", [swop_WxXtn_AddressStr, "3P88qk1KzF1BKjD7fC7LjNVAKM4ezff5WE6", wxIdStr, 1_00_000_000], []).asInt()
   let swop_WxXtn_WxUsdPriceX6 = fraction(swop_WxXtn_WxXtnPriceX6, xtnUsdPriceX6, 1000_000)
 
   let W = wx_WxWaves_Weight + wx_WxXtn_Weight + swop_WxXtn_Weight
