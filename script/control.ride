@@ -388,8 +388,8 @@ func finalizeCurrentPrice(price1: Int, sign1: ByteVector, price2: Int, sign2: By
     let wxDebug       = wxUsdTuple._2
 
     let viresUsdTuple = finalizeViresUsdOnchain(newPrice)
-    let newViresUsdPrice = wxUsdTuple._1
-    let viresDebug       = wxUsdTuple._2
+    let newViresUsdPrice = viresUsdTuple._1
+    let viresDebug       = viresUsdTuple._2
 
     if(newPrice >= (price + price*percentPriceOffset/100) || newPrice <= (price - price*percentPriceOffset/100)) then {
         let reason = "automatic emergency shutdown because of large price variability"
