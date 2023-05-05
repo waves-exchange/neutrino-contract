@@ -416,7 +416,7 @@ func gnsbtEffectiveREADONLY(userAddressStrOrEmpty: String) = {
 func rewardInfoREADONLY(userAddressStrOrEmpty: String) = {
   let rewardsData = gnsbtControllerContract.invoke("gnsbtRewardsSYSREADONLY", [userAddressStrOrEmpty], []).asAnyList()
   let usdnRewards = rpdContract.invoke("unclaimedRewardsREADONLY", [userAddressStrOrEmpty], []).asString()
-  ([], makeString([
+  ([], makeString_2C([
     "%s%s%s",
     rewardsData[0].asString(), #1 nsbt
     rewardsData[1].asString(), #2 surf
