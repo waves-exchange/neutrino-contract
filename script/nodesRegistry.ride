@@ -13,6 +13,10 @@ func getIntOrFail(key: String) = {
   this.getInteger(key).valueOrErrorMessage("Mandatory this." + key + " is not defined")
 }
 
+func getIntOrElse(key: String, val: Int) = {
+  this.getInteger(key).valueOrElse(val)
+}
+
 func getStrOrElse(address: Address, key: String, defaultVal: String) = {
   address.getString(key).valueOrElse(defaultVal)
 }
@@ -66,6 +70,15 @@ func keySavingsAddress()                    = "%s%s__cfg__savingsAddress"
 
 # miningNode KEYs
 func keyBeneficiaryAddress()  = "%s%s__cfg__beneficiaryAddress"
+
+# Node's voting keys
+func keyNodesVotingNextNum()                                              = "%s%s__nodesVotingCfg__nextVotingNum"
+func keyNodesVotingOptionKey(votingNum: String, optionNum: String)        = makeString(["%s%d%s__nodesVotingCfg",    votingNum, optionNum], SEP)
+func keyNodesVotingDesc(votingNum: String)                                = makeString(["%s%d%s__nodesVotingCfg",    votingNum, "description"], SEP)
+func keyNodesVotingStartHeight(votingNum: String)                         = makeString(["%s%d%s__nodesVotingCfg",    votingNum, "votingStartHeight"], SEP)
+func keyNodesVotingEndHeight(votingNum: String)                           = makeString(["%s%d%s__nodesVotingCfg",    votingNum, "votingEndHeight"], SEP)
+func keyNodesVotingOptionTotalVotes(votingNum: String, optionNum: String) = makeString(["%s%d%s%s__nodesVotingData", votingNum, "optionTotalVotes", optionNum], SEP)
+func keyNodesVotingNodeChoice(votingNum: String, nodeAddressStr: String)  = makeString(["%s%d%s%s__nodesVotingData", votingNum, "nodeChoice", nodeAddressStr], SEP)
 
 # data indices from controlConfig
 let IdxControlCfgNeutrinoDapp     = 1
@@ -372,4 +385,60 @@ func returnDeposit(nodeAddressStr: String) = {
   ) then throw("returnDeposit permissions denied") else
 
   [DeleteEntry(nodeRegistryKEY), ScriptTransfer(beneficiaryAddress, depoAmount,  unit)]
+}
+
+# options format: 1:descr1__2:descr2__...__N:descrN
+@Callable(i)
+func initNodesVoting(startHeight: Int, endHeight: Int, options: String, description: String) = {
+  if (i.caller != this) then throw("permissions denied") else
+  let optionsArray = options.split("__")
+  if (optionsArray.size() > 10) then throw("Max 10 options can be specified") else
+
+  let nodesVotingNumKEY = keyNodesVotingNextNum()
+  let votingNum = getIntOrElse(nodesVotingNumKEY, 0)
+  let votingNumStr = votingNum.toString()
+
+  func transformOptions(accum: List[StringEntry|IntegerEntry], nextOpt: String) = {
+    let optData = nextOpt.split(":")
+    let opt = optData[0]
+    let optKEY = keyNodesVotingOptionKey(votingNumStr, opt)
+    let optDescr = optData[1]
+    let optTotalVotesKEY = keyNodesVotingOptionTotalVotes(votingNumStr, opt)
+    accum
+      :+StringEntry(optKEY, optDescr)
+      :+IntegerEntry(optTotalVotesKEY, 0)
+  }
+
+  FOLD<10>(optionsArray, [], transformOptions)
+    :+ IntegerEntry(nodesVotingNumKEY, votingNum+1)
+    :+ StringEntry(keyNodesVotingDesc(votingNumStr), description)
+    :+ IntegerEntry(keyNodesVotingStartHeight(votingNumStr), startHeight)
+    :+ IntegerEntry(keyNodesVotingEndHeight(votingNumStr), endHeight)
+}
+
+# only Node's beneficiary can vote
+@Callable(i)
+func voteByNode(nodeAddressStr: String, votingNum: String, optionNum: String) = {
+  strict validateNode = readNodeDataAndValidateStatus(nodeAddressStr, "APPROVED")
+  let nodeAddress = nodeAddressStr.addressFromStringValue()
+
+  let nodeBeneficiary = nodeAddress.getStringOrFail(keyBeneficiaryAddress())
+  let voterAddressStr = i.caller.toString()
+  if (voterAddressStr != nodeBeneficiary) then throw("Only Node's beneficiary can do voting") else
+
+  let startHeight = keyNodesVotingStartHeight(votingNum).getIntOrFail()
+  let endHeight = keyNodesVotingEndHeight(votingNum).getIntOrFail()
+  if (height < startHeight) then throw("Voting has not been started yet") else
+  if (height > endHeight) then throw("Voting finished") else
+
+  let nodeChoiceKEY = keyNodesVotingNodeChoice(votingNum, nodeAddressStr)
+  let nodeChoice = this.getStrOrElse(nodeChoiceKEY, "")
+  if (nodeChoice != "") then throw("Node has already voted. It is allowed to vote only once") else
+
+  let optionTotalVotesKEY = keyNodesVotingOptionTotalVotes(votingNum, optionNum)
+  # optionTotalVotes is initialized in "initNodesVoting" and here we can read and validate passed option
+  let optionTotalVotes = optionTotalVotesKEY.getIntOrFail()
+
+  [IntegerEntry(optionTotalVotesKEY, optionTotalVotes + 1),
+    StringEntry(nodeChoiceKEY, optionNum)]
 }
