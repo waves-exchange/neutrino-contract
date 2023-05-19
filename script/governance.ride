@@ -74,6 +74,7 @@ let neutrinoContract = controlCfg.getContractAddressOrFail(IdxControlCfgNeutrino
 let gnsbtControllerContract = controlCfg.getContractAddressOrFail(IdxControlCfgGnsbtControllerDapp)
 let surfStakingContract = controlCfg.getContractAddressOrFail(IdxControlCfgSurfStakingDapp)
 
+func keyLastBase58Proposal() = "%s__lastBase58Proposal"
 func keyQuorumRequiredPercent(type: String) = "%s%s__quorumRequired__" + type
 func keyPaymentRequired() = "%s__paymentRequired"
 func keyGnsbtRequired() = "%s__gNsbtRequired"
@@ -211,16 +212,21 @@ func initiateVoting(payment: AttachedPayment, proposalTxId: String, type: String
     let numProposalsByAuthor = getIntOrElse(keyNumProposalsByAuthor(author), 0) + 1
     let uniqAuthors = getIntOrElse(keyStatsUniqueAuthors(), 0) + (if (numProposalsByAuthor == 1) then 1 else 0)
     let optionsStr = makeString(optionsList, LISTSEP) # TODO: check options for length and special chars
+
+    let lastBase58Proposal = getInteger(keyLastBase58Proposal())
+    let optionallastBase58Proposal = if (lastBase58Proposal != unit) then []
+        else [IntegerEntry(keyLastBase58Proposal(), proposalId - 1)]
+
     ([
         IntegerEntry(keyLastProposalId(), proposalId),
         IntegerEntry(keyProposalIdByTopicId(topicId), proposalId),
         StringEntry(keyProposalStatusDataById(proposalId), statusData(false, 0, 0, 0, false, votingEndTime, false, "ACTIVE")),
         StringEntry(keyProposalDataById(proposalId), 
-          proposalData(proposalTxId, type, author, forumLink.toBytes().toBase58String(), title.toBytes().toBase58String(), 
+          proposalData(proposalTxId, type, author, forumLink.toBytes().toBase16String(), title.toBytes().toBase16String(),
             proposalTime, votingStartTime, votingEndTime, txIds, quorumInGnsbt, optionsStr)),
         IntegerEntry(keyNumProposalsByAuthor(author), numProposalsByAuthor),
         IntegerEntry(keyStatsUniqueAuthors(), uniqAuthors)
-    ], proposalTxId)
+    ] ++ optionallastBase58Proposal, proposalTxId)
 }
 
 # we can't rely on oldUserChoice, newUserChoice and currentWinner only, as some new leader can appear

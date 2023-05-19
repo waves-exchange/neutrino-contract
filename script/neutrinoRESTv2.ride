@@ -21,6 +21,7 @@ let BRPROTECTED = 100000 # if BR <= 10% then use SURF during swap USDN->WAVES
 # synthetic WAVES assetId
 let WAVESID = fromBase58String("WAVES")
 let DAYMILLIS = 86_400_000  #24 * 60 * 60 * 1000
+let DEFAULTPERIOD = 1440 * 14 # two weeks (default voting pover maturity period)
 
 #-------neutrino keys------
 func keyNeutrinoAssetId() = "neutrino_asset_id"
@@ -47,6 +48,9 @@ func keyPriceByAsset(assetId: String) = "%s%s%s__common__priceByAsset__" + asset
 func keyLockParamStartBlock(userAddress: String) = ["%s%s%s", "paramByUser", userAddress, "start"].makeString(SEP)
 func keyHalfLife() = "%s__halfLife"
 func keyMinLockAmount() = "%s__minLockAmount"
+
+#-------- surf staking keys-----------
+func keyVpPeriodDuration() = ["%s%s", "vp", "periodDuration"].makeString(SEP)
 
 #------- auction keys------
 func keyMinWavesForNsbtBuy() = "min_waves_nsbt_buy"
@@ -266,6 +270,7 @@ func gnsbtInfoINTERNAL(userAddressStrOrEmpty: String, additionalNsbtToStakeOrZer
   let currentPrice = controlContract.getIntegerValue(keyPrice())
 
   let gnsbtFromNsbtDiff = additionalNsbtToStakeOrZero
+  # this invocation is just surfToGnsbt() conversion, which is currently div(300)
   let gnsbtFromSurfDiff = surfStakingContract.invoke("gnsbtFromSurfSYSREADONLY", [additionalSurfToStakeOrZero], []).asInt()
   let gNsbtDiff = gnsbtFromNsbtDiff + gnsbtFromSurfDiff
 
@@ -302,45 +307,48 @@ func gnsbtInfoINTERNAL(userAddressStrOrEmpty: String, additionalNsbtToStakeOrZer
   let gnsbtTotal            = gnsbtData[1].asInt()
   let nsbtData              = gnsbtData[2].asAnyList()
   let surfData              = gnsbtData[3].asAnyList()
-  let vpEffectiveHeight     = gnsbtData[4].asInt()
-  let vpEffectiveHeightNEW  = gnsbtData[5].asInt()
+
+  let gnsbtSurfTotalMature  = gnsbtData[6].asInt()
+  let gnsbtSurfTotalTeen    = gnsbtData[7].asInt()
+  let gnsbtSurfTotalKid     = gnsbtData[8].asInt()
+  let gnsbtSurfUserMature   = gnsbtData[9].asInt()
+  let gnsbtSurfUserTeen     = gnsbtData[10].asInt()
+  let gnsbtSurfUserKid      = gnsbtData[11].asInt()
+
+  let gnsbtAmtFromSurfMax   = gnsbtSurfUserMature + gnsbtSurfUserTeen + gnsbtSurfUserKid
 
   let gnsbtAmtFromNsbt      = nsbtData[2].asInt()
-  let gnsbtAmtFromSurf      = surfData[2].asInt()
   let gnsbtAmtFromNsbtNEW   = gnsbtAmtFromNsbt + gnsbtFromNsbtDiff
-  let gnsbtAmtFromSurfNEW   = gnsbtAmtFromSurf + gnsbtFromSurfDiff
+  let gnsbtAmtFromSurfNEW   = gnsbtAmtFromSurfMax + gnsbtFromSurfDiff
 
   let gnsbtFromNsbtTotal    = nsbtData[3].asInt()
-  let gnsbtFromSurfTotal    = surfData[3].asInt()
-  let gnsbtFromSurfActiveTotal = 0
-  let gnsbtFromSurfFrozenTotal = gnsbtFromSurfTotal
-
   let gnsbtFromNsbtTotalNEW = gnsbtFromNsbtTotal + gnsbtFromNsbtDiff
-  let gnsbtFromSurfTotalNEW = gnsbtFromSurfTotal + gnsbtFromSurfDiff
-  let gnsbtFromSurfFrozenTotalNEW = gnsbtFromSurfTotalNEW
+  let gnsbtFromSurfTotalNEW = gnsbtSurfTotalMature + gnsbtSurfTotalTeen + gnsbtSurfTotalKid + gnsbtFromSurfDiff
 
   # TODO MOVE into gnsbtController
-  let votingPower       = fraction(gnsbtAmtFromNsbt,                          MULT8, gnsbtFromNsbtTotal + gnsbtFromSurfActiveTotal)
-  let votingPowerNew    = fraction(gnsbtAmtFromNsbtNEW,                       MULT8, gnsbtFromNsbtTotalNEW + gnsbtFromSurfActiveTotal)
-  let votingPowerMax    = fraction(gnsbtAmtFromNsbt + gnsbtAmtFromSurf,       MULT8, gnsbtFromNsbtTotal + gnsbtFromSurfActiveTotal + gnsbtFromSurfFrozenTotal)
-  let votingPowerMaxNew = fraction(gnsbtAmtFromNsbtNEW + gnsbtAmtFromSurfNEW, MULT8, gnsbtFromNsbtTotalNEW + gnsbtFromSurfActiveTotal + gnsbtFromSurfFrozenTotalNEW)
-  let votingPowerEta    = if (vpEffectiveHeight == 0) then height else vpEffectiveHeight
-  let votingPowerEtaNew = if (vpEffectiveHeightNEW == 0) then height else vpEffectiveHeightNEW
+  let votingPower       = gnsbtAmtFromNsbt + gnsbtSurfUserMature
+  let votingPowerNew    = gnsbtAmtFromNsbtNEW + gnsbtSurfUserMature
+  let votingPowerMax    = gnsbtAmtFromNsbt + gnsbtAmtFromSurfMax
+  let votingPowerMaxNew = gnsbtAmtFromNsbtNEW + gnsbtAmtFromSurfMax + gnsbtFromSurfDiff
+  let W2 = surfStakingContract.getIntOrElse(keyVpPeriodDuration(), DEFAULTPERIOD)
+  let period = height / W2
+  let votingPowerEta    = if (gnsbtSurfUserKid != 0) then (period + 2) * W2 else if (gnsbtSurfUserTeen != 0) then (period + 1) * W2 else height
+  let votingPowerEtaNew = if (gnsbtFromSurfDiff != 0) then (period + 2) * W2 else votingPowerEta
 
   ([], [
-    0,                     # meta info
+    0,                     # stub for meta info
     nsbtBalance,           # 1
     surfBalance,           # 2
     nsbtBalanceNew,        # 3
     surfBalanceNew,        # 4
 
     gnsbtAmtFromNsbt,      # 5
-    gnsbtAmtFromSurf,      # 6
+    gnsbtSurfUserMature,   # 6
     gnsbtAmtFromNsbtNEW,   # 7
     gnsbtAmtFromSurfNEW,   # 8
 
     gnsbtFromNsbtTotal,    # 9
-    gnsbtFromSurfTotal,    # 10
+    gnsbtSurfTotalMature,  # 10
     gnsbtFromNsbtTotalNEW, # 11
     gnsbtFromSurfTotalNEW, # 12
 

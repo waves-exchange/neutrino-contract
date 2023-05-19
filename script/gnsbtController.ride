@@ -161,6 +161,15 @@ func claimRewards() = {
 }
 
 @Callable(i)
+func claimAllRewards() = {
+  let nsbtInv = nsbtStakingContract.invoke("claimRewardsByOriginCaller", [], []).asInt()
+  let surfInv = surfStakingContract.invoke("claimRewardsByOriginCaller", [], []).asInt()
+  let rpdInv = rpdContract.invoke("claimRewardsByOriginCaller", [], []).asInt()
+  if ((nsbtInv + surfInv + rpdInv) == 0) then throw("Nothing to claim") else
+  []
+}
+
+@Callable(i)
 func gnsbtRewardsSYSREADONLY(userAddressStrOrEmpty: String) = {
   let nsbtRewardStr = nsbtStakingContract.invoke("unclaimedRewardsREADONLY", [userAddressStrOrEmpty], []).asString()
   let surfRewardStr = surfStakingContract.invoke("unclaimedRewardsREADONLY", [userAddressStrOrEmpty], []).asString()
