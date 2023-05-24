@@ -1062,7 +1062,8 @@ func removeCommunityNode(oldAddrStr: String, groupNum: Int, penaltyAmount: Int) 
 
   ([DeleteEntry(oldLeaseIdKey),
     DeleteEntry(oldLeaseAmtKey),
-    StringEntry(groupKey, updatedGroupNodeListS)] 
+    StringEntry(groupKey, updatedGroupNodeListS),
+    LeaseCancel(lId0)] 
     ++ LeasingRelatedActions(nAddr0, lAmt0 + leaseAmt, getBinaryValue(oldLeaseIdKey), lIdKEY0, lAmtKEY0)
    , unit)
 }
