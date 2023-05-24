@@ -71,6 +71,12 @@ func asSwapParamsSTRUCT(v: Any) = {
   }
 }
 
+func removeFromListStr(listStr: String, separator: String, strToRemove: String) = {
+  let arr = listStr.split(separator)
+  let idx = arr.indexOf(strToRemove).valueOrErrorMessage(listStr + "does not contain " + strToRemove)
+  arr.removeByIndex(idx).makeString(separator)
+}
+
 #-------------------Constants---------------------------
 let SEP = "__"
 let LISTSEP = ":"
@@ -441,22 +447,13 @@ func applyFeesBasket(basketOut: List[(String, Int, Int, Int)]) = {
   makeString_2C(a, "_") # assetId:price:netAmount:feeAmount:share_ ...
 }
 
-func abs(x: Int) = if (x < 0) then -x else x
-
 func selectNode(unleaseAmount: Int) = {
     let amountToLease = wavesBalance(neutrinoContract).available - unleaseAmount - getReservedAmountForSponsorship()
 
     let oldLeased0 = getNumberByKey(getLeaseAmountKey(0))
-    let oldLeased1 = getNumberByKey(getLeaseAmountKey(1))
     let newLeased0 = amountToLease + oldLeased0
-    let newLeased1 = amountToLease + oldLeased1
 
-    if (newLeased0 > 0 || newLeased1 > 0) then {
-        # balancing the nodes
-        let delta0 = abs(newLeased0 - oldLeased1) # try changing node 0, compare to 1
-        let delta1 = abs(newLeased1 - oldLeased0) # try changing node 1, compare to 0
-        if (delta0 <= delta1) then (0, newLeased0) else (1, newLeased1) # smaller diff wins, node 0 is a priority if equal
-    } else (-1, 0) # fixme: if nodes are balanced, we cannot unlease more than a half
+    if (newLeased0 > 0) then newLeased0 else 0
 }
 
 func thisOnly(i: Invocation) = {
@@ -467,21 +464,29 @@ func thisOnly(i: Invocation) = {
 
 # prepare list of actions to lease available waves or cancel lease in case of usdn2waves swap
 func prepareUnleaseAndLease(unleaseAmount: Int) = {
-    let nodeTuple       = selectNode(unleaseAmount) # balancing waves by 2 nodes
-    let nodeIndex       = nodeTuple._1
-    let newLeaseAmount  = nodeTuple._2
+    let newLeaseAmount  = selectNode(unleaseAmount)
+    let nodeIndex       = 0
 
     if (newLeaseAmount > 0) then {
+        # get rid of node1 leftovers
+        let leaseIdKey1 = getLeaseIdKey(1)
+        let oldLease1 = getBinary(leaseIdKey1)
+        let unleaseOrEmpty1 = if (oldLease1.isDefined()) then [
+          LeaseCancel(oldLease1.value()), 
+          DeleteEntry(leaseIdKey1), 
+          DeleteEntry(getLeaseAmountKey(1))
+        ] else []
+
         let leaseIdKey = getLeaseIdKey(nodeIndex)
         let oldLease = getBinary(this, leaseIdKey)
         let unleaseOrEmpty = if (oldLease.isDefined()) then [LeaseCancel(oldLease.value())] else []
         let leaseAmountKey = getLeaseAmountKey(nodeIndex)
         let lease = Lease(getStakingNodeAddressByIndex(nodeIndex), newLeaseAmount)
 
-        unleaseOrEmpty ++ [
+        unleaseOrEmpty1 ++ unleaseOrEmpty ++ [
             lease,
             BinaryEntry(leaseIdKey, lcalc(lease)),
-            IntegerEntry(getLeaseAmountKey(nodeIndex), newLeaseAmount)]
+            IntegerEntry(leaseAmountKey, newLeaseAmount)]
     } else []
 }
 
@@ -494,6 +499,15 @@ func readNodeInfo(nodeIdx: Int) = {
   let leaseId = this.getBinary(leaseIdKEY).value()
 
   (nodeAddress, leasedAmtKEY, leasedAmt, leaseIdKEY, leaseId)
+}
+
+# convenient method to avoid copy-paste
+func LeasingRelatedActions(nodeAddr: Address, newAmount: Int, oldId: ByteVector, newIdKey: String, newAmtKey: String) = {
+  let lease = Lease(nodeAddr, newAmount)
+  [ LeaseCancel(oldId),
+    lease,
+    BinaryEntry(newIdKey, calculateLeaseId(lease)),
+    IntegerEntry(newAmtKey, newAmount)]
 }
 
 #-------------------MAIN LOGIC----------------------
@@ -945,45 +959,31 @@ func approveLeasings(nListS: String, groupNum: Int, lAmt: Int) = {
     ++ FOLD<8>(nIdxs, [], forEachNodeValidateAndGenerateLease)
 }
 
+# 10 groups, up to 8 nodes in the group
+# amount: waves amt to take from community nodes in a given group
 @Callable(i)
 func rebalanceLeasings(amount: Int, groupNum: Int) = {
-  let nIdxs = [0, 1, 2, 3, 4, 5, 6, 7]
-
   let mngPubS = getString("%s%s__cfg__leasingManagerPub").valueOrElse("7AUMX54ukYMYvPmma7yoFf5NjZhs4Bu5nz3Ez9EV8sur")
   let mngPub = mngPubS.fromBase58String()
+  if (i.callerPublicKey != mngPub) then throw("rebalanceLeasings not authorized") else
 
   let lGroupNodeListKEY = getLeaseGroupNodeListKey(groupNum)
-  let nListS = this.getStringOrFail(lGroupNodeListKEY)
-  let nList = nListS.split(SEP)
-
-  if (i.callerPublicKey != mngPub) then throw("rebalanceLeasings not authorized") else
+  let nList = this.getStringOrFail(lGroupNodeListKEY).split(SEP)
+  if (nList.size() < 1) then throw("Empty group " + groupNum.toString()) else
 
   let unleaseAmt = amount / nList.size() + 1
   let (nAddr0, lAmtKEY0, lAmt0, lIdKEY0, lId0) = readNodeInfo(0)
 
-  let newL0 = Lease(nAddr0, lAmt0 + unleaseAmt * nList.size())
-
-  func forEachNodeDoUnlease(a: List[Lease|BinaryEntry|IntegerEntry], i: Int) = {
-    let node = nList[i]
+  func forEachNodeDoUnlease(a: List[LeaseCancel|Lease|BinaryEntry|IntegerEntry], node: String) = {
     let lIdKEY = getLeaseIdByAddressKey(node)
-    let lId = this.getBinaryValue(lIdKEY)
+    let lId = this.getBinaryValue(lIdKEY) # old leaseId
     let lAmtKEY = getLeaseAmountByAddressKey(node)
-    let lAmt = this.getIntegerValue(lAmtKEY)
-
-    let ula = LeaseCancel(lId.value())
-    let la  = Lease(node.addressFromStringValue(), lAmt - unleaseAmt)
-    a++[LeaseCancel(lId.value()),
-        la,
-        BinaryEntry(lIdKEY, lcalc(la)),
-        IntegerEntry(lAmtKEY, la.amount)]
+    let lAmt = this.getIntegerValue(lAmtKEY) # old leasedAmount
+    a ++ LeasingRelatedActions(addressFromStringValue(node), lAmt - unleaseAmt, lId, lIdKEY, lAmtKEY)
   }
 
-  FOLD<8>(nIdxs, [], forEachNodeDoUnlease)
-    ++ [
-      BinaryEntry(lIdKEY0, lcalc(newL0)),
-      IntegerEntry(lAmtKEY0, newL0.amount),
-      LeaseCancel(lId0),
-      newL0]
+  FOLD<8>(nList, [], forEachNodeDoUnlease)
+    ++ LeasingRelatedActions(nAddr0, lAmt0 + unleaseAmt * nList.size(), lId0, lIdKEY0, lAmtKEY0)
 }
 
 # READONLY methods
@@ -1032,17 +1032,39 @@ func replaceCommunityNode(oldAddrStr: String, newAddrStr: String, groupNum: Int,
   let leaseAmt = getIntegerValue(oldLeaseAmtKey)
   let newLeaseIdKey = getLeaseIdByAddressKey(newAddrStr)
   let newLeaseAmtKey = getLeaseAmountByAddressKey(newAddrStr)
-  let newLease = Lease(newAddrStr.addressFromStringValue(), leaseAmt)
   let updatedGroupNodeListS = groupNodeListS.split(oldAddrStr).makeString(newAddrStr)
 
-  ([LeaseCancel(getBinaryValue(oldLeaseIdKey)),
-    DeleteEntry(oldLeaseIdKey),
+  ([DeleteEntry(oldLeaseIdKey), 
+    DeleteEntry(oldLeaseAmtKey), 
+    StringEntry(groupKey, updatedGroupNodeListS)]
+    ++ LeasingRelatedActions(addressFromStringValue(newAddrStr), leaseAmt, getBinaryValue(oldLeaseIdKey), newLeaseIdKey, newLeaseAmtKey)
+  , unit)
+}
+
+@Callable(i)
+func removeCommunityNode(oldAddrStr: String, groupNum: Int, penaltyAmount: Int) = {
+  let mngPubS = getString("%s%s__cfg__leasingManagerPub").valueOrElse("7AUMX54ukYMYvPmma7yoFf5NjZhs4Bu5nz3Ez9EV8sur")
+  let mngPub = mngPubS.fromBase58String()
+  if (i.callerPublicKey != mngPub) then throw("removeCommunityNode not authorized") else
+
+  let groupKey = getLeaseGroupNodeListKey(groupNum)
+  let groupNodeListS = this.getStringOrFail(groupKey)
+  if (!groupNodeListS.contains(oldAddrStr)) then throw("Group " + groupNum.toString() + " does not contain address " + oldAddrStr) else
+
+  strict doRemove = nodeRegistryContract.invoke("removeApprovedNode", [oldAddrStr, penaltyAmount], [])
+
+  let oldLeaseIdKey = getLeaseIdByAddressKey(oldAddrStr)
+  let oldLeaseAmtKey = getLeaseAmountByAddressKey(oldAddrStr)
+  let leaseAmt = getIntegerValue(oldLeaseAmtKey)
+
+  let (nAddr0, lAmtKEY0, lAmt0, lIdKEY0, lId0) = readNodeInfo(0) # (nodeAddress, leasedAmtKEY, leasedAmt, leaseIdKEY, leaseId)
+  let updatedGroupNodeListS = removeFromListStr(groupNodeListS, SEP, oldAddrStr)
+
+  ([DeleteEntry(oldLeaseIdKey),
     DeleteEntry(oldLeaseAmtKey),
-    StringEntry(groupKey, updatedGroupNodeListS),
-    newLease,
-    BinaryEntry(newLeaseIdKey, lcalc(newLease)),
-    IntegerEntry(newLeaseAmtKey, leaseAmt)
-  ], unit)
+    StringEntry(groupKey, updatedGroupNodeListS)] 
+    ++ LeasingRelatedActions(nAddr0, lAmt0 + leaseAmt, getBinaryValue(oldLeaseIdKey), lIdKEY0, lAmtKEY0)
+   , unit)
 }
 
 @Verifier(tx)
