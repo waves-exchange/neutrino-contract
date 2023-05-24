@@ -55,6 +55,12 @@ func validateAddressOrFail(addressStr: String) = {
   if (wavesBalance(address).available < 0) then throw() else addressStr
 }
 
+func removeFromListStrBig(listStr: String, separator: String, strToRemove: String) = {
+  let arr = listStr.split_4C(separator)
+  let idx = arr.indexOf(strToRemove).valueOrErrorMessage(listStr + "does not contain " + strToRemove)
+  arr.removeByIndex(idx).makeString_2C(separator)
+}
+
 func keyNodeRegistry(address: String)       = "%s__" + address
 func keyNodeRewardsTotals(address: String)  = "%s%s__totals__" + address
 func keyApprovedNodeList()                  = "%s__approvedNodeList"
@@ -369,7 +375,7 @@ func removeApprovedNode(nodeAddrStr: String, penaltyAmount: Int) = {
 
   let approvedNodeListS = this.getStringOrFail(keyApprovedNodeList())
   if (!approvedNodeListS.contains(nodeAddrStr)) then throw("approvedNodeList does not contain " + nodeAddrStr) else
-  let updatedNodeListS = approvedNodeListS.split_4C(nodeAddrStr).makeString_2C("")
+  let updatedNodeListS = removeFromListStrBig(approvedNodeListS, SEP, nodeAddrStr)
 
   let nodeAddr = nodeAddrStr.addressFromStringValue()
   let beneficiaryAddress = resolveBeneficiaries(nodeAddr, nodeAddr)
