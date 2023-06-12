@@ -304,13 +304,14 @@ func distributeMinerReward(beneficiaryAddressStr: String) = {
   let protocolAmt = minedAmt - beneficiaryAmt
 
   let buyBackAmt = 120*MULT8
-
   let savingsAddress = this.getStrOrElse(keySavingsAddress(), "3PC7DBimauyKytx8tXhKo5u2ECb6FsndYKH").addressFromStringValue()
-  let savingsAmt = savingsAddress.invoke("withdraw", [buyBackAmt], []).asInt()
-  let wxAssetIdStr = "Atqv59EYzjFGuitKVnMRk6H8FukjoV3ktPorbEys25on";
+  strict buyBack = if (savingsAddress.wavesBalance().available >= buyBackAmt) then {
+    let savingsAmt = savingsAddress.invoke("withdraw", [buyBackAmt], []).asInt()
+    let wxAssetIdStr = "Atqv59EYzjFGuitKVnMRk6H8FukjoV3ktPorbEys25on";
 
-  let wxSwapAddress = this.getStrOrElse(keyWxSwapAddress(), "3P68zNiufsu1viZpu1aY3cdahRRKcvV5N93").addressFromStringValue()
-  strict swapResult = wxSwapAddress.invoke("swap", [1, wxAssetIdStr, neutrinoContract.toString()], [AttachedPayment(unit, savingsAmt)])
+    let wxSwapAddress = this.getStrOrElse(keyWxSwapAddress(), "3P68zNiufsu1viZpu1aY3cdahRRKcvV5N93").addressFromStringValue()
+    wxSwapAddress.invoke("swap", [1, wxAssetIdStr, neutrinoContract.toString()], [AttachedPayment(unit, savingsAmt)])
+  } else false
 
   [ScriptTransfer(beneficiaryAddress,    beneficiaryAmt, unit),
     ScriptTransfer(neutrinoContract,   protocolAmt,  unit),
