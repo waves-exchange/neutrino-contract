@@ -314,7 +314,7 @@ func distributeMinerReward(beneficiaryAddressStr: String) = {
   } else false
 
   [ScriptTransfer(beneficiaryAddress,    beneficiaryAmt, unit),
-    ScriptTransfer(neutrinoContract,   protocolAmt,  unit),
+    ScriptTransfer(masterNodeAddress,   protocolAmt,  unit),
     ScriptTransfer(txRewardReceiver,  callReward,    unit),
     RewardHistoryEntry(minerAddress, i.transactionId, minedAmt, beneficiaryAmt, protocolAmt, protocolAmt, 0),
     RewardTotalsEntry(minerAddress, minedAmt, beneficiaryAmt, protocolAmt, protocolAmt, 0)
