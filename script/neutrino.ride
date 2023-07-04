@@ -169,6 +169,7 @@ let PriceKey = "price"
 
 let PriceIndexKey = "price_index"
 let IsBlockedKey = "is_blocked"
+let IsDisabledIssueKey = "xtn_issue_disabled"
 func getPriceHistoryKey(block: Int) = PriceKey + "_" + toString(block)
 func getHeightPriceByIndexKey(index: Int) = PriceIndexKey + "_" + toString(index)
 func getStakingNodeByIndex(idx: Int) = getStringByKey(makeString(["%s%d%s", "lease", toString(idx), "nodeAddress"], SEP))
@@ -292,6 +293,7 @@ func priceIndexFAIL(index: Int, priceIndex: Int, indexHeight: Int, unlockHeight:
 let neutrinoAssetId = getStringByKey(NeutrinoAssetIdKey).fromBase58String()
 let priceIndex = getNumberByAddressAndKey(controlContract, PriceIndexKey) # Last price history iterator from control.ride
 let isBlocked = getBoolByAddressAndKey(controlContract, IsBlockedKey) # Checks for contract locks that might happen after attacks.  The var is read from control contract
+let isDisabledIssueXtn = getBoolByAddressAndKey(controlContract, IsDisabledIssueKey)
 let nodeOracleProviderPubKey = fromBase58String(getStringByKey(NodeOracleProviderPubKeyKey))
 let bondAssetId = fromBase58String("6nSpVyNH7yM69eg446wrQR94ipbbcmZMU1ENPwanC97g") # NSBT with 6 decimals as USDN does
 let deprecatedBondAssetId = fromBase58String("975akZBfnMj513U7MZaHKzQrmsEx5aE3wdWKTrHBhbjF") # USDNB with 0 decimals
@@ -472,8 +474,8 @@ func prepareUnleaseAndLease(unleaseAmount: Int) = {
         let leaseIdKey1 = getLeaseIdKey(1)
         let oldLease1 = getBinary(leaseIdKey1)
         let unleaseOrEmpty1 = if (oldLease1.isDefined()) then [
-          LeaseCancel(oldLease1.value()), 
-          DeleteEntry(leaseIdKey1), 
+          LeaseCancel(oldLease1.value()),
+          DeleteEntry(leaseIdKey1),
           DeleteEntry(getLeaseAmountKey(1))
         ] else []
 
@@ -648,7 +650,7 @@ func keyProposalDataById(proposalId: Int) = "%s%d__proposalData__" + proposalId.
 # indices to access proposal data fields (static)
 let govIdxTxIds = 9
 
-# The transaction cannot be added to the blockchain if the timestamp value is more than 2 hours behind 
+# The transaction cannot be added to the blockchain if the timestamp value is more than 2 hours behind
 # or 1.5 hours ahead of current block timestamp
 func validateUpdate(tx: Transaction|Order) = {
     match(tx) {
@@ -733,10 +735,11 @@ func constructorV3(assetsWeightsMins: List[String], dParam: Int, kParam: Int, bP
   :+ StringEntry(basketAssetsKey(), makeString(r._1, SEP))
 }
 
-# Instant swap of WAVES to Neutrino token at the current price on the smart contract
+# Instant swap of basket token to XTN at the current price on the smart contract
 # [called by user]
 @Callable(i)
 func swapTokenToNeutrino() = {
+    if (isDisabledIssueXtn) then throw("XTN issue is disabled") else
     if (i.payments.size() != 1) then throw("swapTokenToNeutrino require only one payment") else
     let pmt = i.payments[0].value()
     # check allowed assets
