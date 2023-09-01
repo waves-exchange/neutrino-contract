@@ -46,9 +46,9 @@ func keyControlConfig() = "%s__controlConfig"
 func dataControlCfg(neutrinoContract: String, auctionContract: String, rpdContract: String, mathContract: String,
                     liquidationContract: String, restContract: String, nodeRegistryContract: String, nsbtStakingContract: String,
                     mediatorContract: String, surfStakingContract: String, gnsbtControllerContract: String, restV2Contract: String,
-                    governanceContract: String, doraContract: String) = {
-  makeString(
-    ["%s%s%s%s%s%s%s%s%s%s%s%s%s%s",
+                    governanceContract: String, doraContract: String, poolsFacadeContract: String) = {
+  makeString_2C(
+    ["%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s",
     neutrinoContract,         #1
     auctionContract,          #2
     rpdContract,              #3
@@ -62,7 +62,8 @@ func dataControlCfg(neutrinoContract: String, auctionContract: String, rpdContra
     gnsbtControllerContract,  #11
     restV2Contract,           #12
     governanceContract,       #13
-    doraContract              #14
+    doraContract,             #14
+    poolsFacadeContract       #15
     ],
     SEP)
 }
@@ -318,13 +319,13 @@ func finalizeWxUsdOnchain(wavesUsdPriceX6: Int) = {
 func constructorV1(neutrinoContract: String, auctionContract: String, rpdContract: String, mathContract: String,
                     liquidationContract: String, restContract: String, nodeRegistryContract: String,
                     nsbtStakingContract: String, mediatorContract: String, surfStakingContract: String, gnsbtControllerContract: String,
-                    restV2Contract: String, governanceContract: String, doraContract: String) = {
+                    restV2Contract: String, governanceContract: String, doraContract: String, poolsFacadeContract: String) = {
    if (i.caller != this) then throw("permissions denied") else
 
    [StringEntry(keyControlConfig(), dataControlCfg(
         neutrinoContract, auctionContract, rpdContract, mathContract, liquidationContract,
         restContract, nodeRegistryContract, nsbtStakingContract, mediatorContract,
-        surfStakingContract, gnsbtControllerContract, restV2Contract, governanceContract, doraContract
+        surfStakingContract, gnsbtControllerContract, restV2Contract, governanceContract, doraContract, poolsFacadeContract
     ))]
 }
 
@@ -418,6 +419,13 @@ func finalizeCurrentPrice(price1: Int, sign1: ByteVector, price2: Int, sign2: By
         :+ StringEntry("debug_wxUsdCalc", wxDebug)
         :+ StringEntry("debug_viresUsdCalc", viresDebug)
     }
+}
+
+@Callable(i)
+func validatePrice(averagingPeriodMs: Int, toleranceX6: Int, assetIdStr: String) = {
+  # need to swap each of basket tokens (except given) to assetIdStr
+  # ensure market prices are within allowed tolerance from average
+  ([], true)
 }
 
 @Verifier(tx)

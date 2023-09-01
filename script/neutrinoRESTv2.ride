@@ -245,6 +245,41 @@ func calcApr(stakingAcc: Address, periodInDays: Int, incomeForPeriod: Int, staki
   fraction(incomeForPeriod * MULT6, 365, totalStakedInUsdn * periodInDays)
 }
 
+func swapInfoInternal(userAddressStrOrEmpty: String, amountIn: Int, assetIdStrIn: String, assetIdStrOutOrEmpty: String) = {
+  let neutrinoMetrics = mathContract.invoke("calcNeutinoMetricsREADONLY", [], []).asAnyList()
+  let price = neutrinoMetrics[nMetricIdxPrice].asInt()
+
+  let swapParamsTuple = neutrinoContract.invoke("swapParamsByUserSYSREADONLY", [userAddressStrOrEmpty, 0], []).asSwapParamsSTRUCT()
+  let limitMaxTokenInUsd = swapParamsTuple._1
+  let blcks2LmtReset  = swapParamsTuple._3
+  let limitMaxUsdn    = swapParamsTuple._7
+
+  let assetId = assetIdStrIn.fromBase58String()
+
+  let basketAssets = neutrinoContract.getString(basketAssetsKey()).valueOrElse("WAVES") # WAVES__wxId__viresId__swopId__eggId__westId
+  let swapType = if (basketAssets.contains(assetIdStrIn)) then "outNeutrino"
+      else if (assetId == neutrinoAssetId) then "outMulti"
+      else throw("Can't swap assetId=" + assetIdStrIn)
+
+  let withdrawTuple = neutrinoContract.invoke("calcWithdrawResultSYSREADONLY", [swapType, amountIn, price, assetIdStrIn, assetIdStrOutOrEmpty], []).asWithdrawResultSTRUCT()
+
+  let outNeutrinoInfo = makeString([
+    neutrinoAssetIdString, 
+    withdrawTuple._8.toString(), # xtnPrice
+    withdrawTuple._1.toString(), # xtnNetAmount
+    withdrawTuple._6.toString(), # xtnFeeAmount
+    "1000000"                    # xtn share = 1.0
+  ], LISTSEP)
+  let withdrawBasket  = if (swapType == "outNeutrino") then outNeutrinoInfo else withdrawTuple._9 # assetId:price:netAmount:feeAmount:share_ ...
+
+  ([], makeString_2C(["%d%d%d%s",
+    blcks2LmtReset.toString(),     #1
+    limitMaxTokenInUsd.toString(), #2
+    limitMaxUsdn.toString(),       #3
+    withdrawBasket                 #4
+  ], SEP))
+}
+
 # MATH CANDIDATE
 @Callable(i)
 func reverseSwapLimitREADONLY(lim: Int, isOutMulti: Boolean) = {
@@ -489,7 +524,7 @@ func swapInfoREADONLY(userAddressStrOrEmpty: String, amount: Int, assetIdStr: St
       else if (assetId == neutrinoAssetId) then "outMulti"
       else throw("Can't swap assetId=" + assetIdStr)
 
-  let withdrawTuple = neutrinoContract.invoke("calcWithdrawResultSYSREADONLY", [swapType, amount, price, assetIdStr], []).asWithdrawResultSTRUCT()
+  let withdrawTuple = neutrinoContract.invoke("calcWithdrawResultSYSREADONLY", [swapType, amount, price, assetIdStr, ""], []).asWithdrawResultSTRUCT()
   let outNetAmount    = withdrawTuple._1
   let outSurfAmt      = withdrawTuple._3
   let inAmtToSurfPart = withdrawTuple._4
@@ -511,38 +546,12 @@ func swapInfoREADONLY(userAddressStrOrEmpty: String, amount: Int, assetIdStr: St
 
 @Callable(i)
 func swapInfoV2READONLY(userAddressStrOrEmpty: String, amount: Int, assetIdStr: String) = {
-  let neutrinoMetrics = mathContract.invoke("calcNeutinoMetricsREADONLY", [], []).asAnyList()
-  let price = neutrinoMetrics[nMetricIdxPrice].asInt()
+  swapInfoInternal(userAddressStrOrEmpty, amount, assetIdStr, "")
+}
 
-  let swapParamsTuple = neutrinoContract.invoke("swapParamsByUserSYSREADONLY", [userAddressStrOrEmpty, 0], []).asSwapParamsSTRUCT()
-  let limitMaxTokenInUsd = swapParamsTuple._1
-  let blcks2LmtReset  = swapParamsTuple._3
-  let limitMaxUsdn    = swapParamsTuple._7
-
-  let assetId = assetIdStr.fromBase58String()
-
-  let basketAssets = neutrinoContract.getString(basketAssetsKey()).valueOrElse("WAVES") # WAVES__wxId__viresId__swopId__eggId__westId
-  let swapType = if (basketAssets.contains(assetIdStr)) then "outNeutrino"
-      else if (assetId == neutrinoAssetId) then "outMulti"
-      else throw("Can't swap assetId=" + assetIdStr)
-
-  let withdrawTuple = neutrinoContract.invoke("calcWithdrawResultSYSREADONLY", [swapType, amount, price, assetIdStr], []).asWithdrawResultSTRUCT()
-
-  let outNeutrinoInfo = makeString([
-    neutrinoAssetIdString, 
-    withdrawTuple._8.toString(), # xtnPrice
-    withdrawTuple._1.toString(), # xtnNetAmount
-    withdrawTuple._6.toString(), # xtnFeeAmount
-    "1000000"                    # xtn share = 1.0
-  ], LISTSEP)
-  let withdrawBasket  = if (swapType == "outNeutrino") then outNeutrinoInfo else withdrawTuple._9 # assetId:price:netAmount:feeAmount:share_ ...
-
-  ([], makeString_2C(["%d%d%d%s",
-    blcks2LmtReset.toString(),     #1
-    limitMaxTokenInUsd.toString(), #2
-    limitMaxUsdn.toString(),       #3
-    withdrawBasket                 #4
-  ], SEP))
+@Callable(i)
+func swapInfoV3READONLY(userAddressStrOrEmpty: String, amountIn: Int, assetIdStrIn: String, assetIdStrOutOrEmpty: String) = {
+  swapInfoInternal(userAddressStrOrEmpty, amountIn, assetIdStrIn, assetIdStrOutOrEmpty)
 }
 
 @Callable(i)

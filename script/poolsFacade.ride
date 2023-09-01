@@ -1,0 +1,69 @@
+{-# STDLIB_VERSION 6 #-}
+{-# CONTENT_TYPE DAPP #-}
+{-# SCRIPT_TYPE ACCOUNT #-}
+
+let PoolActive = 1
+let PoolPutDisabled = 2
+let PoolMatcherDisabled = 3
+let PoolShutdown = 4
+let keyWxGlobalShutdown = "%s__shutdown"
+let keyWxFactory = "%s__wxFactory"
+let keyWxSwap = "%s__wxSwap"
+let keyWxWavesWxPool = "%s__wxWavesWxPool"
+let keyWxWavesViresPool = "%s__wxWavesViresPool"
+
+
+func getStringOrFail(key: String) = getString(key).valueOrErrorMessage("mandatory this." + key + " is not defined")
+func asInt(v: Any) = {
+  match v {
+    case i: Int => i
+    case _ => throw("fail to cast into Int")
+  }
+}
+func asBool(v: Any) = {
+  match v {
+    case b: Boolean => b
+    case _ => throw("fail to cast into Boolean")
+  }
+}
+
+@Callable(i)
+# mainnet: 3PCuHsTU58WKhCqotbcSwABvdPzqqVAbbTv 3P68zNiufsu1viZpu1aY3cdahRRKcvV5N93 3PFzaH2ghpwANHFgjeva83N1yxzErELx2eh 3P7Z7X5kKXN4TpZ2SmqP2xyLGuotAqht1pU
+# testnet: 3MsMP2pb2p8MDd6Rxb7XEXqqwEhE8ATfyai 3N6LHjfGb6Fgcy7YsVcNxGyPTj49XbQAijq 3MqGtuaL3yJbKHqUxnSihJmYroyPf6QDp1x 3MsHUJurQz4CuzUB2xFb9JoqaZQMsV1jYhZ
+func constructorV1(wxFactory: String, wxSwap: String, wxWavesWxPool: String, wxWavesViresPool: String) = {
+  [
+    StringEntry(keyWxFactory, wxFactory),
+    StringEntry(keyWxSwap, wxSwap),
+    StringEntry(keyWxWavesWxPool, wxWavesWxPool),
+    StringEntry(keyWxWavesViresPool, wxWavesViresPool)
+  ]
+}
+
+@Callable(i)
+func wxPoolHealthyREADONLY() = {
+  let wxFactory = getStringOrFail(keyWxFactory).addressFromStringValue()
+  let globalShutdown = wxFactory.getBoolean(keyWxGlobalShutdown).valueOrElse(false)
+  let statusVires = wxFactory.invoke("getPoolStatusREADONLY", [getStringValue(keyWxWavesViresPool)], nil).asInt()
+  let statusWx = wxFactory.invoke("getPoolStatusREADONLY", [getStringValue(keyWxWavesWxPool)], nil).asInt()
+  let swapDisabledVires = wxFactory.invoke("isPoolSwapDisabledREADONLY", [getStringValue(keyWxWavesViresPool)], nil).asBool()
+  let swapDisabledWx = wxFactory.invoke("isPoolSwapDisabledREADONLY", [getStringValue(keyWxWavesWxPool)], nil).asBool()
+  ([], !globalShutdown && statusVires == PoolActive && statusWx == PoolActive && !swapDisabledVires && !swapDisabledWx)
+}
+
+@Callable(i)
+func swapTokensViaPool(outAsset: String) = {
+  if (i.payments.size() != 1) then throw("Single payment required") else
+  let pmt = i.payments[0].value()
+  let outAmt = if (pmt.amount > 0) then
+    getStringOrFail(keyWxSwap).addressFromStringValue().invoke("swap", [1, outAsset, this.toString()], [pmt]).asInt()
+  else 0
+  (if (outAmt > 0) then [ScriptTransfer(i.caller, outAmt, outAsset.fromBase58String())] else [], outAmt)
+}
+
+@Callable(i)
+func swapTokensViaPoolREADONLY(inAsset: String, inAmount: Int, outAsset: String) = {
+  let outAmt = if (inAmount > 0) then 
+    getStringOrFail(keyWxSwap).addressFromStringValue().invoke("swapCalculateREADONLY", [inAmount, inAsset, outAsset], []).asInt() 
+  else 0
+  ([], outAmt)
+}
