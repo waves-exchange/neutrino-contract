@@ -42,6 +42,8 @@ let IdxControlCfgGovernanceDapp   = 13
 let IdxControlCfgPegProviderDapp  = 14
 
 func keyControlConfig() = "%s__controlConfig"
+func keyPriceByAsset(assetIdStr: String) = ["%s%s%s__common__priceByAsset",  assetIdStr].makeString(SEP)
+func keyBlackSwanThreshold() = "%s%s__controlConfig__blackSwanThreshold"
 
 func dataControlCfg(neutrinoContract: String, auctionContract: String, rpdContract: String, mathContract: String,
                     liquidationContract: String, restContract: String, nodeRegistryContract: String, nsbtStakingContract: String,
@@ -98,7 +100,8 @@ let priceIndex = getInteger(this, "price_index").valueOrElse(0)
 
 let isBlocked = getBoolean(this, "is_blocked").valueOrElse(false)
 
-let percentPriceOffset = 7
+# configured in percentiles, i.e. 7%=7 or 27%=27
+let percentPriceOffset = getInteger(this, keyBlackSwanThreshold()).valueOrElse(7)
 
 let pubKeyOracles = getString(this, "oracles").valueOrElse("")
 let pubKeyOraclesList = convertJsonArrayToList(pubKeyOracles)
@@ -234,12 +237,11 @@ func PriceEntry(newPrice: Int, assetIdStr: String, newPriceIndex: Int) = {
   let heightStr = height.toString()
   let newPriceIndexStr = newPriceIndex.toString()
 
-  let priceByAssetKEY  = [  "%s%s%s__common__priceByAsset",  assetIdStr].makeString(SEP)
   let priceByHeightKEY = ["%s%s%s%d__common__priceByHeight", assetIdStr, heightStr].makeString(SEP)
   let priceByIndexKEY  = ["%s%s%s%d__common__priceByIndex",  assetIdStr, newPriceIndexStr].makeString(SEP)
 
   [
-  IntegerEntry(priceByAssetKEY, newPrice), # current price
+  IntegerEntry(keyPriceByAsset(assetIdStr), newPrice), # current price
   IntegerEntry(priceByIndexKEY, newPrice), # price by index
   IntegerEntry(priceByHeightKEY, newPrice) # price by height
   ]
@@ -313,6 +315,21 @@ func finalizeWxUsdOnchain(wavesUsdPriceX6: Int) = {
           + " swop_WxXtn_WxUsdPriceX6=" + swop_WxXtn_WxUsdPriceX6.toString()
 
   (wxUsdPriceX6, debug)
+}
+
+func checkPrices(newWavesPrice: Int, newWxPrice: Int, newViresPrice: Int) = {
+  func isBlackSwan(curPr: Int, newPr: Int) = newPr >= (curPr+curPr*percentPriceOffset/100) || newPr <= (curPr-curPr*percentPriceOffset/100)
+
+  let wxPrice = getInteger(keyPriceByAsset(wxIdStr)).valueOrElse(0)
+  let viresPrice = getInteger(keyPriceByAsset(viresIdStr)).valueOrElse(0)
+
+  if(isBlackSwan(price, newWavesPrice)) then
+    (true, "WAVES", newWavesPrice) else
+  if(isBlackSwan(wxPrice, newWxPrice)) then
+    (true, wxIdStr, newWxPrice) else
+  if(isBlackSwan(viresPrice, newViresPrice)) then
+    (true, viresIdStr, newViresPrice) else
+  (false, "", 0)
 }
 
 @Callable(i)
@@ -392,12 +409,14 @@ func finalizeCurrentPrice(price1: Int, sign1: ByteVector, price2: Int, sign2: By
     let newViresUsdPrice = viresUsdTuple._1
     let viresDebug       = viresUsdTuple._2
 
-    if(newPrice >= (price + price*percentPriceOffset/100) || newPrice <= (price - price*percentPriceOffset/100)) then {
+    let (shouldBlock, blockingAsset, blockingPrice) = checkPrices(newPrice, newWxUsdPrice, newViresUsdPrice)
+    if (shouldBlock) then {
         let reason = "automatic emergency shutdown because of large price variability"
         [BooleanEntry("is_blocked", true),
           StringEntry("is_blocked_caller", toString(this)),
           StringEntry("is_blocked_reason", reason),
-          IntegerEntry("black_swarm_price" + "_" + toString(height), newPrice)]
+          IntegerEntry("black_swarm_price_" + toString(height), blockingPrice),
+          StringEntry("black_swan_token", blockingAsset)]
     } else {
         let newPriceIndex = priceIndex + 1
         [ IntegerEntry("price", newPrice),                                  # price - current price
