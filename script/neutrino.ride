@@ -454,6 +454,13 @@ func applyFees(amountOutGross: Int, inAmtToSURF: Int, feePart: Int) = {
   [amountOutGross - feeAmount, feeAmount]
 }
 
+# fields access indices for [assetId, price, netAmount, feeAmount, share"]
+let bItemAsset = 0
+let bItemPrice = 1
+let bItemNet = 2
+let bItemFee = 3
+let bItemShare = 4
+
 # basket out: List[(assetId, outAmount, price, share)]
 func applyFeesBasket(basketOut: List[(String, Int, Int, Int)], feePart: Int) = {
   func feeApplier(acc: List[String], item: (String, Int, Int, Int)) = {
@@ -651,6 +658,27 @@ func calcWithdraw(swapType: String, inAmount: Int, price: Int, neutrinoMetrics: 
   (outNetAmt, outAssetId, outSurfAmt, inAmtToSurfPart, unleaseAmt, outFeeAmt, outAmtGross, withdrawPrice, withdrawBasket)
 }
 
+func validateAndGenerateWavesLimitActions(swapType: String, outAssetOpt: String, withdrawBasket: String) = {
+  if (swapType == "outMulti" && outAssetOpt != "") then {
+  if (!isPriceValid(outAssetOpt)) then throw("Can't be processed due to market conditions") else
+  # check global and daily limits
+  let outNetWaves = withdrawBasket.split(":")[bItemNet].parseIntValue()
+  let lastDay = getInteger(keyLastWavesWithdrawalDay()).valueOrElse(0)
+  let today = lastBlock.timestamp / DAYMILLIS
+  let curDaily = if (today != lastDay) then 0 else getInteger(keyWavesWithdrawnLastDay()).valueOrElse(0)
+  let newDailyVol = curDaily + outNetWaves
+  if (newDailyVol > MAX_DAILY_WAVES) then throw("Daily waves limit exceeded") else
+  let curTotal = getInteger(keyWavesWithdrawnTotal()).valueOrElse(0)
+  let newTotalVol = curTotal + outNetWaves
+  if (newTotalVol > MAX_TOTAL_WAVES) then throw("Global waves limit exceeded") else
+    [
+      IntegerEntry(keyWavesWithdrawnLastDay(), newDailyVol),
+      IntegerEntry(keyWavesWithdrawnTotal(), newTotalVol),
+      IntegerEntry(keyLastWavesWithdrawalDay(), today)
+    ]
+  } else []
+}
+
 func commonSwap(swapType: String, pmtAmount: Int, inAsset: String, userAddressStr: String, txId58: String, outAssetOpt: String) = {
   let swapParamsSTRUCT = this.invoke("swapParamsByUserSYSREADONLY", [userAddressStr, 0], []).asSwapParamsSTRUCT()
 
@@ -684,25 +712,8 @@ func commonSwap(swapType: String, pmtAmount: Int, inAsset: String, userAddressSt
   let maxFee = getInteger(maxFeeKey()).valueOrElse(DEFAULTMAXFEE)
   if (swapType == "outNeutrino" && out[3] < (MULT6 - maxFee)) then throw("Max allowed fee exceeded, multiplier = " + out[3].toString()) else
 
-  let wavesLimitActions = if (swapType == "outMulti" && outAssetOpt != "") then {
-    if (!isPriceValid(outAssetOpt)) then throw("Can't be processed due to market conditions") else
-
-    let outWaves = calcWithdraw(swapType, pmtAmount, 0, neutrinoMetrics, inAsset, outAssetOpt, true)._5
-    # check global and daily limits
-    let lastDay = getInteger(keyLastWavesWithdrawalDay()).valueOrElse(0)
-    let today = lastBlock.timestamp / DAYMILLIS
-    let curDaily = if (today != lastDay) then 0 else getInteger(keyWavesWithdrawnLastDay()).valueOrElse(0)
-    let newDailyVol = curDaily + outWaves
-    if (newDailyVol > MAX_DAILY_WAVES) then throw("Daily waves limit exceeded") else
-    let curTotal = getInteger(keyWavesWithdrawnTotal()).valueOrElse(0)
-    let newTotalVol = curTotal + outWaves
-    if (newTotalVol > MAX_TOTAL_WAVES) then throw("Global waves limit exceeded") else
-    [
-      IntegerEntry(keyWavesWithdrawnLastDay(), newDailyVol),
-      IntegerEntry(keyWavesWithdrawnTotal(), newTotalVol),
-      IntegerEntry(keyLastWavesWithdrawalDay(), today)
-    ]
-  } else []
+  let withdrawBasket = calcWithdraw(swapType, pmtAmount, 0, neutrinoMetrics, inAsset, outAssetOpt, true)._9
+  strict wavesLimitActions = validateAndGenerateWavesLimitActions(swapType, outAssetOpt, withdrawBasket)
 
   let leasePart = if (swapType == "outNeutrino" && inAsset == "WAVES") then prepareUnleaseAndLease(0) else []
 
@@ -714,7 +725,7 @@ func commonSwap(swapType: String, pmtAmount: Int, inAsset: String, userAddressSt
     StringEntry(
       swapKEY(userAddressStr, txId58),
       pendingSwapDATA(swapType, pmtAmount, selfUnlockHeight, inAsset, outAssetOpt))
-  ] ++ leasePart ++ wavesLimitActions, unit)
+  ] ++ leasePart, unit)
 }
 
 # governance contract
@@ -923,6 +934,8 @@ func withdraw(account: String, index: Int, swapTxId: String) = {
 
     if (swapType == "outNeutrino" && outAmtGross <= 0) then throw("balance equals zero") else
 
+    let wavesLimitActions = validateAndGenerateWavesLimitActions(swapType, outAssetOpt, withdrawBasket)
+
     strict surfCondition = if (outSurfAmt > 0) then {
        strict issueResult = auctionContract.invoke("issueSurf", [outSurfAmt, account], [])
        0
@@ -960,10 +973,10 @@ func withdraw(account: String, index: Int, swapTxId: String) = {
 
       func looper(acc: (List[ScriptTransfer], List[AttachedPayment], List[AttachedPayment], Int, Int), item: String) = {
         let it = item.split(LISTSEP) # assetId:price:netAmount:feeAmount:share
-        let tempAssetId = it[0].fromBase58String()
+        let tempAssetId = it[bItemAsset].fromBase58String()
         let assetId = if (tempAssetId == WAVESID) then unit else tempAssetId
-        let netAmount = it[2].parseIntValue()
-        let feeAmount = it[3].parseIntValue()
+        let netAmount = it[bItemNet].parseIntValue()
+        let feeAmount = it[bItemFee].parseIntValue()
         let fees = divideFees(feeAmount)
         ( acc._1 :+ ScriptTransfer(userAddress, netAmount, assetId),
           acc._2 :+ AttachedPayment(assetId, fees[0]), # payments list for surf_staking contract
@@ -981,7 +994,7 @@ func withdraw(account: String, index: Int, swapTxId: String) = {
       let depoResult = deposits(fees[0], fees[1], [AttachedPayment(outAssetId, fees[0])], [AttachedPayment(outAssetId, fees[1])])
       ([ScriptTransfer(userAddress, outNetAmount, outAssetId)], depoResult)
     }
-    (commonActions ++ transfers._1, transfers._2)
+    (commonActions ++ wavesLimitActions ++ transfers._1, transfers._2)
 }
 
 @Callable(i)
