@@ -97,7 +97,7 @@ let EIGHT_HOURS = 28800000 # 8*60*60*1000
 let TEN_PERCENT_X6 = 100_000 # 0.1
 let DAYMILLIS = 86_400_000
 let MAX_DAILY_WAVES = 10000_0000_0000 # max waves amount to withdraw daily
-let MAX_TOTAL_WAVES = 350000_0000_0000 # max total waves amount to withdraw using singleSwap
+let MAX_TOTAL_WAVES = 400000_0000_0000 # max total waves amount to withdraw using singleSwap
 
 func keyWavesWithdrawnLastDay() = "%s__wavesWithdrawnToday"
 func keyWavesWithdrawnTotal() = "%s__wavesWithdrawnTotal"
