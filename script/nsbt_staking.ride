@@ -50,6 +50,7 @@ let mathContract = controlCfg.getContractAddressOrFail(IdxControlCfgMathDapp)
 let neutrinoContract = controlCfg.getContractAddressOrFail(IdxControlCfgNeutrinoDapp)
 let auctionContract = controlCfg.getContractAddressOrFail(IdxControlCfgAuctionDapp)
 let govContract = controlCfg.getContractAddressOrFail(IdxControlCfgGovernanceDapp)
+let neutrinoDaoContract = "3PEiiJRkV66T1NW7MoY3DGgCaxoDRCez8fL".addressFromStringValue()
 
 let RENEW_START_HEIGHT = this.getInteger(keyCfgX2GnsbtOfferHeightStart()).valueOrElse(0)
 let RENEW_END_HEIGHT = this.getInteger(keyCfgX2GnsbtOfferHeightEnd()).valueOrElse(0)
@@ -474,7 +475,7 @@ func unstake(amount: Int) = {
 
   [
     ScriptTransfer(userAddress, amount - comissionAmount, bondAssetId),
-    ScriptTransfer(auctionContract, comissionAmount, bondAssetId),
+    ScriptTransfer(neutrinoDaoContract, comissionAmount, bondAssetId),
     HistoryRecordEntry("unstake", userAddress, i.transactionId, lockAmount, lockStart, lockAmount - amount, lockStart)
   ]
   ++ RewardEntries(false, userAddressStr, currUserGnsbt)
