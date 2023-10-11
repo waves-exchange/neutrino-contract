@@ -34,6 +34,8 @@ let IdxControlCfgGovernanceDapp   = 13
 
 func getStringOrFail(address: Address, key: String) = address.getString(key).valueOrErrorMessage("mandatory " + address.toString() + "." + key + " is not defined")
 
+func keyCfgX2GnsbtOfferHeightStart() = "%s%s__config__x2GnsbtOfferHeightStart"
+func keyCfgX2GnsbtOfferHeightEnd() = "%s%s__config__x2GnsbtOfferHeightEnd"
 func keyControlAddress() = "%s%s__config__controlAddress"
 func keyControlCfg()     = "%s__controlConfig"
 
@@ -49,6 +51,9 @@ let neutrinoContract = controlCfg.getContractAddressOrFail(IdxControlCfgNeutrino
 let auctionContract = controlCfg.getContractAddressOrFail(IdxControlCfgAuctionDapp)
 let govContract = controlCfg.getContractAddressOrFail(IdxControlCfgGovernanceDapp)
 
+let RENEW_START_HEIGHT = this.getInteger(keyCfgX2GnsbtOfferHeightStart()).valueOrElse(0)
+let RENEW_END_HEIGHT = this.getInteger(keyCfgX2GnsbtOfferHeightEnd()).valueOrElse(0)
+
 # Neutrino Contract Keys
 func keyBondAsset() = "bond_asset_id"
 
@@ -63,10 +68,13 @@ func keyHalfLife() = "%s__halfLife"
 # Lock Params
 func keyLockParamUserAmount(userAddress: Address) = ["%s%s%s", "paramByUser", userAddress.toString(), "amount"].makeString(separator)
 func keyLockParamStartBlock(userAddress: Address) = ["%s%s%s", "paramByUser", userAddress.toString(), "start"].makeString(separator)
+func keyLockParamUserGnsbt(userAddress: Address) = ["%s%s%s", "paramByUser", userAddress.toString(), "gNsbt"].makeString(separator)
+func keyUserConsentedToX2Gnsbt(userAddress: Address) = ["%s%s%s", "paramByUser", userAddress.toString(), "consentedToX2Gnsbt"].makeString(separator)
 # History
 func keyHistoryRecord(type: String, userAddress: Address, txId: ByteVector) = ["%s%s%s%s", "history", type, userAddress.toString(), txId.toBase58String()].makeString(separator)
 # Stats
 func keyLockParamTotalAmount() = ["%s%s", "stats", "activeTotalLocked"].makeString(separator)
+func keyLockParamTotalGnsbt() = ["%s%s", "stats", "activeTotalGnsbt"].makeString(separator)
 func keyStatsLocksCount() = ["%s%s", "stats", "locksCount"].makeString(separator)
 func keyStatsUsersCount() = ["%s%s", "stats", "activeUsersCount"].makeString(separator)
 func keyStatsDepositAmtByDay(timestamp: Int) = ["%s%s%d", "stats", "depositAmtByDay", timestamp.toString()].makeString(separator)
@@ -154,20 +162,23 @@ func ClaimHistoryEntry(userAddress: Address, txId: ByteVector, claimedRewards: S
   )
 }
 
-func StatsResult(totalLockedInc: Int, lockCountInc: Int, usersCountInc: Int) = {
+func StatsResult(totalLockedInc: Int, lockCountInc: Int, usersCountInc: Int, totalGnsbtInc: Int) = {
   let locksCount = keyStatsLocksCount().getIntOrZero()
   let usersCount = keyStatsUsersCount().getIntOrZero()
   let totalAmount = keyLockParamTotalAmount().getIntOrZero()
   let totalAmountNew = totalAmount + totalLockedInc
+  let totalGnsbt = keyLockParamTotalGnsbt().getIntOrElse(totalAmount)
   ([IntegerEntry(keyStatsLocksCount(), locksCount + lockCountInc),
       IntegerEntry(keyStatsUsersCount(), usersCount + usersCountInc),
-      IntegerEntry(keyLockParamTotalAmount(), totalAmountNew)],
+      IntegerEntry(keyLockParamTotalAmount(), totalAmountNew),
+      IntegerEntry(keyLockParamTotalGnsbt(), totalGnsbt + totalGnsbtInc)],
     totalAmount, totalAmountNew)
 }
 
-func LockParamsEntry(userAddress: Address, amount: Int, start: Int) = {
+func LockParamsEntry(userAddress: Address, nsbtAmount: Int, start: Int, gNsbtAmount: Int) = {
   [
-    IntegerEntry(userAddress.keyLockParamUserAmount(), amount),
+    IntegerEntry(userAddress.keyLockParamUserAmount(), nsbtAmount),
+    IntegerEntry(userAddress.keyLockParamUserGnsbt(), gNsbtAmount),
     IntegerEntry(userAddress.keyLockParamStartBlock(), start)
   ]
 }
@@ -184,12 +195,18 @@ func isActiveUser(userAddress: Address) = {
   userAddress.keyLockParamUserAmount().getIntOrElse(0) > 0
 }
 
+func isBonusPeriod(h: Int) = {
+  RENEW_START_HEIGHT <= h && h <= RENEW_END_HEIGHT
+}
+
 func getUserParamsOrUnit(userAddress: Address) = {
   if (userAddress.isActiveUser()) then {
+    let amount = userAddress.keyLockParamUserAmount().getIntOrFail()
     (
       false, # isNewUser
-      userAddress.keyLockParamUserAmount().getIntOrFail(),
-      userAddress.keyLockParamStartBlock().getIntOrFail()
+      amount,
+      userAddress.keyLockParamStartBlock().getIntOrFail(),
+      userAddress.keyLockParamUserGnsbt().getIntOrElse(amount)
     )
   } else unit
 }
@@ -307,9 +324,9 @@ func commonClaim(userAddress: Address, i: Invocation) = {
   let userAddressStr = userAddress.toString()
 
   if (i.payments.size() > 0) then throw("payments are not accepted") else
-  let (isNewUser, stakedAmount, stakingStart) = userAddress.getUserParamsOrUnit().valueOrElse((true, 0, 0))
+  let (isNewUser, stakedAmount, stakingStart, gNsbtAmount) = userAddress.getUserParamsOrUnit().valueOrElse((true, 0, 0, 0))
 
-  let stakedAmountX = stakedAmount.toBigInt()
+  let stakedAmountX = gNsbtAmount.toBigInt()
   let userRewardFromDepositNumKEY = keyUserRewardFromDepositNum(userAddressStr)
   let depositNumUser = userRewardFromDepositNumKEY.getIntOrElse(-1)
   let depositNumLast = keyDepositNumLast().getIntOrElse(-1)
@@ -336,6 +353,34 @@ func commonClaim(userAddress: Address, i: Invocation) = {
     :+ ClaimHistoryEntry(userAddress, i.transactionId, claimedAmtByAssetResult.drop(1)), transfers.size())
 }
 
+func readUserConsentToX2Gnsbt(userAddress: Address) = {
+  let key = userAddress.keyUserConsentedToX2Gnsbt()
+  let val = this.getBoolean(key).valueOrElse(false)
+  (key, val)
+}
+
+func commonX2Gnsbt(userAddress: Address, i: Invocation) = {
+  if (!isBonusPeriod(height)) then throw("No 'Double gNSBT action' available now") else
+  let (claimActions, claimResult) = commonClaim(userAddress, i)
+  let (isNewUser, lockAmount, lockStartHeight, currUserGnsbt) = userAddress.getUserParamsOrUnit().valueOrElse((true, 0, -1, 0))
+  if (isNewUser) then throw("You have nothing to restake") else
+  let deltaUserGnsbt = currUserGnsbt
+  let newUserGnsbt = currUserGnsbt + deltaUserGnsbt
+
+  let userConsentTuple = readUserConsentToX2Gnsbt(userAddress)
+  let userConsentedToX2GnsbtKEY = userConsentTuple._1
+  let userConsentedToX2Gnsbt = userConsentTuple._2
+
+  if (userConsentedToX2Gnsbt) then throw("User has already doubled its gNSBT value") else
+
+  let (statsEntries, totalStaked, totalStakedNew) = StatsResult(0, 0, 0, deltaUserGnsbt)
+
+  (claimActions
+    ++ LockParamsEntry(userAddress, lockAmount, height, newUserGnsbt)
+    ++ statsEntries
+    :+ BooleanEntry(userConsentedToX2GnsbtKEY, true), claimResult)
+}
+
 # init halfLife with 259200
 @Callable(i)
 func constructorV1(neutrinoContractAddress: String, mathContractAddress: String, minLockAmount: Int, halfLife: Int, supportedRewardAssets: String) = {
@@ -346,6 +391,15 @@ func constructorV1(neutrinoContractAddress: String, mathContractAddress: String,
     IntegerEntry(keyMinLockAmount(), minLockAmount),
     IntegerEntry(keyHalfLife(), halfLife),
     StringEntry(keySupportedRewardAssets(), supportedRewardAssets)
+  ]
+}
+
+@Callable(i)
+func constructorV2(x2GnsbtOfferHeightStart: Int, x2GnsbtOfferHeightEnd: Int) = {
+  if (i.caller != this) then throw("Permission denied") else
+  [
+    IntegerEntry(keyCfgX2GnsbtOfferHeightStart(), x2GnsbtOfferHeightStart),
+    IntegerEntry(keyCfgX2GnsbtOfferHeightEnd(), x2GnsbtOfferHeightEnd)
   ]
 }
 
@@ -364,23 +418,34 @@ func stake() = {
   let userAddressStr = i.caller.toString()
 #  if (userAddress.scriptHash().isDefined()) then throw("Address is scripted. Access denied") else
 
-  let (isNewUser, lockAmount, lockStartHeight) = userAddress.getUserParamsOrUnit().valueOrElse((true, 0, -1))
+  let (isNewUser, lockAmount, lockStartHeight, currUserGnsbt) = userAddress.getUserParamsOrUnit().valueOrElse((true, 0, -1, 0))
 
   let mergedAmount = if (isNewUser) then amount else amount + lockAmount
 
+  # amount  - extra amount of NSBT to add into Nsbt staking
+  # all unstaking fees are calculated based on NSBT amount (NOT gNSBT) in staking
   let mergedStartHeight = if (isNewUser) then height else {
     mathContract.invoke("mergeStakesREADONLY", [amount, height, lockAmount, lockStartHeight, halfLife], []).asInt()
   }
   if (mergedAmount < minLockAmount) then throw("Min lock amount is " + minLockAmount.toString()) else
 
-  let (statsEntries, totalStaked, totalStakedNew) = StatsResult(amount, 1, if (isNewUser) then 1 else 0)
+  let userConsentTuple = readUserConsentToX2Gnsbt(userAddress)
+  let userConsentedToX2GnsbtKEY = userConsentTuple._1
+  let userConsentedToX2Gnsbt = userConsentTuple._2
+  let deltaUserGnsbt = if (isBonusPeriod(height) && (isNewUser || userConsentedToX2Gnsbt)) then 2*amount else amount
+
+  let x2GnsbtConsentEntry = if (isNewUser) then [BooleanEntry(userConsentedToX2GnsbtKEY, true)] else []
+
+  # TODO consider to remove keyLock... parameters from StatsResult entries and move them into LockParamsEntry
+  let (statsEntries, totalStaked, totalStakedNew) = StatsResult(amount, 1, if (isNewUser) then 1 else 0, deltaUserGnsbt)
 
   [
     HistoryRecordEntry("stake", userAddress, i.transactionId, lockAmount, lockStartHeight, mergedAmount, mergedStartHeight)
   ]
-  ++ RewardEntries(isNewUser, userAddressStr, lockAmount)
-  ++ LockParamsEntry(userAddress, mergedAmount, mergedStartHeight)
+  ++ RewardEntries(isNewUser, userAddressStr, currUserGnsbt)
+  ++ LockParamsEntry(userAddress, mergedAmount, mergedStartHeight, currUserGnsbt + deltaUserGnsbt)
   ++ statsEntries
+  ++ x2GnsbtConsentEntry
 }
 
 @Callable(i)
@@ -389,7 +454,7 @@ func unstake(amount: Int) = {
   let userAddress  = i.caller
   let userAddressStr = userAddress.toString()
   let (bondAssetId, minLockAmount, halfLife) = getParamsOrFail()
-  let (isNewUser, lockAmount, lockStart) = userAddress.getUserParamsOrFail()
+  let (isNewUser, lockAmount, lockStart, currUserGnsbt) = userAddress.getUserParamsOrFail()
 
   if (lockAmount <= 0) then throw("Nothing to unstake") else
   if (amount > lockAmount) then throw("Requested " + amount.toString() + ", but staked only " + lockAmount.toString()) else
@@ -399,21 +464,27 @@ func unstake(amount: Int) = {
   if (t <= releaseTime) then throw("Your gNsbt are taking part in voting, cannot unstake until " + releaseTime.toString()) else
 
   let comissionAmount = mathContract.invoke("getUnstakeComissionAmountREADONLY", [amount, lockStart, halfLife], []).asInt()
-  let (statsEntries, totalStaked, totalStakedNew) = StatsResult(-amount, if (amount == lockAmount) then -1 else 0, if (amount == lockAmount) then -1 else 0)
+  # we should remove bonus gNSBT first (if any)
+  let bonusGnsbtPart = currUserGnsbt - lockAmount
+  let bonusNsbtAmount = min([amount, bonusGnsbtPart])
+  let deltaGnsbt = bonusNsbtAmount + amount
+
+  let (statsEntries, totalStaked, totalStakedNew) =
+    StatsResult(-amount, if (amount == lockAmount) then -1 else 0, if (amount == lockAmount) then -1 else 0, -deltaGnsbt)
 
   [
     ScriptTransfer(userAddress, amount - comissionAmount, bondAssetId),
     ScriptTransfer(auctionContract, comissionAmount, bondAssetId),
     HistoryRecordEntry("unstake", userAddress, i.transactionId, lockAmount, lockStart, lockAmount - amount, lockStart)
   ]
-  ++ RewardEntries(false, userAddressStr, lockAmount)
-  ++ LockParamsEntry(userAddress, lockAmount - amount, lockStart)
+  ++ RewardEntries(false, userAddressStr, currUserGnsbt)
+  ++ LockParamsEntry(userAddress, lockAmount - amount, lockStart, currUserGnsbt - deltaGnsbt)
   ++ statsEntries
 }
 
 @Callable(i)
 func deposit() = {
-  let totalStaked = keyLockParamTotalAmount().getIntOrElse(0)
+  let totalStaked = keyLockParamTotalGnsbt().getIntOrElse(keyLockParamTotalAmount().getIntOrElse(0))
   if (totalStaked < 0) then throw("TODO: case is not supported") else
   let depositNumLastKEY = keyDepositNumLast()
   let depositNumLast = depositNumLastKEY.getIntOrElse(-1)
@@ -482,6 +553,16 @@ func claimRewardsByOriginCaller() = {
   commonClaim(i.originCaller, i)
 }
 
+@Callable(i)
+func x2Gnsbt() = {
+  commonX2Gnsbt(i.caller, i)
+}
+
+@Callable(i)
+func x2GnsbtByOriginCaller() = {
+  commonX2Gnsbt(i.originCaller, i)
+}
+
 # TODO need to rename into SYSREADONLY
 @Callable(i)
 func unclaimedRewardsREADONLY(userAddressStr: String) = {
@@ -492,9 +573,9 @@ func unclaimedRewardsREADONLY(userAddressStr: String) = {
 
   let unclaimedRewardStr = if (userAddressStr == "") then FOLD<9>(supportedAssetsList, "", forEachAssetZeroReward) else {
     let userAddress = userAddressStr.addressFromStringValue()
-    let (isNewUser, stakedAmount, stakingStart) = userAddress.getUserParamsOrUnit().valueOrElse((true, 0, 0))
+    let (isNewUser, stakedAmount, stakingStart, userGnsbt) = userAddress.getUserParamsOrUnit().valueOrElse((true, 0, 0, 0))
 
-    let stakedAmountX = stakedAmount.toBigInt()
+    let stakedAmountX = userGnsbt.toBigInt()
     let userRewardFromDepositNumKEY = keyUserRewardFromDepositNum(userAddressStr)
     let depositNumUser = userRewardFromDepositNumKEY.getIntOrElse(-1)
     let depositNumLast = keyDepositNumLast().getIntOrElse(-1)
@@ -522,7 +603,7 @@ func nsbtUnstakingSYSREADONLY(userAddressStrOrEmpty: String, unstakeAmtP: Int) =
   let minLockAmount = cfgDATA._2
   let halfLife      = cfgDATA._3
 
-  let userDATA = userAddress.getUserParamsOrUnit().valueOrElse((true, 0, 0))
+  let userDATA = userAddress.getUserParamsOrUnit().valueOrElse((true, 0, 0, 0))
   let isNewUser     = userDATA._1
   let stakedAmount  = userDATA._2
   let lockStart     = userDATA._3
@@ -538,16 +619,23 @@ func nsbtUnstakingSYSREADONLY(userAddressStrOrEmpty: String, unstakeAmtP: Int) =
 }
 
 # Staking params
-# (userNsbtStakedAmount, totalNsbtStakedAmount, stakingStartHeight)
+# (userNsbtStakedAmount, totalNsbtStakedAmount, stakingStartHeight, userGnsbt, totalGnsbt)
 @Callable(i)
 func nsbtStakingSYSREADONLY(userAddressStr: String, nsbtDiff: Int) = {
 # TODO modify returned value
   let totalNsbtAmt = keyLockParamTotalAmount().getIntOrElse(0)
+  let totalGnsbt = keyLockParamTotalGnsbt().getIntOrElse(totalNsbtAmt)
 
-  if (userAddressStr == "") then ([], [0, totalNsbtAmt, 0]) else
+  if (userAddressStr == "") then ([], [0, totalNsbtAmt, 0, 0, totalGnsbt]) else
   let userAddress = userAddressStr.toAddressOrFail()
-  let (isNewUser, userNsbtAmt, stakingStart) = userAddress.getUserParamsOrUnit().valueOrElse((true, 0, 0))
-  ([], [userNsbtAmt, totalNsbtAmt, stakingStart])
+  let (isNewUser, userNsbtAmt, stakingStart, currentUserGnsbt) = userAddress.getUserParamsOrUnit().valueOrElse((true, 0, 0, 0))
+
+  let userConsentTuple = readUserConsentToX2Gnsbt(userAddressStr.addressFromStringValue())
+  let userConsentedToX2GnsbtKEY = userConsentTuple._1
+  let userConsentedToX2Gnsbt = userConsentTuple._2
+  let deltaUserGnsbt = if (isBonusPeriod(height) && (isNewUser || userConsentedToX2Gnsbt)) then 2*nsbtDiff else nsbtDiff
+
+  ([], [userNsbtAmt, totalNsbtAmt, stakingStart, currentUserGnsbt, totalGnsbt, deltaUserGnsbt])
 }
 
 @Verifier(tx)

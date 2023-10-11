@@ -106,6 +106,13 @@ let rpdContract = controlCfg.getContractAddressOrFail(IdxControlCfgRpdDapp)
 let nsbtStakingContract = controlCfg.getContractAddressOrFail(IdxControlCfgNsbtStakingDapp)
 let surfStakingContract = controlCfg.getContractAddressOrFail(IdxControlCfgSurfStakingDapp)
 
+# nsbtStaking indices
+let IdxNsbtUser        = 0
+let IdxNsbtTotal       = 1
+let IdxNsbtStart       = 2
+let IdxNsbtGnsbtUser   = 3
+let IdxNsbtGnsbtTotal  = 4
+
 # surfStaking indices
 let IdxSurfUser        = 0
 let IdxSurfTotal       = 1
@@ -123,10 +130,11 @@ let IdxSurfUserKid     = 11
 @Callable(i)
 func gnsbtInfoSYSREADONLY(userAddressStrOrEmpty: String, nsbtDiff: Int, surfDiff: Int) = {
   let nsbtData = nsbtStakingContract.invoke("nsbtStakingSYSREADONLY", [userAddressStrOrEmpty, nsbtDiff], []).asAnyList()
-  let nsbtUser            = nsbtData[0].asInt()
-  let nsbtTotal           = nsbtData[1].asInt()
-  let gNsbtFromNsbtUser   = nsbtUser
-  let gNsbtFromNsbtTotal  = nsbtTotal
+  let nsbtUser            = nsbtData[IdxNsbtUser].asInt()
+  let nsbtTotal           = nsbtData[IdxNsbtTotal].asInt()
+  let gNsbtFromNsbtUser   = nsbtData[IdxNsbtGnsbtUser].asInt()
+  let gNsbtFromNsbtTotal  = nsbtData[IdxNsbtGnsbtTotal].asInt()
+  let gNsbtFromNsbtUserDelta = nsbtData[5].asInt()
 
   let surfData = surfStakingContract.invoke("surfStakingSYSREADONLY", [userAddressStrOrEmpty, surfDiff], []).asAnyList()
   let surfUser              = surfData[IdxSurfUser].asInt()
@@ -139,7 +147,7 @@ func gnsbtInfoSYSREADONLY(userAddressStrOrEmpty: String, nsbtDiff: Int, surfDiff
 
   ([], [gNsbtUser,                                                      # 0
         gNsbtTotal,                                                     # 1
-        [nsbtUser, nsbtTotal, gNsbtFromNsbtUser, gNsbtFromNsbtTotal],   # 2
+        [nsbtUser, nsbtTotal, gNsbtFromNsbtUser, gNsbtFromNsbtTotal, gNsbtFromNsbtUserDelta],   # 2
         [surfUser, surfTotal, gNsbtFromSurfUser, gNsbtFromSurfTotal],   # 3
         surfData[IdxSurfVpCurr].asInt(),                                # 4 legacy voting power height
         surfData[IdxSurfVpNew].asInt(),                                 # 5 legacy voting power height

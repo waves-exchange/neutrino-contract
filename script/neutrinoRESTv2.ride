@@ -304,7 +304,15 @@ func gnsbtInfoINTERNAL(userAddressStrOrEmpty: String, additionalNsbtToStakeOrZer
   let userAddressOrThis = if (userAddressStrOrEmpty != "") then userAddressStrOrEmpty.addressFromStringValue() else this
   let currentPrice = controlContract.getIntegerValue(keyPrice())
 
-  let gnsbtFromNsbtDiff = additionalNsbtToStakeOrZero
+  let gnsbtDataPrev = nsbtStakingContract.invoke("nsbtStakingSYSREADONLY", [userAddressStrOrEmpty, 0], []).asAnyList()
+  let gnsbtFromNsbtPrev = gnsbtDataPrev[3].asInt()
+
+  let gnsbtData = gnsbtControllerContract.invoke("gnsbtInfoSYSREADONLY", [userAddressStrOrEmpty, additionalNsbtToStakeOrZero, additionalSurfToStakeOrZero], []).asAnyList()
+  let nsbtData              = gnsbtData[2].asAnyList()
+  let gnsbtAmtFromNsbt      = nsbtData[2].asInt()
+
+  let gnsbtFromNsbtDiff = nsbtData[4].asInt()
+
   # this invocation is just surfToGnsbt() conversion, which is currently div(300)
   let gnsbtFromSurfDiff = surfStakingContract.invoke("gnsbtFromSurfSYSREADONLY", [additionalSurfToStakeOrZero], []).asInt()
   let gNsbtDiff = gnsbtFromNsbtDiff + gnsbtFromSurfDiff
@@ -336,11 +344,11 @@ func gnsbtInfoINTERNAL(userAddressStrOrEmpty: String, additionalNsbtToStakeOrZer
   let nsbtBalanceNew        = nsbtBalance - nsbtBalanceDiff
   let surfBalanceNew        = surfBalance - additionalSurfToStakeOrZero
 
-  let gnsbtData = gnsbtControllerContract.invoke("gnsbtInfoSYSREADONLY", [userAddressStrOrEmpty, additionalNsbtToStakeOrZero, additionalSurfToStakeOrZero], []).asAnyList()
+  # let gnsbtData = gnsbtControllerContract.invoke("gnsbtInfoSYSREADONLY", [userAddressStrOrEmpty, additionalNsbtToStakeOrZero, additionalSurfToStakeOrZero], []).asAnyList()
 
   let gnsbtUser             = gnsbtData[0].asInt()
   let gnsbtTotal            = gnsbtData[1].asInt()
-  let nsbtData              = gnsbtData[2].asAnyList()
+  #let nsbtData              = gnsbtData[2].asAnyList()
   let surfData              = gnsbtData[3].asAnyList()
 
   let gnsbtSurfTotalMature  = gnsbtData[6].asInt()
@@ -352,7 +360,7 @@ func gnsbtInfoINTERNAL(userAddressStrOrEmpty: String, additionalNsbtToStakeOrZer
 
   let gnsbtAmtFromSurfMax   = gnsbtSurfUserMature + gnsbtSurfUserTeen + gnsbtSurfUserKid
 
-  let gnsbtAmtFromNsbt      = nsbtData[2].asInt()
+  #let gnsbtAmtFromNsbt      = nsbtData[2].asInt()
   let gnsbtAmtFromNsbtNEW   = gnsbtAmtFromNsbt + gnsbtFromNsbtDiff
   let gnsbtAmtFromSurfNEW   = gnsbtAmtFromSurfMax + gnsbtFromSurfDiff
 
