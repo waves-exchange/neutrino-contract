@@ -627,7 +627,7 @@ func nsbtStakingSYSREADONLY(userAddressStr: String, nsbtDiff: Int) = {
   let totalNsbtAmt = keyLockParamTotalAmount().getIntOrElse(0)
   let totalGnsbt = keyLockParamTotalGnsbt().getIntOrElse(totalNsbtAmt)
 
-  if (userAddressStr == "") then ([], [0, totalNsbtAmt, 0, 0, totalGnsbt]) else
+  if (userAddressStr == "") then ([], [0, totalNsbtAmt, 0, 0, totalGnsbt, nsbtDiff*2]) else
   let userAddress = userAddressStr.toAddressOrFail()
   let (isNewUser, userNsbtAmt, stakingStart, currentUserGnsbt) = userAddress.getUserParamsOrUnit().valueOrElse((true, 0, 0, 0))
 
