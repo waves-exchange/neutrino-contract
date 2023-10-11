@@ -304,9 +304,6 @@ func gnsbtInfoINTERNAL(userAddressStrOrEmpty: String, additionalNsbtToStakeOrZer
   let userAddressOrThis = if (userAddressStrOrEmpty != "") then userAddressStrOrEmpty.addressFromStringValue() else this
   let currentPrice = controlContract.getIntegerValue(keyPrice())
 
-  let gnsbtDataPrev = nsbtStakingContract.invoke("nsbtStakingSYSREADONLY", [userAddressStrOrEmpty, 0], []).asAnyList()
-  let gnsbtFromNsbtPrev = gnsbtDataPrev[3].asInt()
-
   let gnsbtData = gnsbtControllerContract.invoke("gnsbtInfoSYSREADONLY", [userAddressStrOrEmpty, additionalNsbtToStakeOrZero, additionalSurfToStakeOrZero], []).asAnyList()
   let nsbtData              = gnsbtData[2].asAnyList()
   let gnsbtAmtFromNsbt      = nsbtData[2].asInt()
