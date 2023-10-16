@@ -76,8 +76,7 @@ func claimAndStake() = {
   let claimInfo = user.getPwrClaimInfo()
   let amount = claimInfo._1
 
-  let testAccs = "3P88qk1KzF1BKjD7fC7LjNVAKM4ezff5WE6"
-  if (this.getBoolOrElse(keyCfgDiabled(), true) && !testAccs.contains(user)) then throw("Operations are disabled") else
+  if (this.getBoolOrElse(keyCfgDiabled(), true)) then throw("Operations are disabled") else
   if (amount <= 0) then throw("Nothing to claim") else
   if (HEIGHT > neutrinoDaoStartHeight + neutrinoDaoLockTime) then throw("Claiming period expired - all remaining PWR tokens will be burnt") else
 
