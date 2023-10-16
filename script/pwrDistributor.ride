@@ -8,7 +8,7 @@ let HEIGHT = height
 func toAddressOrFail(addressStr: String) = addressStr.addressFromString().valueOrErrorMessage("couldn't parse addressStr=" + addressStr)
 func getIntOrZero(acc: Address, key: String) = acc.getInteger(key).valueOrElse(0)
 func getIntOrElse(acc: Address, key: String, defaultVal: Int) = acc.getInteger(key).valueOrElse(defaultVal)
-func getIntOrFail(acc: Address, key: String) = this.getInteger(key).valueOrErrorMessage("Mandatory this." + key + " is not defined")
+func getIntOrFail(acc: Address, key: String) = acc.getInteger(key).valueOrErrorMessage("Mandatory this." + key + " is not defined")
 func getStrOrElse(acc: Address, key: String, defaultVal: String) = acc.getString(key).valueOrElse(defaultVal)
 func getStrOrFail(acc: Address, key: String) = acc.getString(key).valueOrErrorMessage("Mandatory this." + key + " is not defined")
 func getBoolOrElse(acc: Address, key: String, defaultVal: Boolean) = acc.getBoolean(key).valueOrElse(defaultVal)
