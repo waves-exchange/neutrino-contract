@@ -96,8 +96,8 @@ let WAVESID = base58'WAVES'
 let EIGHT_HOURS = 28800000 # 8*60*60*1000
 let TEN_PERCENT_X6 = 100_000 # 0.1
 let DAYMILLIS = 86_400_000
-let MAX_DAILY_WAVES = 10000_0000_0000 # max waves amount to withdraw daily
-let MAX_TOTAL_WAVES = 500000_0000_0000 # max total waves amount to withdraw using singleSwap
+let MAX_DAILY_WAVES = this.getInteger("%s%s__config__singleSwapDailyLimit").valueOrElse(50_000_0000_0000)  # max waves amount to withdraw daily
+let MAX_TOTAL_WAVES = this.getInteger("%s%s__config__singleSwapTotalLimit").valueOrElse(700_000_0000_0000) # max total waves amount to withdraw using singleSwap
 
 func keyWavesWithdrawnLastDay() = "%s__wavesWithdrawnToday"
 func keyWavesWithdrawnTotal() = "%s__wavesWithdrawnTotal"
@@ -961,9 +961,7 @@ func withdraw(account: String, index: Int, swapTxId: String) = {
     }
 
     func divideFees(feeAmount: Int) = {
-      let surfAmt1 = if (gnsbtAmtTotal != 0) then fraction(feeAmount, gnsbtAmtFromSurfTotal, gnsbtAmtTotal) else 0
-      let surfAmt2 = if (gnsbtAmtTotal != 0) then fraction(feeAmount, MULT6 - BR, MULT6) else 0
-      let surfAmt = max([surfAmt1, surfAmt2])
+      let surfAmt = if (gnsbtAmtTotal != 0) then fraction(feeAmount, gnsbtAmtFromSurfTotal, gnsbtAmtTotal) else 0
       let nsbtAmt = feeAmount - surfAmt
       [surfAmt, nsbtAmt]
     }
