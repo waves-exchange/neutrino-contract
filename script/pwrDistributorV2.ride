@@ -1,0 +1,85 @@
+{-# STDLIB_VERSION 6 #-}
+{-# CONTENT_TYPE DAPP #-}
+{-# SCRIPT_TYPE ACCOUNT #-}
+
+let HEIGHT = height
+
+# *** Utility fanctions
+func toAddressOrFail(addressStr: String) = addressStr.addressFromString().valueOrErrorMessage("couldn't parse addressStr=" + addressStr)
+func getIntOrZero(acc: Address, key: String) = acc.getInteger(key).valueOrElse(0)
+func getIntOrElse(acc: Address, key: String, defaultVal: Int) = acc.getInteger(key).valueOrElse(defaultVal)
+func getIntOrFail(acc: Address, key: String) = acc.getInteger(key).valueOrErrorMessage("Mandatory this." + key + " is not defined")
+func getStrOrElse(acc: Address, key: String, defaultVal: String) = acc.getString(key).valueOrElse(defaultVal)
+func getStrOrFail(acc: Address, key: String) = acc.getString(key).valueOrErrorMessage("Mandatory this." + key + " is not defined")
+func getBoolOrElse(acc: Address, key: String, defaultVal: Boolean) = acc.getBoolean(key).valueOrElse(defaultVal)
+func getAddressOrElse(acc: Address, key: String, defaultAddress: String) = acc.getStrOrElse(key, defaultAddress).toAddressOrFail()
+func getAddressOrFail(acc: Address, key: String) = acc.getStrOrFail(key).toAddressOrFail()
+
+# *** THIS KEYs and API
+func keyCfgPwrDaoChild()  = "%s%s__cfg__pwrDaoChildAcc"
+func keyCfgNeutrinoDao()  = "%s%s__cfg__neutrinoDaoAcc"
+func keyCfgPwrAssetId()   = "%s%s__cfg__pwrAssetId"
+func keyCfgDiabled()      = "%s%s__cfg__disabled"
+func keyCfgPeriod()       = "%s%s__cfg__period"
+
+# *** PWR DAO API
+func keyChildDaoStartHeight(childAddressStr: String, period: String) = "period_" + period + "_start_height_" + childAddressStr
+func keyChildDaoLockTime(childAddressStr: String, period: String) = "period_" + period + "_lockTime_" + childAddressStr
+func keyChildDaoInvestTotal(childAddressStr: String) = "investments_total_" + childAddressStr
+func keyChildDaoInvestUser(childAddressStr: String, userAddressStr: String) = ["investor", childAddressStr, userAddressStr].makeString("_")
+
+func keyClaimedStore(account: String) = account + "_claimed"
+
+# *** GLOBAL VARS
+let pwrDaoChildAcc          = this.getAddressOrElse(keyCfgPwrDaoChild(), "3PBLPmkM3ThytNj6QeJyLTX154if8S6Cea5")
+let neutrinoDaoAccStr       = this.getStrOrElse(keyCfgNeutrinoDao(), "3PEiiJRkV66T1NW7MoY3DGgCaxoDRCez8fL")
+let pwrAssetId              = this.getStrOrElse(keyCfgPwrAssetId(), "2thsACuHmzDMuNezPM32wg9a3BwUzBWDeSKakgz3cw21").fromBase58String()
+let period                  = this.getStrOrElse(keyCfgPeriod(), "1")
+let neutrinoDaoStartHeight  = pwrDaoChildAcc.getIntOrFail(neutrinoDaoAccStr.keyChildDaoStartHeight(period))
+let neutrinoDaoLockTime     = pwrDaoChildAcc.getIntOrFail(neutrinoDaoAccStr.keyChildDaoLockTime(period))
+
+
+# *** Implementation
+
+func getPwrClaimInfo(user: String) = {
+  let pwrAmt  = this.getIntOrZero(user)
+
+  let userAlreadyClaimed = this.getIntOrZero(keyClaimedStore(user))
+  if (userAlreadyClaimed > 0) then (0, userAlreadyClaimed) else (pwrAmt, userAlreadyClaimed)
+}
+
+# PWR DAO UI integration
+func adviseUser(account: String) = {
+  let claimInfo = account.getPwrClaimInfo()
+  let claimable = claimInfo._1
+  let claimed   = claimInfo._2
+
+  "height: " + HEIGHT.toString() +
+  ", account: " + account +
+  ", claimable: " + claimable.toString() +
+  ", claimed: " + claimed.toString()
+}
+
+@Callable(i)
+func constructorV1(pwrDaoMainAccStrP: String, neutrinoDaoAccStrP: String, pwrAssetIdStrP: String, periodNum: String) = {
+  if (i.caller != this) then throw("only self can init") else
+  [StringEntry(keyCfgPwrDaoChild(), pwrDaoMainAccStrP),
+    StringEntry(keyCfgNeutrinoDao(), neutrinoDaoAccStrP),
+    StringEntry(keyCfgPwrAssetId(), pwrAssetIdStrP),
+    StringEntry(keyCfgPeriod(), periodNum)]
+}
+
+@Callable(i)
+func claimAndStake() = {
+  let user = i.caller.toString()
+  let claimInfo = user.getPwrClaimInfo()
+  let amount = claimInfo._1
+
+  if (this.getBoolOrElse(keyCfgDiabled(), true)) then throw("Operations are disabled") else
+  if (amount <= 0) then throw("Nothing to claim") else
+  if (HEIGHT > neutrinoDaoStartHeight + neutrinoDaoLockTime) then throw("Claiming period expired - all remaining PWR tokens will be burnt") else
+
+  strict commit = pwrDaoChildAcc.invoke("commitAfterStartFor", [neutrinoDaoAccStr, user], [AttachedPayment(pwrAssetId, amount)])
+
+  ([IntegerEntry(keyClaimedStore(user), amount)], amount)
+}
