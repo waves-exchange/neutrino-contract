@@ -1019,6 +1019,14 @@ func acceptWaves() = {
         (prepareUnleaseAndLease(0), "success")
 }
 
+# service call to remove part of waves to beneficiary address
+@Callable(i)
+func takeWaves(amount: Int, beneficiary: String) = {
+  if (i.caller != this) then throw("Permission denied") else
+  strict unleaseInvOrEmpty = this.invoke("internalUnleaseAndLease", [amount], [])
+  ([ScriptTransfer(addressFromStringValue(beneficiary), amount, unit)], amount)
+}
+
 @Callable(i)
 func approveLeasings(nListS: String, groupNum: Int, lAmt: Int) = {
   let nIdxs = [0, 1, 2, 3, 4, 5, 6, 7]

@@ -11,6 +11,7 @@ let keyWxFactory = "%s__wxFactory"
 let keyWxSwap = "%s__wxSwap"
 let keyWxWavesWxPool = "%s__wxWavesWxPool"
 let keyWxWavesViresPool = "%s__wxWavesViresPool"
+let keyWxWavesWindPool = "%s__wxWavesWindPool"
 
 
 func getStringOrFail(key: String) = getString(key).valueOrErrorMessage("mandatory this." + key + " is not defined")
@@ -28,14 +29,19 @@ func asBool(v: Any) = {
 }
 
 @Callable(i)
-# mainnet: 3PCuHsTU58WKhCqotbcSwABvdPzqqVAbbTv 3P68zNiufsu1viZpu1aY3cdahRRKcvV5N93 3PFzaH2ghpwANHFgjeva83N1yxzErELx2eh 3P7Z7X5kKXN4TpZ2SmqP2xyLGuotAqht1pU
-# testnet: 3MsMP2pb2p8MDd6Rxb7XEXqqwEhE8ATfyai 3N6LHjfGb6Fgcy7YsVcNxGyPTj49XbQAijq 3MqGtuaL3yJbKHqUxnSihJmYroyPf6QDp1x 3MsHUJurQz4CuzUB2xFb9JoqaZQMsV1jYhZ
-func constructorV1(wxFactory: String, wxSwap: String, wxWavesWxPool: String, wxWavesViresPool: String) = {
+# mainnet: 3PCuHsTU58WKhCqotbcSwABvdPzqqVAbbTv
+#          3P68zNiufsu1viZpu1aY3cdahRRKcvV5N93 
+#          3PFzaH2ghpwANHFgjeva83N1yxzErELx2eh WX
+#          3P7Z7X5kKXN4TpZ2SmqP2xyLGuotAqht1pU VIRES
+#          3PEtzvd7onMdQ3RiQLhkE8we5jSWxzcZ6UM WIND
+# testnet: 3MsMP2pb2p8MDd6Rxb7XEXqqwEhE8ATfyai 3N6LHjfGb6Fgcy7YsVcNxGyPTj49XbQAijq 3MqGtuaL3yJbKHqUxnSihJmYroyPf6QDp1x 3MsHUJurQz4CuzUB2xFb9JoqaZQMsV1jYhZ ...
+func constructorV1(wxFactory: String, wxSwap: String, wxWavesWxPool: String, wxWavesViresPool: String, wxWavesWindPool: String) = {
   [
     StringEntry(keyWxFactory, wxFactory),
     StringEntry(keyWxSwap, wxSwap),
     StringEntry(keyWxWavesWxPool, wxWavesWxPool),
-    StringEntry(keyWxWavesViresPool, wxWavesViresPool)
+    StringEntry(keyWxWavesViresPool, wxWavesViresPool),
+    StringEntry(keyWxWavesWindPool, wxWavesWindPool)
   ]
 }
 
@@ -45,9 +51,13 @@ func wxPoolHealthyREADONLY() = {
   let globalShutdown = wxFactory.getBoolean(keyWxGlobalShutdown).valueOrElse(false)
   let statusVires = wxFactory.invoke("getPoolStatusREADONLY", [getStringValue(keyWxWavesViresPool)], nil).asInt()
   let statusWx = wxFactory.invoke("getPoolStatusREADONLY", [getStringValue(keyWxWavesWxPool)], nil).asInt()
+  let statusWind = wxFactory.invoke("getPoolStatusREADONLY", [getStringValue(keyWxWavesWindPool)], nil).asInt()
   let swapDisabledVires = wxFactory.invoke("isPoolSwapDisabledREADONLY", [getStringValue(keyWxWavesViresPool)], nil).asBool()
   let swapDisabledWx = wxFactory.invoke("isPoolSwapDisabledREADONLY", [getStringValue(keyWxWavesWxPool)], nil).asBool()
-  ([], !globalShutdown && statusVires == PoolActive && statusWx == PoolActive && !swapDisabledVires && !swapDisabledWx)
+  let swapDisabledWind = wxFactory.invoke("isPoolSwapDisabledREADONLY", [getStringValue(keyWxWavesWindPool)], nil).asBool()
+  ([], !globalShutdown && 
+    statusVires == PoolActive && statusWx == PoolActive && statusWind == PoolActive && 
+    !swapDisabledVires && !swapDisabledWx && !swapDisabledWind)
 }
 
 @Callable(i)
