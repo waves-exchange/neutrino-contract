@@ -151,6 +151,9 @@ let wxId                = wxIdStr.fromBase58String()
 let viresIdStr          = "DSbbhLsSTeDg5Lsiufk2Aneh3DjVqJuPr2M9uU1gwy5p"
 let viresId             = viresIdStr.fromBase58String()
 
+let windIdStr           = "6TXFMpr6rG4tr2CuPmVRq1NsjgPLJ59s2VMVnL1ZLtpR"
+let windId              = windIdStr.fromBase58String()
+
 func findPricesInRange(prices: List[Int]) = {
     let minPercentBound = 90
     let maxPercentBound = 110
@@ -245,6 +248,17 @@ func PriceEntry(newPrice: Int, assetIdStr: String, newPriceIndex: Int) = {
   IntegerEntry(priceByIndexKEY, newPrice), # price by index
   IntegerEntry(priceByHeightKEY, newPrice) # price by height
   ]
+}
+
+func finalizeWindUsdOnchain(wavesUsdPriceX6: Int) = {
+  let wx_WindWaves_lp = "2dQqyqwo8S26kVUnFAe5LqHgNtU8FYG8vvZkrEzLEkiv"
+  let wxRestResult = wx_restDapp.invoke("poolStatsREADONLY", [wx_WindWaves_lp], []).asString().split("__")
+  let wx_WindWaves_WAVESx8  = wxRestResult[2].parseIntValue()
+  let wx_WindWaves_Windx8  = wxRestResult[1].parseIntValue()
+  let wx_WindWaves_WindUsdPriceX6  = fraction(wx_WindWaves_WAVESx8, wavesUsdPriceX6, wx_WindWaves_Windx8) # 1.74275614085 * 3.97
+
+  let debug = "wx_WindWaves_WindUsdPriceX6=" + wx_WindWaves_WindUsdPriceX6.toString()
+  (wx_WindWaves_WindUsdPriceX6, debug)
 }
 
 func finalizeViresUsdOnchain(wavesUsdPriceX6: Int) = {
@@ -409,6 +423,10 @@ func finalizeCurrentPrice(price1: Int, sign1: ByteVector, price2: Int, sign2: By
     let newViresUsdPrice = viresUsdTuple._1
     let viresDebug       = viresUsdTuple._2
 
+    let windUsdTuple = finalizeWindUsdOnchain(newPrice)
+    let newWindUsdPrice = windUsdTuple._1
+    let windDebug       = windUsdTuple._2
+
     let (shouldBlock, blockingAsset, blockingPrice) = checkPrices(newPrice, newWxUsdPrice, newViresUsdPrice)
     if (shouldBlock) then {
         let reason = "automatic emergency shutdown because of large price variability"
@@ -435,8 +453,10 @@ func finalizeCurrentPrice(price1: Int, sign1: ByteVector, price2: Int, sign2: By
         ++ PriceEntry(newPrice, "WAVES", newPriceIndex)
         ++ PriceEntry(newWxUsdPrice, wxIdStr, newPriceIndex)
         ++ PriceEntry(newViresUsdPrice, viresIdStr, newPriceIndex)
+        ++ PriceEntry(newWindUsdPrice, windIdStr, newPriceIndex)
         :+ StringEntry("debug_wxUsdCalc", wxDebug)
         :+ StringEntry("debug_viresUsdCalc", viresDebug)
+        :+ StringEntry("debug_windUsdCalc", windDebug)
     }
 }
 
