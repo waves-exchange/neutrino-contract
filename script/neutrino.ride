@@ -137,6 +137,7 @@ let IdxControlCfgGnsbtControllerDapp = 11
 let IdxControlCfgRestV2Dapp       = 12
 let IdxControlCfgGovernanceDapp   = 13
 let IdxControlCfgFacadeDapp       = 15
+let IdxControlCfgWindPoolDapp     = 16
 
 func keyControlAddress() = "%s%s__config__controlAddress"
 func keyControlCfg()     = "%s__controlConfig"
@@ -156,6 +157,7 @@ let auctionContract = controlCfg.getContractAddressOrFail(IdxControlCfgAuctionDa
 let nodeRegistryContract = controlCfg.getContractAddressOrFail(IdxControlCfgNodeRegistryDapp)
 let govContract = controlCfg.getContractAddressOrFail(IdxControlCfgGovernanceDapp)
 let poolsFacadeContract = controlCfg.getContractAddressOrFail(IdxControlCfgFacadeDapp)
+let windContract = controlCfg.getContractAddressOrFail(IdxControlCfgWindPoolDapp)
 
 #-------------------Constructor-------------------------
 let NeutrinoAssetIdKey = "neutrino_asset_id"
@@ -224,6 +226,10 @@ func basketWeightByAssetKey(assetId: String)               = "%s%s%s__common__we
 func keyPriceByAsset(assetId: String)                      = "%s%s%s__common__priceByAsset__" + assetId
 func maxFeeKey()                                           = "%s%s__common__maxAllowedFee"
 
+let windIdx = 3 # IMPORTANT! WIND token should have index 3 in the basket: WAVES__wxId__viresId__windId
+let windAssetIdStr = this.getStringOrFail(basketAssetsKey()).split(SEP)[windIdx]
+let windAssetId = fromBase58String(windAssetIdStr)
+
 #-------------------State Reading functions-------------------
 func multiOutFeeREAD() = getInteger(BasketOutFeePartKey).valueOrElse(getInteger(WavesOutFeePartKey).valueOrElse(DEFAULTBURNFEE))
 func singleOutFeeREAD() = getInteger(NeutrinoOutFeePartKey).valueOrElse(DEFAULTSWAPFEE)
@@ -281,7 +287,7 @@ func convertNeutrinoToBasket(amount: Int, basketInfoStr: String, neutrinoSupply:
   let d6 = getInteger(basketDKey()).value()
   let outPart = MULT6 - fraction(k6, d6, MULT6) # for outMulti swaps, k*D part stays in reserves, and (1 - k*D) after applying fee goes to user
   # basket item: assetIdStr:share6:price6:reserve8
-  func conv(acc: (List[(String, Int, Int, Int)], Int, Int), item: String) = {
+  func conv(acc: (List[(String, Int, Int, Int)], Int, Int, Int), item: String) = {
     let parts = item.split(LISTSEP)
     let assetId = parts[0]
     let share = parts[1].parseIntValue()
@@ -289,10 +295,12 @@ func convertNeutrinoToBasket(amount: Int, basketInfoStr: String, neutrinoSupply:
     let reserv = parts[3].parseIntValue()
     if (neutrinoSupply == 0) then throw("Attempt to burn neutrino at zero supply") else
     let outAmount = fraction(fraction(amount, reserv, neutrinoSupply), outPart, MULT6) # amount * (1 - k*D)
-    let wavesTuple = if (assetId == "WAVES") then (outAmount, price) else (acc._2, acc._3)
-    (acc._1 :+ (assetId, outAmount, price, share), wavesTuple._1, wavesTuple._2)
+    let outTuple = if (assetId == "WAVES") then (outAmount, price, acc._4) 
+      else if (assetId == windAssetIdStr) then (acc._2, acc._3, outAmount) 
+      else (acc._2, acc._3, acc._4)
+    (acc._1 :+ (assetId, outAmount, price, share), outTuple._1, outTuple._2, outTuple._3)
   }
-  FOLD<10>(basketInfo, ([], 0, 0), conv) # (List[(assetId, outAmount, price, share)], wavesOutAmount, wavesPrice)
+  FOLD<10>(basketInfo, ([], 0, 0, 0), conv) # (List[(assetId, outAmount, price, share)], wavesOutAmount, wavesPrice, windOutAmount)
 }
 
 #-------------------Failures-------------------
@@ -572,7 +580,8 @@ func calcWithdrawT2U(inAmount: Int, inAsset: String, basketInfo: String, weighte
     0,                # debug - part of inAmount that is used BEFORE reaching BR protection level
     0,                # debug - part of inAmount that is used AFTER reaching BR protection level
     [],               # dummy value
-    [outAmt[1], outAmt[2]] # [netAmount, feeAmount]
+    [outAmt[1], outAmt[2]], # [netAmount, feeAmount]
+    0                 # WIND amount to unstake
   )
 }
 
@@ -592,7 +601,8 @@ func calcWithdrawU2Basket(usdnIn: Int, basketInfo: String, neutrinoSupply: Int) 
     usdnIn,                     # debug - part of inAmount that is used BEFORE reaching BR protection level
     0,                          # debug - part of inAmount that is used AFTER reaching BR protection level
     outAmtGross._1,             # List[(assetId, outAmount, price, share)]
-    []                          # dummy value
+    [],                         # dummy value
+    outAmtGross._4              # WIND amount to unstake
   )
 }
 
@@ -620,7 +630,8 @@ func calcWithdrawU2T(usdnIn: Int, basketInfo: String, neutrinoSupply: Int, outAs
     usdnIn,                     # debug - part of inAmount that is used BEFORE reaching BR protection level
     0,                          # debug - part of inAmount that is used AFTER reaching BR protection level
     [s],                        # singleton List[(assetId, outAmount, price, share)]
-    []                          # dummy value
+    [],                         # dummy value
+    outAmtGross._4              # WIND amount to unstake
   )
 }
 
@@ -643,6 +654,7 @@ func calcWithdraw(swapType: String, inAmount: Int, price: Int, neutrinoMetrics: 
   let withdrawPrice     = outDataTuple._6 # weightedPrice for outNeutrino
   let basketData        = outDataTuple._11 # List[(assetId, outAmount, price, share)] for outMulti
   let netFeeData        = outDataTuple._12 # [netAmount, feeAmount] for outNeutrino
+  let windOutAmt        = outDataTuple._13 # WIND amount to unstake
 
   let outNetAmt = if (swapType == "outNeutrino") then netFeeData[0] else 0
   let outFeeAmt = if (swapType == "outNeutrino") then netFeeData[1] else 0
@@ -654,8 +666,8 @@ func calcWithdraw(swapType: String, inAmount: Int, price: Int, neutrinoMetrics: 
   let withdrawBasket = if (swapType == "outMulti") then applyFeesBasket(basketData, feePart) else "" # assetId:price:netAmount:feeAmount:share_ ...
 
   # WARNING: if u modify then need to check RestV2
-  #   1         2           3             4               5           6         7             8              9
-  (outNetAmt, outAssetId, outSurfAmt, inAmtToSurfPart, unleaseAmt, outFeeAmt, outAmtGross, withdrawPrice, withdrawBasket)
+  #   1         2           3             4               5           6         7             8              9              10
+  (outNetAmt, outAssetId, outSurfAmt, inAmtToSurfPart, unleaseAmt, outFeeAmt, outAmtGross, withdrawPrice, withdrawBasket, windOutAmt)
 }
 
 func validateAndGenerateWavesLimitActions(swapType: String, outAssetOpt: String, withdrawBasket: String) = {
@@ -844,7 +856,7 @@ func swapTokenToNeutrino() = {
     if (i.payments.size() != 1) then throw("swapTokenToNeutrino require only one payment") else
     let pmt = i.payments[0].value()
     # check allowed assets
-    let basketAssets = getString(basketAssetsKey()).value() # WAVES__wxId__viresId__swopId__eggId__westId
+    let basketAssets = getString(basketAssetsKey()).value() # WAVES__wxId__viresId__windId
     let pmtAssetIdStr = pmt.assetId.valueOrElse(WAVESID).toBase58String()
     if (!basketAssets.contains(pmtAssetIdStr)) then throw(pmtAssetIdStr + " is not one of basket tokens:" + basketAssets) else
 
@@ -869,7 +881,7 @@ func swapNeutrinoToBasket() = {
 
 @Callable(i)
 func swapNeutrinoToSingleBasketToken(assetIdOut: String) = {
-  let basketAssets = getString(basketAssetsKey()).value().split(SEP) # WAVES__wxId__viresId
+  let basketAssets = getString(basketAssetsKey()).value().split(SEP) # WAVES__wxId__viresId__windId
   if (!basketAssets.containsElement(assetIdOut)) then throw("unknown assetIdOut, should be one of the basket") else
   if (assetIdOut != "WAVES") then throw("currently only WAVES supported as target asset") else
   let healthy = poolsFacadeContract.invoke("wxPoolHealthyREADONLY", [], []).asBool()
@@ -931,6 +943,7 @@ func withdraw(account: String, index: Int, swapTxId: String) = {
     let outAmtGross     = withdrawTuple._7 # for outNeutrino
     let withdrawPrice   = withdrawTuple._8 # weightedPrice for outNeutrino
     let withdrawBasket  = withdrawTuple._9 # assetId:price:netAmount:feeAmount:share_ ...
+    let windOutAmount   = withdrawTuple._10 # WIND amount to unstake
 
     if (swapType == "outNeutrino" && outAmtGross <= 0) then throw("balance equals zero") else
 
@@ -939,6 +952,11 @@ func withdraw(account: String, index: Int, swapTxId: String) = {
     strict surfCondition = if (outSurfAmt > 0) then {
        strict issueResult = auctionContract.invoke("issueSurf", [outSurfAmt, account], [])
        0
+    } else 0
+
+    strict windUnstakeOpt = if (swapType == "outMulti" && windOutAmount > 0) then {
+      strict unstakeWind = windContract.invoke("unstakeIndex", [windOutAmount], [])
+      0
     } else 0
 
     strict unleaseInvOrEmpty = this.invoke("internalUnleaseAndLease", [unleaseAmt], [])
