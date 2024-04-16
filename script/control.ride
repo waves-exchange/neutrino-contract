@@ -41,8 +41,8 @@ let IdxControlCfgRestV2Dapp       = 12
 let IdxControlCfgGovernanceDapp   = 13
 let IdxControlCfgPegProviderDapp  = 14
 let IdxControlCfgFacadeDapp       = 15
-let IdxControlCfgWindPoolDapp     = 16
-let ContractsListSize = IdxControlCfgWindPoolDapp
+let IdxControlCfgWindProxyDapp    = 16
+let ContractsListSize = IdxControlCfgWindProxyDapp
 
 func keyControlConfig() = "%s__controlConfig"
 func keyPriceByAsset(assetIdStr: String) = ["%s%s%s__common__priceByAsset",  assetIdStr].makeString(SEP)

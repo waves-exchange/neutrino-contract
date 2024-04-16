@@ -1,0 +1,60 @@
+{-# STDLIB_VERSION 6 #-}
+{-# CONTENT_TYPE DAPP #-}
+{-# SCRIPT_TYPE ACCOUNT #-}
+
+let beneficiaryAddressKey = "%s__beneficiaryAddress"
+let windContractKey = "%s__windContract"
+let neutrinoContractKey = "%s__neutrinoContract"
+# WIND pool contract on Puzzle
+let windContract = this.getString(windContractKey).valueOrElse("3P37uv8V2CMNMtKtwRRNnYPjNqPdGGszytW").addressFromStringValue()
+let neutrinoContract = this.getString(neutrinoContractKey).valueOrElse("3PC9BfRwJWWiw9AREE2B3eWzCks3CYtg4yo").addressFromStringValue()
+let windAssetId = base58'6TXFMpr6rG4tr2CuPmVRq1NsjgPLJ59s2VMVnL1ZLtpR'
+
+# address to receive rewards
+# currently beneficiary is ignored, because Puzzle wind megapool does not pay rewards in WIND token
+@Callable(i)
+func setBeneficiary(beneficiary: String) = {
+  if (i.caller != this) then throw("Permission denied") else
+  [StringEntry(beneficiaryAddressKey, beneficiary)]
+}
+
+# usually rewards are being claimed on each stakeIndex/unstakeIndex operation
+# but can be called explicitly
+# 10 pool tokens will be collected on this proxy contract
+# can be called by anyone, on behalf of this proxy contract
+@Callable(i)
+func claimIndexRewards() = {
+  strict claim = windContract.invoke("claimIndexRewards", [], [])
+  ([], 0)
+}
+
+# claimIndexRewards will be called inside
+# can be called by anyone, on behalf of this proxy contract
+@Callable(i)
+func stakeIndex() = {
+  if (i.payments[0].assetId.value() != windAssetId) then throw("WIND asset should be attached") else
+  strict stake = windContract.invoke("stakeIndexFor", [this.toString()], i.payments)
+  ([], 0)
+}
+
+# claimIndexRewards will be called inside
+@Callable(i)
+func unstakeIndex(indexAmount: Int) = {
+  if (i.caller != this && i.caller != neutrinoContract) then throw("Permission denied") else
+  if (indexAmount < 0) then throw("WIND amount can't be negative") else
+  if (indexAmount > 0) then {
+    strict stake = windContract.invoke("unstakeIndex", [indexAmount], [])
+    if (i.caller == neutrinoContract) then {
+      ([ScriptTransfer(neutrinoContract, indexAmount, windAssetId)], 0)
+    } else {
+      ([], 0)
+    }
+  } else { # indexAmount == 0, do nothing
+    ([], 0)
+  }
+}
+
+# These calls probably better to do manually:
+# generateIndex(true) with 10 payments attached (convert 10 pool assets to WIND)
+# generateIndexAndStake with 10 payments attached (convert 10 pool assets to WIND and stake)
+# generateIndexWithOneTokenAndStake with payment in WAVES (convert WAVES to WIND and stake)

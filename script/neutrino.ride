@@ -137,7 +137,7 @@ let IdxControlCfgGnsbtControllerDapp = 11
 let IdxControlCfgRestV2Dapp       = 12
 let IdxControlCfgGovernanceDapp   = 13
 let IdxControlCfgFacadeDapp       = 15
-let IdxControlCfgWindPoolDapp     = 16
+let IdxControlCfgWindProxyDapp    = 16
 
 func keyControlAddress() = "%s%s__config__controlAddress"
 func keyControlCfg()     = "%s__controlConfig"
@@ -157,7 +157,7 @@ let auctionContract = controlCfg.getContractAddressOrFail(IdxControlCfgAuctionDa
 let nodeRegistryContract = controlCfg.getContractAddressOrFail(IdxControlCfgNodeRegistryDapp)
 let govContract = controlCfg.getContractAddressOrFail(IdxControlCfgGovernanceDapp)
 let poolsFacadeContract = controlCfg.getContractAddressOrFail(IdxControlCfgFacadeDapp)
-let windContract = controlCfg.getContractAddressOrFail(IdxControlCfgWindPoolDapp)
+let windProxyContract = controlCfg.getContractAddressOrFail(IdxControlCfgWindProxyDapp)
 
 #-------------------Constructor-------------------------
 let NeutrinoAssetIdKey = "neutrino_asset_id"
@@ -955,7 +955,7 @@ func withdraw(account: String, index: Int, swapTxId: String) = {
     } else 0
 
     strict windUnstakeOpt = if (swapType == "outMulti" && windOutAmount > 0) then {
-      strict unstakeWind = windContract.invoke("unstakeIndex", [windOutAmount], [])
+      strict unstakeWind = windProxyContract.invoke("unstakeIndex", [windOutAmount], [])
       0
     } else 0
 
