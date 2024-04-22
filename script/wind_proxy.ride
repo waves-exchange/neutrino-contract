@@ -2,12 +2,28 @@
 {-# CONTENT_TYPE DAPP #-}
 {-# SCRIPT_TYPE ACCOUNT #-}
 
+let SEP = "__"
+func getStringOrFail(address: Address, key: String) = address.getString(key)
+  .valueOrErrorMessage(makeString(["mandatory ", address.toString(), ".", key, " is not defined"], ""))
+
+# data index from controlConfig
+let IdxControlCfgNeutrinoDapp = 1
+
+let controlAddressKey = "%s%s__config__controlAddress"
+let controlCfgKey     = "%s__controlConfig"
+
+func readControlCfgOrFail(control: Address) = split_4C(control.getStringOrFail(controlCfgKey), SEP)
+func getContractAddressOrFail(controlCfg: List[String], idx: Int) = controlCfg[idx].addressFromString()
+  .valueOrErrorMessage("Control cfg doesn't contain address at index " + idx.toString())
+
+let controlContract = this.getString(controlAddressKey).valueOrElse("3P5Bfd58PPfNvBM2Hy8QfbcDqMeNtzg7KfP").addressFromStringValue()
+let controlCfg = controlContract.readControlCfgOrFail()
+let neutrinoContract = controlCfg.getContractAddressOrFail(IdxControlCfgNeutrinoDapp)
+
 let beneficiaryAddressKey = "%s__beneficiaryAddress"
 let windContractKey = "%s__windContract"
-let neutrinoContractKey = "%s__neutrinoContract"
 # WIND pool contract on Puzzle
 let windContract = this.getString(windContractKey).valueOrElse("3P37uv8V2CMNMtKtwRRNnYPjNqPdGGszytW").addressFromStringValue()
-let neutrinoContract = this.getString(neutrinoContractKey).valueOrElse("3PC9BfRwJWWiw9AREE2B3eWzCks3CYtg4yo").addressFromStringValue()
 let windAssetId = base58'6TXFMpr6rG4tr2CuPmVRq1NsjgPLJ59s2VMVnL1ZLtpR'
 
 # address to receive rewards
