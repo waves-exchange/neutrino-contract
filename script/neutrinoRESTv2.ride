@@ -113,7 +113,7 @@ func asSwapParamsSTRUCT(val: Any) = {
 
 func asWithdrawResultSTRUCT(val: Any) = {
   match val {
-    case struct: (Int,ByteVector|Unit,Int,Int,Int,Int,Int,Int,String) => struct
+    case struct: (Int,ByteVector|Unit,Int,Int,Int,Int,Int,Int,String,Int) => struct
     case _ => throw("fail to cast into WithdrawResult")
   }
 }
