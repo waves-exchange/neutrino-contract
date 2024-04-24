@@ -196,8 +196,7 @@ func reserve(assetId: String) = {
   if (tempAssetId == WAVESID) then
     wavesBalance(neutrinoContract).regular - wavesLockedBalance # reserves in WAVES to cover neutrino supply
   else if (tempAssetId == windAssetId) then {
-    windProxyContract.assetBalance(tempAssetId) # possible non-staked WIND amount on wind proxy contract
-      + neutrinoContract.assetBalance(tempAssetId) # possible non-staked WIND amount on neutrino contract
+    neutrinoContract.assetBalance(tempAssetId) # possible non-staked WIND amount on neutrino contract
       + windProxyContract.invoke("balanceREADONLY", [], []).asInt()
   }
   else neutrinoContract.assetBalance(tempAssetId) - # reserves in other basket tokens
