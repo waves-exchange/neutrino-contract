@@ -162,6 +162,8 @@ let windProxyContract = controlCfg.getContractAddressOrFail(IdxControlCfgWindPro
 #-------------------Constructor-------------------------
 let NeutrinoAssetIdKey = "neutrino_asset_id"
 let BondAssetIdKey = "bond_asset_id"
+let WindAssetIdKey = "wind_asset_id"
+
 let AuctionContractKey = "auction_contract"
 let NsbtStakingContractKey = "nsbtStakingContract"
 let LiquidationContractKey = "liquidation_contract"
@@ -226,9 +228,19 @@ func basketWeightByAssetKey(assetId: String)               = "%s%s%s__common__we
 func keyPriceByAsset(assetId: String)                      = "%s%s%s__common__priceByAsset__" + assetId
 func maxFeeKey()                                           = "%s%s__common__maxAllowedFee"
 
-let windIdx = 3 # IMPORTANT! WIND token should have index 3 in the basket: WAVES__wxId__viresId__windId
-let windAssetIdStr = this.getStringOrFail(basketAssetsKey()).split(SEP)[windIdx]
+#-------------------Global vars-------------------------
+
+let neutrinoAssetId = getStringByKey(NeutrinoAssetIdKey).fromBase58String()
+let windAssetIdStr = getStringByKey(WindAssetIdKey)
 let windAssetId = fromBase58String(windAssetIdStr)
+let priceIndex = getNumberByAddressAndKey(controlContract, PriceIndexKey) # Last price history iterator from control.ride
+let isBlocked = getBoolByAddressAndKey(controlContract, IsBlockedKey) # Checks for contract locks that might happen after attacks.  The var is read from control contract
+let isDisabledIssueXtn = getBoolByAddressAndKey(controlContract, IsDisabledIssueKey)
+let nodeOracleProviderPubKey = fromBase58String(getStringByKey(NodeOracleProviderPubKeyKey))
+let bondAssetId = fromBase58String("6nSpVyNH7yM69eg446wrQR94ipbbcmZMU1ENPwanC97g") # NSBT with 6 decimals as USDN does
+let deprecatedBondAssetId = fromBase58String("975akZBfnMj513U7MZaHKzQrmsEx5aE3wdWKTrHBhbjF") # USDNB with 0 decimals
+
+let neutrinoContract = this
 
 #-------------------State Reading functions-------------------
 func multiOutFeeREAD() = getInteger(BasketOutFeePartKey).valueOrElse(getInteger(WavesOutFeePartKey).valueOrElse(DEFAULTBURNFEE))
@@ -295,8 +307,8 @@ func convertNeutrinoToBasket(amount: Int, basketInfoStr: String, neutrinoSupply:
     let reserv = parts[3].parseIntValue()
     if (neutrinoSupply == 0) then throw("Attempt to burn neutrino at zero supply") else
     let outAmount = fraction(fraction(amount, reserv, neutrinoSupply), outPart, MULT6) # amount * (1 - k*D)
-    let outTuple = if (assetId == "WAVES") then (outAmount, price, acc._4) 
-      else if (assetId == windAssetIdStr) then (acc._2, acc._3, outAmount) 
+    let outTuple = if (assetId == "WAVES") then (outAmount, price, acc._4)
+      else if (assetId == windAssetIdStr) then (acc._2, acc._3, outAmount)
       else (acc._2, acc._3, acc._4)
     (acc._1 :+ (assetId, outAmount, price, share), outTuple._1, outTuple._2, outTuple._3)
   }
@@ -314,17 +326,6 @@ func priceIndexFAIL(index: Int, priceIndex: Int, indexHeight: Int, unlockHeight:
                 + " unlockHeight=" + toString(unlockHeight)
                 + " prevIndexHeight=" + toString(prevIndexHeight))
 
-#-------------------Global vars-------------------------
-
-let neutrinoAssetId = getStringByKey(NeutrinoAssetIdKey).fromBase58String()
-let priceIndex = getNumberByAddressAndKey(controlContract, PriceIndexKey) # Last price history iterator from control.ride
-let isBlocked = getBoolByAddressAndKey(controlContract, IsBlockedKey) # Checks for contract locks that might happen after attacks.  The var is read from control contract
-let isDisabledIssueXtn = getBoolByAddressAndKey(controlContract, IsDisabledIssueKey)
-let nodeOracleProviderPubKey = fromBase58String(getStringByKey(NodeOracleProviderPubKeyKey))
-let bondAssetId = fromBase58String("6nSpVyNH7yM69eg446wrQR94ipbbcmZMU1ENPwanC97g") # NSBT with 6 decimals as USDN does
-let deprecatedBondAssetId = fromBase58String("975akZBfnMj513U7MZaHKzQrmsEx5aE3wdWKTrHBhbjF") # USDNB with 0 decimals
-
-let neutrinoContract = this
 #-------------------Global vars deficit, locked & supply -------------------------
 let currentPrice = getNumberByAddressAndKey(controlContract, PriceKey) # The value from control.ride
 
@@ -641,7 +642,7 @@ func calcWithdraw(swapType: String, inAmount: Int, price: Int, neutrinoMetrics: 
   let weightedPrice = neutrinoMetrics[nMetricWeightedPrice].asInt()
   let outDataTuple =
     if (swapType == "outNeutrino") then calcWithdrawT2U(inAmount, inAsset, basketInfo, weightedPrice) else
-    if (swapType == "outMulti") then 
+    if (swapType == "outMulti") then
       if (outAssetOpt != "") then calcWithdrawU2T(inAmount, basketInfo, neutrinoSupply, outAssetOpt, isVirtual)
       else calcWithdrawU2Basket(inAmount, basketInfo, neutrinoSupply)
     else throw("Unsupported swap type " + swapType)
@@ -880,16 +881,6 @@ func swapNeutrinoToBasket() = {
 }
 
 @Callable(i)
-func swapNeutrinoToSingleBasketToken(assetIdOut: String) = {
-  let basketAssets = getString(basketAssetsKey()).value().split(SEP) # WAVES__wxId__viresId__windId
-  if (!basketAssets.containsElement(assetIdOut)) then throw("unknown assetIdOut, should be one of the basket") else
-  if (assetIdOut != "WAVES") then throw("currently only WAVES supported as target asset") else
-  let healthy = poolsFacadeContract.invoke("wxPoolHealthyREADONLY", [], []).asBool()
-  if (!healthy) then throw("WX pools down, cannot swap to single token") else
-  swapNeutrinoInternal(i, assetIdOut)
-}
-
-@Callable(i)
 func internalSaveInteger(key: String, amount: Int) = {
   if (i.caller != this) then throw("internalSaveInteger is not public method") else
   [IntegerEntry(key, amount)]
@@ -1017,14 +1008,6 @@ func withdraw(account: String, index: Int, swapTxId: String) = {
 func internalUnleaseAndLease(unleaseAmount: Int) = {
   if (i.caller != this) then throw("internalUnleaseAndLease is not public method") else
   prepareUnleaseAndLease(unleaseAmount)
-}
-
-# Callback for auction contract to transfer USDN to user
-@Callable(i)
-func transferUsdnToUser(amount: Int, addr: String) = {
-    if (i.caller != auctionContract) then throw("Only auction contract is authorized") else
-
-    [ScriptTransfer(addressFromStringValue(addr), amount, neutrinoAssetId)]
 }
 
 # Accept waves from auction after buyNsbt/buySurf to lease them immediately

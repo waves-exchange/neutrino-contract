@@ -60,6 +60,7 @@ func keyPriceAdjArbRegulator()  = "%s%s__priceAdj__arbRegulator"
 func keyNeutrinoAssetId()            = "neutrino_asset_id"
 func keyNsbtAssetId()                = "bond_asset_id"
 func keySurfAssetId()                = "surf_asset_id"
+func keyWindAssetId()                = "wind_asset_id"
 func swapsTimeframeKEY()             = "swaps_timeframe"
 func keyUserLastQuickSwapHeight(userAddress: String) = ["%s%s", "userLastQuickSwapHeight", userAddress].makeString(SEP)
 func keyQuickSwapUserSpentInPeriod(userAddress: String) = ["%s%s", "quickSwapUserSpentInPeriod", userAddress].makeString(SEP)
@@ -145,12 +146,8 @@ let neutrinoAssetIdStr    = neutrinoContract.getStringOrFail(keyNeutrinoAssetId(
 let neutrinoAssetId       = fromBase58String(neutrinoAssetIdStr)
 let nsbtAssetId           = fromBase58String(neutrinoContract.getStringValue(keyNsbtAssetId()))
 let surfAssetId           = fromBase58String(auctionContract.getStringValue(keySurfAssetId()))
-
-let windContractKey = "%s__windContract"
-let windIdx = 3 # IMPORTANT! WIND token should have index 3 in the basket: WAVES__wxId__viresId__windId
-let windAssetIdStr = neutrinoContract.getStringOrFail(basketAssetsKey()).split(SEP)[windIdx]
-let windAssetId = fromBase58String(windAssetIdStr)
-func keyWindStaked(stakerAddrStr: String) = stakerAddrStr + "_indexStaked"
+let windAssetIdStr        = neutrinoContract.getStringOrFail(keyWindAssetId())
+let windAssetId           = fromBase58String(windAssetIdStr)
 
 func keyBalanceLocked() = "balance_lock_"
 func totalLockedKEY(swapType: String, assetId: String) = makeString(["%s%s%s", "balanceLock", swapType, assetId], SEP)
@@ -199,10 +196,9 @@ func reserve(assetId: String) = {
   if (tempAssetId == WAVESID) then
     wavesBalance(neutrinoContract).regular - wavesLockedBalance # reserves in WAVES to cover neutrino supply
   else if (tempAssetId == windAssetId) then {
-    let windContract = windProxyContract.getString(windContractKey).valueOrElse("3P37uv8V2CMNMtKtwRRNnYPjNqPdGGszytW").addressFromStringValue()
-    windProxyContract.assetBalance(tempAssetId) + # possible non-staked WIND amount on wind proxy contract
-      neutrinoContract.assetBalance(tempAssetId) + # possible non-staked WIND amount on neutrino contract
-      windContract.getInteger(keyWindStaked(neutrinoContract.toString())).valueOrElse(0) # staked in WIND pool
+    windProxyContract.assetBalance(tempAssetId) # possible non-staked WIND amount on wind proxy contract
+      + neutrinoContract.assetBalance(tempAssetId) # possible non-staked WIND amount on neutrino contract
+      + windProxyContract.invoke("balanceREADONLY", [], []).asInt()
   }
   else neutrinoContract.assetBalance(tempAssetId) - # reserves in other basket tokens
     neutrinoContract.getInteger(keyTokenLockedBalance(assetId)).valueOrElse(0) # locked balance from new basketToken -> neutrino swaps

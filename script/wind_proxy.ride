@@ -16,23 +16,20 @@ func readControlCfgOrFail(control: Address) = split_4C(control.getStringOrFail(c
 func getContractAddressOrFail(controlCfg: List[String], idx: Int) = controlCfg[idx].addressFromString()
   .valueOrErrorMessage("Control cfg doesn't contain address at index " + idx.toString())
 
+#-------neutrino keys------
+func keyWindAssetId()                = "wind_asset_id"
+
 let controlContract = this.getString(controlAddressKey).valueOrElse("3P5Bfd58PPfNvBM2Hy8QfbcDqMeNtzg7KfP").addressFromStringValue()
 let controlCfg = controlContract.readControlCfgOrFail()
 let neutrinoContract = controlCfg.getContractAddressOrFail(IdxControlCfgNeutrinoDapp)
 
-let beneficiaryAddressKey = "%s__beneficiaryAddress"
-let windContractKey = "%s__windContract"
 # WIND pool contract on Puzzle
-let windContract = this.getString(windContractKey).valueOrElse("3P37uv8V2CMNMtKtwRRNnYPjNqPdGGszytW").addressFromStringValue()
-let windAssetId = base58'6TXFMpr6rG4tr2CuPmVRq1NsjgPLJ59s2VMVnL1ZLtpR'
+let windContractKey = "%s__windContract"
+let windContract    = this.getString(windContractKey).valueOrElse("3P37uv8V2CMNMtKtwRRNnYPjNqPdGGszytW").addressFromStringValue()
+let windAssetIdStr  = neutrinoContract.getStringOrFail(keyWindAssetId())
+let windAssetId     = fromBase58String(windAssetIdStr)
 
-# address to receive rewards
-# currently beneficiary is ignored, because Puzzle wind megapool does not pay rewards in WIND token
-@Callable(i)
-func setBeneficiary(beneficiary: String) = {
-  if (i.caller != this) then throw("Permission denied") else
-  [StringEntry(beneficiaryAddressKey, beneficiary)]
-}
+func keyWindStaked(stakerAddrStr: String) = stakerAddrStr + "_indexStaked"
 
 # usually rewards are being claimed on each stakeIndex/unstakeIndex operation
 # but can be called explicitly
@@ -53,21 +50,20 @@ func stakeIndex() = {
   ([], 0)
 }
 
+@Callable(i)
+func balanceREADONLY() = {
+  let stakedAmt = windContract.getInteger(keyWindStaked(this.toString())).valueOrElse(0) # staked in WIND pool
+  ([], stakedAmt)
+}
+
 # claimIndexRewards will be called inside
 @Callable(i)
 func unstakeIndex(indexAmount: Int) = {
   if (i.caller != this && i.caller != neutrinoContract) then throw("Permission denied") else
-  if (indexAmount < 0) then throw("WIND amount can't be negative") else
-  if (indexAmount > 0) then {
-    strict stake = windContract.invoke("unstakeIndex", [indexAmount], [])
-    if (i.caller == neutrinoContract) then {
-      ([ScriptTransfer(neutrinoContract, indexAmount, windAssetId)], 0)
-    } else {
-      ([], 0)
-    }
-  } else { # indexAmount == 0, do nothing
-    ([], 0)
-  }
+  if (indexAmount <= 0) then throw("WIND amount can't be negative or zero") else
+
+  strict stake = windContract.invoke("unstakeIndex", [indexAmount], [])
+  ([ScriptTransfer(neutrinoContract, indexAmount, windAssetId)], 0)
 }
 
 # These calls probably better to do manually:
