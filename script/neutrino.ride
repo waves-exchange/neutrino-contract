@@ -1123,7 +1123,9 @@ func swapParamsByUserSYSREADONLY(userAddressStr: String, gnsbtDiff: Int) = {
 @Callable(i)
 func calcWithdrawResultSYSREADONLY(swapType: String, inAmount: Int, price: Int, inAsset: String, outAssetOpt: String) = {
   let neutrinoMetrics = mathContract.invoke("calcNeutinoMetricsREADONLY", [], []).asAnyList()
-  ([], calcWithdraw(swapType, inAmount, price, neutrinoMetrics, inAsset, outAssetOpt, true))
+  let t = calcWithdraw(swapType, inAmount, price, neutrinoMetrics, inAsset, outAssetOpt, true)
+# (outNetAmt, outAssetId, outSurfAmt, inAmtToSurfPart, unleaseAmt, outFeeAmt, outAmtGross, withdrawPrice, withdrawBasket)
+  ([], (t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, t._9))
 }
 
 @Callable(i)
