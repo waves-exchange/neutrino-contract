@@ -60,6 +60,7 @@ func keyPriceAdjArbRegulator()  = "%s%s__priceAdj__arbRegulator"
 func keyNeutrinoAssetId()            = "neutrino_asset_id"
 func keyNsbtAssetId()                = "bond_asset_id"
 func keySurfAssetId()                = "surf_asset_id"
+func keyWindAssetId()                = "wind_asset_id"
 func swapsTimeframeKEY()             = "swaps_timeframe"
 func keyUserLastQuickSwapHeight(userAddress: String) = ["%s%s", "userLastQuickSwapHeight", userAddress].makeString(SEP)
 func keyQuickSwapUserSpentInPeriod(userAddress: String) = ["%s%s", "quickSwapUserSpentInPeriod", userAddress].makeString(SEP)
@@ -122,6 +123,7 @@ let IdxControlCfgGnsbtControllerDapp  = 11
 let IdxControlCfgRestV2Dapp           = 12
 let IdxControlCfgGovernanceDapp       = 13
 let IdxControlCfgPegProviderDapp      = 14
+let IdxControlCfgWindProxyDapp        = 16
 
 func keyControlAddress() = "%s%s__config__controlAddress"
 func keyControlCfg()     = "%s__controlConfig"
@@ -138,11 +140,14 @@ let auctionContract = controlCfg.getContractAddressOrFail(IdxControlCfgAuctionDa
 let liquidationContract = controlCfg.getContractAddressOrFail(IdxControlCfgLiquidationDapp)
 let usdnStakingContract = controlCfg.getContractAddressOrFail(IdxControlCfgRpdDapp)
 let pegProviderContract = controlCfg.getContractAddressOrFail(IdxControlCfgPegProviderDapp)
+let windProxyContract = controlCfg.getContractAddressOrFail(IdxControlCfgWindProxyDapp)
 
 let neutrinoAssetIdStr    = neutrinoContract.getStringOrFail(keyNeutrinoAssetId())
 let neutrinoAssetId       = fromBase58String(neutrinoAssetIdStr)
 let nsbtAssetId           = fromBase58String(neutrinoContract.getStringValue(keyNsbtAssetId()))
 let surfAssetId           = fromBase58String(auctionContract.getStringValue(keySurfAssetId()))
+let windAssetIdStr        = neutrinoContract.getStringOrFail(keyWindAssetId())
+let windAssetId           = fromBase58String(windAssetIdStr)
 
 func keyBalanceLocked() = "balance_lock_"
 func totalLockedKEY(swapType: String, assetId: String) = makeString(["%s%s%s", "balanceLock", swapType, assetId], SEP)
@@ -190,6 +195,10 @@ func reserve(assetId: String) = {
   let tempAssetId = assetId.fromBase58String()
   if (tempAssetId == WAVESID) then
     wavesBalance(neutrinoContract).regular - wavesLockedBalance # reserves in WAVES to cover neutrino supply
+  else if (tempAssetId == windAssetId) then {
+    neutrinoContract.assetBalance(tempAssetId) # possible non-staked WIND amount on neutrino contract
+      + windProxyContract.invoke("balanceREADONLY", [], []).asInt()
+  }
   else neutrinoContract.assetBalance(tempAssetId) - # reserves in other basket tokens
     neutrinoContract.getInteger(keyTokenLockedBalance(assetId)).valueOrElse(0) # locked balance from new basketToken -> neutrino swaps
 }
@@ -218,7 +227,7 @@ func getBR() = {
 let BR = if (neutrinoSupply == 0) then 0 else getBR()
 
 func getBasketInfo() = {
-  let basketAssets = neutrinoContract.getString(basketAssetsKey()).value() # WAVES__wxId__viresId__swopId__eggId__westId
+  let basketAssets = neutrinoContract.getString(basketAssetsKey()).value() # WAVES__wxId__viresId__windId
   let basket = basketAssets.split(SEP)
 
   # 1st pass: calculate total reserves

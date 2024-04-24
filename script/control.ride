@@ -40,34 +40,19 @@ let IdxControlCfgGnsbtControllerDapp = 11
 let IdxControlCfgRestV2Dapp       = 12
 let IdxControlCfgGovernanceDapp   = 13
 let IdxControlCfgPegProviderDapp  = 14
+let IdxControlCfgFacadeDapp       = 15
+let IdxControlCfgWindProxyDapp    = 16
+let ContractsListSize = IdxControlCfgWindProxyDapp
 
 func keyControlConfig() = "%s__controlConfig"
 func keyPriceByAsset(assetIdStr: String) = ["%s%s%s__common__priceByAsset",  assetIdStr].makeString(SEP)
 func keyBlackSwanThreshold() = "%s%s__controlConfig__blackSwanThreshold"
 
-func dataControlCfg(neutrinoContract: String, auctionContract: String, rpdContract: String, mathContract: String,
-                    liquidationContract: String, restContract: String, nodeRegistryContract: String, nsbtStakingContract: String,
-                    mediatorContract: String, surfStakingContract: String, gnsbtControllerContract: String, restV2Contract: String,
-                    governanceContract: String, doraContract: String, poolsFacadeContract: String) = {
-  makeString_2C(
-    ["%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s",
-    neutrinoContract,         #1
-    auctionContract,          #2
-    rpdContract,              #3
-    mathContract,             #4
-    liquidationContract,      #5
-    restContract,             #6
-    nodeRegistryContract,     #7
-    nsbtStakingContract,      #8
-    mediatorContract,         #9
-    surfStakingContract,      #10
-    gnsbtControllerContract,  #11
-    restV2Contract,           #12
-    governanceContract,       #13
-    doraContract,             #14
-    poolsFacadeContract       #15
-    ],
-    SEP)
+func dataControlCfg(contractsList: List[String]) = {
+  let formatPrefix = "%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s"
+  if (formatPrefix.size() != ContractsListSize * 2) then throw("Size of format specifier does not match") else
+
+  makeString_2C(formatPrefix :: contractsList, SEP)
 }
 
 #-------------------Functions----------------------
@@ -347,17 +332,11 @@ func checkPrices(newWavesPrice: Int, newWxPrice: Int, newViresPrice: Int) = {
 }
 
 @Callable(i)
-func constructorV1(neutrinoContract: String, auctionContract: String, rpdContract: String, mathContract: String,
-                    liquidationContract: String, restContract: String, nodeRegistryContract: String,
-                    nsbtStakingContract: String, mediatorContract: String, surfStakingContract: String, gnsbtControllerContract: String,
-                    restV2Contract: String, governanceContract: String, doraContract: String, poolsFacadeContract: String) = {
-   if (i.caller != this) then throw("permissions denied") else
+func constructorV2(contractsList: List[String]) = {
+  if (i.caller != this) then throw("permissions denied") else
+  if (contractsList.size() != ContractsListSize) then throw("Wrong number of contracts in the list") else
 
-   [StringEntry(keyControlConfig(), dataControlCfg(
-        neutrinoContract, auctionContract, rpdContract, mathContract, liquidationContract,
-        restContract, nodeRegistryContract, nsbtStakingContract, mediatorContract,
-        surfStakingContract, gnsbtControllerContract, restV2Contract, governanceContract, doraContract, poolsFacadeContract
-    ))]
+  [StringEntry(keyControlConfig(), dataControlCfg(contractsList))]
 }
 
 #-------------------Callable----------------------
